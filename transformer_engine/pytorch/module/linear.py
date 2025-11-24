@@ -53,6 +53,7 @@ from ..distributed import (
 )
 from ..cpp_extensions import (
     general_gemm,
+    gems_general_gemm,
 )
 from ..constants import GemmParallelModes, dist_group_type
 from ..jit import no_torch_dynamo
@@ -128,6 +129,7 @@ class _Linear(torch.autograd.Function):
             symmetric_ar_type,
             save_original_input,
             debug,
+            use_engine_fl,
         ) = non_tensor_args
 
         # NVTX label for profiling
@@ -321,17 +323,31 @@ class _Linear(torch.autograd.Function):
         # Note: y = x * w^T
         # ------------------------------------------------------
         nvtx_range_push(f"{nvtx_label}.gemm")
-        gemm_out, *_, reduce_scatter_out = general_gemm(
-            weightmat,
-            inputmat_total,
-            quantization_params=output_quantizer,
-            out_dtype=activation_dtype,
-            bias=bias,
-            use_split_accumulator=use_split_accumulator,
-            ub=ub_obj,
-            ub_type=ub_type,
-            extra_output=reduce_scatter_out,
-        )
+        # TODO(lixianduo): Polish
+        if not use_engine_fl:
+            gemm_out, *_, reduce_scatter_out = general_gemm(
+                weightmat,
+                inputmat_total,
+                quantization_params=output_quantizer,
+                out_dtype=activation_dtype,
+                bias=bias,
+                use_split_accumulator=use_split_accumulator,
+                ub=ub_obj,
+                ub_type=ub_type,
+                extra_output=reduce_scatter_out,
+            )
+        else:
+            gemm_out, *_, reduce_scatter_out = gems_general_gemm(
+                weightmat,
+                inputmat_total,
+                quantization_params=output_quantizer,
+                out_dtype=activation_dtype,
+                bias=bias,
+                use_split_accumulator=use_split_accumulator,
+                ub=ub_obj,
+                ub_type=ub_type,
+                extra_output=reduce_scatter_out,
+            )
         nvtx_range_pop(f"{nvtx_label}.gemm")
         # ------------------------------------------------------
         # Finished forward GEMM...
@@ -439,6 +455,7 @@ class _Linear(torch.autograd.Function):
             ctx.save_for_backward(*tensors_to_save)
             ctx.tensor_objects = tensor_objects
 
+            ctx.use_engine_fl = use_engine_fl
             ctx.activation_dtype = activation_dtype
             ctx.fp8 = fp8
             ctx.fp8_recipe = FP8GlobalStateManager.get_fp8_recipe() if fp8 else None
@@ -719,20 +736,37 @@ class _Linear(torch.autograd.Function):
                 # Note: dx = dy * w
 
                 nvtx_range_push(f"{nvtx_label}.dgrad_gemm")
-                gemm_out, *_, reduce_scatter_out = general_gemm(
-                    weight_fp8,
-                    grad_output,
-                    layout="NN",
-                    grad=True,
-                    quantization_params=ctx.grad_input_quantizer,
-                    out=gemm_out,
-                    out_dtype=ctx.activation_dtype,
-                    use_split_accumulator=use_split_accumulator,
-                    ub=ub_obj_dgrad,
-                    ub_type=ub_type_dgrad,
-                    extra_output=reduce_scatter_out,
-                    bulk_overlap=ctx.ub_bulk_dgrad,
-                )
+                # TODO(lixianduo): polish
+                if not ctx.use_engine_fl:
+                    gemm_out, *_, reduce_scatter_out = general_gemm(
+                        weight_fp8,
+                        grad_output,
+                        layout="NN",
+                        grad=True,
+                        quantization_params=ctx.grad_input_quantizer,
+                        out=gemm_out,
+                        out_dtype=ctx.activation_dtype,
+                        use_split_accumulator=use_split_accumulator,
+                        ub=ub_obj_dgrad,
+                        ub_type=ub_type_dgrad,
+                        extra_output=reduce_scatter_out,
+                        bulk_overlap=ctx.ub_bulk_dgrad,
+                    )
+                else:
+                    gemm_out, *_, reduce_scatter_out = gems_general_gemm(
+                        weight_fp8,
+                        grad_output,
+                        layout="NN",
+                        grad=True,
+                        quantization_params=ctx.grad_input_quantizer,
+                        out=gemm_out,
+                        out_dtype=ctx.activation_dtype,
+                        use_split_accumulator=use_split_accumulator,
+                        ub=ub_obj_dgrad,
+                        ub_type=ub_type_dgrad,
+                        extra_output=reduce_scatter_out,
+                        bulk_overlap=ctx.ub_bulk_dgrad,
+                    )
                 nvtx_range_pop(f"{nvtx_label}.dgrad_gemm")
 
                 # Prepare grad input tensor
@@ -880,7 +914,11 @@ class _Linear(torch.autograd.Function):
 
                     """
                     nvtx_range_push(f"{nvtx_label}.wgrad_gemm")
-                    dw, db, *_ = general_gemm(x, dy, **wgrad_gemm_kwargs)
+                    # TODO(lixianduo): polish
+                    if not ctx.use_engine_fl:
+                        dw, db, *_ = general_gemm(x, dy, **wgrad_gemm_kwargs)
+                    else:
+                        dw, db, *_ = gems_general_gemm(x, dy, **wgrad_gemm_kwargs)
                     nvtx_range_pop(f"{nvtx_label}.wgrad_gemm")
                     return dw, db
 
@@ -1096,6 +1134,7 @@ class Linear(TransformerEngineBaseModule):
         symmetric_ar_type: Optional[str] = None,
         save_original_input: bool = False,
         name: Optional[str] = None,
+        use_engine_fl: Optional[bool] = False,
     ) -> None:
         super().__init__()
 
@@ -1111,6 +1150,7 @@ class Linear(TransformerEngineBaseModule):
         self.symmetric_ar_type = symmetric_ar_type
         self.save_original_input = save_original_input
         self.name = name
+        self.use_engine_fl = use_engine_fl
 
         self.wgrad_store = WeightGradStore(delay_wgrad_compute, ub_bulk_wgrad)
 
@@ -1464,6 +1504,7 @@ class Linear(TransformerEngineBaseModule):
                 self.symmetric_ar_type,
                 self.save_original_input,
                 debug,
+                self.use_engine_fl,
             )
             out = linear_fn(
                 *autograd_ctx,

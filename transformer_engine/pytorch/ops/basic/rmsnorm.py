@@ -26,6 +26,7 @@ from ...utils import (
 from ..op import BasicOperation, OperationContext
 from .._common import maybe_autocast_dtype, maybe_dequantize
 
+from ...module.gems_rms_norm import rms_norm_forward, rms_norm_backward
 
 class RMSNorm(BasicOperation):
     r"""Root Mean Square Layer Normalization
@@ -75,10 +76,12 @@ class RMSNorm(BasicOperation):
         dtype: Optional[torch.dtype] = None,
         zero_centered_gamma: bool = False,
         sm_margin: int = 0,
+        use_engine_fl: Optional[bool] = False,
     ) -> None:
         super().__init__()
         self.eps: float = eps
         self.zero_centered_gamma: bool = zero_centered_gamma
+        self.use_engine_fl = use_engine_fl
 
         # Parameter shape
         if not isinstance(normalized_shape, Iterable):
@@ -184,16 +187,24 @@ class RMSNorm(BasicOperation):
 
         # Compute RMSNorm
         sm_margin = self._sm_margins["forward" if ctx.requires_grad else "inference"]
-        y, _, rstdevs = rmsnorm_fwd(
-            x,
-            w,
-            self.eps,
-            None,
-            next_op_input_quantizer,
-            TE_DType[dtype],
-            sm_margin,
-            self.zero_centered_gamma,
-        )
+        if not self.use_engine_fl:
+            y, _, rstdevs = rmsnorm_fwd(
+                x,
+                w,
+                self.eps,
+                None,
+                next_op_input_quantizer,
+                TE_DType[dtype],
+                sm_margin,
+                self.zero_centered_gamma,
+            )
+        else:
+            y, rstdevs = rms_norm_forward(
+                x,
+                [x.shape[-1]],
+                w,
+                self.eps,
+            )
 
         # Save state for backward pass
         if ctx.requires_grad:
@@ -224,15 +235,26 @@ class RMSNorm(BasicOperation):
         dy = maybe_dequantize(grad_output.contiguous(), dtype).view(x.size())
         w = maybe_dequantize(self.weight, dtype).view((inner_dim,))
 
+        # TODO(lixianduo): polish
         # Compute RMSNorm backward pass
-        dx, dw = rmsnorm_bwd(
-            dy,
-            x,
-            rstdevs,
-            w,
-            self._sm_margins["backward"],
-            self.zero_centered_gamma,
-        )
+        if not self.use_engine_fl:
+            dx, dw = rmsnorm_bwd(
+                dy,
+                x,
+                rstdevs,
+                w,
+                self._sm_margins["backward"],
+                self.zero_centered_gamma,
+            )
+        else:
+            dx, dw = rms_norm_backward(
+                dy,
+                x,
+                rstdevs,
+                [x.shape[-1]],
+                w,
+                self.eps,
+            )
 
         # Clear saved tensors if possible
         clear_tensor_data(x)

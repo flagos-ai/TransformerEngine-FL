@@ -78,7 +78,10 @@ from ..export import is_in_onnx_export_mode, assert_warmed_up
 
 from ..cpp_extensions import (
     general_gemm,
+    gems_general_gemm,
 )
+
+from .gems_rms_norm import rms_norm_forward, rms_norm_backward
 
 __all__ = ["LayerNormLinear"]
 
@@ -141,6 +144,7 @@ class _LayerNormLinear(torch.autograd.Function):
             skip_fp8_weight_update,
             symmetric_ar_type,
             debug,
+            use_engine_fl,
         ) = non_tensor_args
 
         # NVTX label for profiling
@@ -219,18 +223,28 @@ class _LayerNormLinear(torch.autograd.Function):
 
         # Apply normalization
         nvtx_range_push(f"{nvtx_label}.norm")
-        ln_out, mu, rsigma = apply_normalization(
-            inputmat,
-            None,  # ln_out
-            ln_weight,
-            ln_bias,
-            eps,
-            input_quantizer if with_quantized_norm else None,
-            inputmat.dtype,
-            normalization,
-            fwd_ln_sm_margin,
-            zero_centered_gamma,
-        )
+        # TODO(lixianduo): polish
+        if not use_engine_fl:
+            ln_out, mu, rsigma = apply_normalization(
+                inputmat,
+                None,  # ln_out
+                ln_weight,
+                ln_bias,
+                eps,
+                input_quantizer if with_quantized_norm else None,
+                inputmat.dtype,
+                normalization,
+                fwd_ln_sm_margin,
+                zero_centered_gamma,
+            )
+        else:
+            ln_out, rsigma = rms_norm_forward(
+                inputmat,
+                [inputmat.shape[-1]],
+                ln_weight,
+                eps,
+            )
+            mu = None
         nvtx_range_pop(f"{nvtx_label}.norm")
 
         # Store unquantized layer norm output if we need to return it
@@ -358,17 +372,30 @@ class _LayerNormLinear(torch.autograd.Function):
         # Note: y = x * w^T
         # ------------------------------------------------------
         nvtx_range_push(f"{nvtx_label}.gemm")
-        gemm_out, *_, reduce_scatter_out = general_gemm(
-            weightmat,
-            ln_out_total,
-            quantization_params=output_quantizer,
-            out_dtype=activation_dtype,
-            bias=bias,
-            use_split_accumulator=use_split_accumulator,
-            ub=ub_obj,
-            ub_type=ub_type,
-            extra_output=reduce_scatter_out,
-        )
+        if not use_engine_fl:
+            gemm_out, *_, reduce_scatter_out = general_gemm(
+                weightmat,
+                ln_out_total,
+                quantization_params=output_quantizer,
+                out_dtype=activation_dtype,
+                bias=bias,
+                use_split_accumulator=use_split_accumulator,
+                ub=ub_obj,
+                ub_type=ub_type,
+                extra_output=reduce_scatter_out,
+            )
+        else:
+            gemm_out, *_, reduce_scatter_out = gems_general_gemm(
+                weightmat,
+                ln_out_total,
+                quantization_params=output_quantizer,
+                out_dtype=activation_dtype,
+                bias=bias,
+                use_split_accumulator=use_split_accumulator,
+                ub=ub_obj,
+                ub_type=ub_type,
+                extra_output=reduce_scatter_out,
+            )
         nvtx_range_pop(f"{nvtx_label}.gemm")
         # ------------------------------------------------------
         # Finished forward GEMM...
@@ -525,6 +552,8 @@ class _LayerNormLinear(torch.autograd.Function):
                     FP8GlobalStateManager.IS_FIRST_FP8_MODULE = _first_fp8_module
             ctx.wgrad_store = wgrad_store
             ctx.debug = debug
+            ctx.eps = eps
+            ctx.use_engine_fl = use_engine_fl
 
         # ------------------------------------------------------
         # Cached state for backward pass is ready...
@@ -733,20 +762,37 @@ class _LayerNormLinear(torch.autograd.Function):
             # dgrad GEMM
             # Note: dx = dy * w
             nvtx_range_push(f"{nvtx_label}.dgrad_gemm")
-            gemm_out, *_, reduce_scatter_out = general_gemm(
-                weight,
-                grad_output,
-                layout="NN",
-                grad=True,
-                quantization_params=ctx.grad_input_quantizer,
-                out=gemm_out,
-                out_dtype=ctx.activation_dtype,
-                use_split_accumulator=use_split_accumulator,
-                ub=ub_obj_dgrad,
-                ub_type=ub_type_dgrad,
-                extra_output=reduce_scatter_out,
-                bulk_overlap=ctx.ub_bulk_dgrad,
-            )
+            # TODO(lixianduo): polish
+            if not ctx.use_engine_fl:
+                gemm_out, *_, reduce_scatter_out = general_gemm(
+                    weight,
+                    grad_output,
+                    layout="NN",
+                    grad=True,
+                    quantization_params=ctx.grad_input_quantizer,
+                    out=gemm_out,
+                    out_dtype=ctx.activation_dtype,
+                    use_split_accumulator=use_split_accumulator,
+                    ub=ub_obj_dgrad,
+                    ub_type=ub_type_dgrad,
+                    extra_output=reduce_scatter_out,
+                    bulk_overlap=ctx.ub_bulk_dgrad,
+                )
+            else:
+                gemm_out, *_, reduce_scatter_out = gems_general_gemm(
+                    weight,
+                    grad_output,
+                    layout="NN",
+                    grad=True,
+                    quantization_params=ctx.grad_input_quantizer,
+                    out=gemm_out,
+                    out_dtype=ctx.activation_dtype,
+                    use_split_accumulator=use_split_accumulator,
+                    ub=ub_obj_dgrad,
+                    ub_type=ub_type_dgrad,
+                    extra_output=reduce_scatter_out,
+                    bulk_overlap=ctx.ub_bulk_dgrad,
+                )
             nvtx_range_pop(f"{nvtx_label}.dgrad_gemm")
 
             # Prepare grad input tensor
@@ -895,7 +941,11 @@ class _LayerNormLinear(torch.autograd.Function):
 
                     """
                     nvtx_range_push(f"{nvtx_label}.wgrad_gemm")
-                    dw, db, *_ = general_gemm(x, dy, **wgrad_gemm_kwargs)
+                    # TODO(lixianduo): polish
+                    if not ctx.use_engine_fl:
+                        dw, db, *_ = general_gemm(x, dy, **wgrad_gemm_kwargs)
+                    else:
+                        dw, db, *_ = gems_general_gemm(x, dy, **wgrad_gemm_kwargs)
                     nvtx_range_pop(f"{nvtx_label}.wgrad_gemm")
                     return dw, db
 
@@ -980,14 +1030,25 @@ class _LayerNormLinear(torch.autograd.Function):
                 )
                 dgrad = dgrad.reshape(inputmat.size())
             elif ctx.normalization == "RMSNorm":
-                dgrad, dgamma = tex.rmsnorm_bwd(
-                    dgrad,
-                    inputmat,
-                    rsigma,
-                    ln_weight,
-                    ctx.bwd_ln_sm_margin,
-                    ctx.zero_centered_gamma,
-                )
+                # TODO(lixianduo): polish
+                if not ctx.use_engine_fl:
+                    dgrad, dgamma = tex.rmsnorm_bwd(
+                        dgrad,
+                        inputmat,
+                        rsigma,
+                        ln_weight,
+                        ctx.bwd_ln_sm_margin,
+                        ctx.zero_centered_gamma,
+                    )
+                else:
+                    dgrad, dgamma = rms_norm_backward(
+                        dgrad,
+                        inputmat,
+                        rsigma,
+                        [inputmat.shape[-1]],
+                        ln_weight,
+                        ctx.eps,
+                    )
                 dgrad = dgrad.reshape(inputmat.size())
                 dbeta = None
             nvtx_range_pop(f"{nvtx_label}.norm")
@@ -1162,6 +1223,7 @@ class LayerNormLinear(TransformerEngineBaseModule):
         delay_wgrad_compute: bool = False,
         symmetric_ar_type: Optional[str] = None,
         name: str = None,
+        use_engine_fl: Optional[bool] = False,
     ) -> None:
         super().__init__()
 
@@ -1183,6 +1245,7 @@ class LayerNormLinear(TransformerEngineBaseModule):
 
         self.wgrad_store = WeightGradStore(delay_wgrad_compute, ub_bulk_wgrad)
         self.name = name
+        self.use_engine_fl = use_engine_fl
 
         if tp_group is None:
             self.tp_size = tp_size
@@ -1585,6 +1648,7 @@ class LayerNormLinear(TransformerEngineBaseModule):
                 skip_fp8_weight_update,
                 self.symmetric_ar_type,
                 debug,
+                self.use_engine_fl,
             )
             out = fwd_fn(
                 *autograd_ctx,

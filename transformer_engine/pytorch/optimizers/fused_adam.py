@@ -7,7 +7,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from copy import deepcopy
 from itertools import chain
-from typing import Optional
+from typing import Optional, List, Union
 import warnings
 
 import torch
@@ -125,6 +125,7 @@ class FusedAdam(torch.optim.Optimizer):
         use_decoupled_grad=False,
         store_param_remainders=False,
         set_grad_none: Optional[bool] = None,  # deprecated
+        use_engine_fl: Optional[bool] = False,
     ):
 
         if amsgrad:
@@ -166,6 +167,8 @@ class FusedAdam(torch.optim.Optimizer):
 
         self.capturable = capturable
         self.master_weights = master_weights
+
+        self.use_engine_fl = use_engine_fl
 
         if capturable:
             for idx, group in enumerate(self.param_groups):
@@ -616,29 +619,116 @@ class FusedAdam(torch.optim.Optimizer):
                         "FusedAdam does not support a mix of float16 and bfloat16 model weights."
                     )
 
-            def apply_multi_tensor_adam(adam_func, tensor_lists, inv_scale=None, out_dtype=None):
+            def fl_multi_tensor_adam(
+                dummy_overflow_buf: torch.Tensor,
+                tensor_lists: List[List[torch.Tensor]],
+                lr: float,
+                beta1: float,
+                beta2: float,
+                eps: float,
+                step: int,
+                mode: int,
+                bias_correction: int,
+                weight_decay: float,
+                inv_scale: Optional[float] = 1.0,
+                out_dtype: Optional[torch.dtype] = None,
+            ) -> None:
+
+                num_lists = len(tensor_lists)
+                assert num_lists in [4, 5], f"Expected 4 or 5 tensor lists, got {num_lists}"
+
+                num_tensors = len(tensor_lists[0])
+                assert num_tensors > 0, "No tensors provided"
+
+                for i, lst in enumerate(tensor_lists):
+                    assert len(lst) == num_tensors, f"List {i} has {len(lst)} tensors, expected {num_tensors}"
+
+                bias_correction1 = 1.0
+                bias_correction2 = 1.0
+                if bias_correction == 1:
+                    bias_correction1 = 1 - beta1 ** step
+                    bias_correction2 = 1 - beta2 ** step
+
+                is_adamw = (mode == 1)
+
+                for i in range(num_tensors):
+                    g = tensor_lists[0][i]  # grad
+                    p = tensor_lists[1][i]  # param
+                    m = tensor_lists[2][i]  #
+                    v = tensor_lists[3][i]  #
+                    p_master = tensor_lists[4][i] if num_lists == 5 else None
+
+                    if not g.is_contiguous():
+                        g = g.contiguous()
+
+                    if inv_scale is not None and inv_scale != 1.0:
+                        g = g * inv_scale
+
+                    m.mul_(beta1).add_(g, alpha=1 - beta1)
+                    # v.mul_(beta2).addcmul_(g, g, value=1 - beta2)
+                    v.mul_(beta2).add_(g.mul(g).mul_(1 - beta2))
+
+                    m_corr = m.clone()
+                    v_corr = v.clone()
+                    if bias_correction == 1:
+                        m_corr = m_corr / bias_correction1
+                        v_corr = v_corr / bias_correction2
+
+                    update = m_corr / (v_corr.sqrt() + eps)
+
+                    if is_adamw:
+                        p.data.mul_(1 - lr * weight_decay)
+                    else:
+                        update.add_(p, alpha=weight_decay)
+
+                    p.data.add_(update, alpha=-lr)
+
+                    if p_master is not None:
+                        p_master.data.copy_(p.data)
+                        out_dtype = p_master.dtype if out_dtype is None else out_dtype
+                        p.data = p.data.to(out_dtype)
+
+            def apply_multi_tensor_adam(adam_func, tensor_lists, inv_scale=None, out_dtype=None, use_engine_fl=False):
                 # Closures defined in a loop can have unexpected
                 # behavior when called outside the loop. However, this
                 # function is called in the same loop iteration as it
                 # is defined.
                 # pylint: disable=cell-var-from-loop
-                inv_scale_arg = () if inv_scale is None else (inv_scale,)
-                out_dtype_arg = () if out_dtype is None else (out_dtype,)
-                multi_tensor_applier(
-                    adam_func,
-                    self._dummy_overflow_buf,
-                    tensor_lists,
-                    group["lr"],
-                    beta1,
-                    beta2,
-                    group["eps"],
-                    group["step"],
-                    self.adam_w_mode,
-                    bias_correction,
-                    group["weight_decay"],
-                    *inv_scale_arg,
-                    *out_dtype_arg,
-                )
+
+                # TODO(lixianduo): Polish
+                if not use_engine_fl:
+                    inv_scale_arg = () if inv_scale is None else (inv_scale,)
+                    out_dtype_arg = () if out_dtype is None else (out_dtype,)
+                    multi_tensor_applier(
+                        adam_func,
+                        self._dummy_overflow_buf,
+                        tensor_lists,
+                        group["lr"],
+                        beta1,
+                        beta2,
+                        group["eps"],
+                        group["step"],
+                        self.adam_w_mode,
+                        bias_correction,
+                        group["weight_decay"],
+                        *inv_scale_arg,
+                        *out_dtype_arg,
+                    )
+                else:
+                    fl_multi_tensor_adam(
+                        self._dummy_overflow_buf,
+                        tensor_lists,
+                        group["lr"],
+                        beta1,
+                        beta2,
+                        group["eps"],
+                        group["step"],
+                        self.adam_w_mode,
+                        bias_correction,
+                        group["weight_decay"],
+                        inv_scale,
+                        out_dtype,
+                    )
 
             if self.capturable:
                 # If the optimizer is capturable, then if there's a grad scaler it works
@@ -711,7 +801,7 @@ class FusedAdam(torch.optim.Optimizer):
                             self.multi_tensor_adam_param_remainder, tensor_lists
                         )
                     else:
-                        apply_multi_tensor_adam(self.multi_tensor_adam, tensor_lists)
+                        apply_multi_tensor_adam(self.multi_tensor_adam, tensor_lists, use_engine_fl=self.use_engine_fl)
                 if len(p_fp8_model) > 0:
                     tensor_lists = [
                         g_of_fp8_model,
@@ -731,14 +821,14 @@ class FusedAdam(torch.optim.Optimizer):
                         m_of_f32_model,
                         v_of_f32_model,
                     ]
-                    apply_multi_tensor_adam(self.multi_tensor_adam, tensor_lists)
+                    apply_multi_tensor_adam(self.multi_tensor_adam, tensor_lists, use_engine_fl=self.use_engine_fl)
             else:  # self.master_weights=False and self.capturable=False
                 if len(p_f16_model) > 0:
                     tensor_lists = [g_of_f16_model, p_f16_model, m_of_f16_model, v_of_f16_model]
-                    apply_multi_tensor_adam(self.multi_tensor_adam, tensor_lists)
+                    apply_multi_tensor_adam(self.multi_tensor_adam, tensor_lists, use_engine_fl=self.use_engine_fl)
                 if len(p_f32_model) > 0:
                     tensor_lists = [g_of_f32_model, p_f32_model, m_of_f32_model, v_of_f32_model]
-                    apply_multi_tensor_adam(self.multi_tensor_adam, tensor_lists)
+                    apply_multi_tensor_adam(self.multi_tensor_adam, tensor_lists, use_engine_fl=self.use_engine_fl)
 
             # Scaling
             for name in ["exp_avg", "exp_avg_sq", "master_param"]:

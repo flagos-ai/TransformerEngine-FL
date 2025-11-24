@@ -71,6 +71,7 @@ class RMSNorm(_RMSNormOp):
         params_dtype: Optional[torch.dtype] = None,  # deprecated
         zero_centered_gamma: bool = False,
         hidden_size: Optional[int] = None,  # deprecated
+        use_engine_fl: Optional[bool] = False,
         **kwargs,
     ) -> None:
 
@@ -106,6 +107,7 @@ class RMSNorm(_RMSNormOp):
             normalized_shape,
             eps=eps,
             zero_centered_gamma=zero_centered_gamma,
+            use_engine_fl=use_engine_fl,
             **kwargs,
         )
 
