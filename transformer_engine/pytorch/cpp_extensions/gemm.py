@@ -313,138 +313,60 @@ def gems_general_gemm(
     bulk_overlap: bool = False,
 ) -> Iterable[Optional[torch.Tensor]]:
 
-    assert HAVE_GEMS, "Trion-Based Gemeral Gemm needs FlagGems"
-
+    assert HAVE_GEMS, "Triton-Based General Gemm needs FlagGems"
+    assert not gelu and gelu_in is None, "Triton-Based General Gemm do not support gelu now"
+    assert ub is None and ub_type is None, "Triton-Based General Gemm do not support ub comm in kernels"
+    assert quantization_params is None, "Triton-Based General Gemm do not support quantization now"
+    assert bias is None, "Triton-Based General Gemm do not support bias now"
     assert layout in ("TN", "NN", "NT"), f"GEMM layout {layout} not supported."
+
     transa = layout[0] == "T"
     transb = layout[1] == "T"
 
     alpha = validate_gemm_scale(alpha, True)
     beta = validate_gemm_scale(beta, accumulate)
 
-    if ub_type is not None:
-        assert ub is not None, (
-            f"{'AG+GEMM' if ub_type == tex.CommOverlapType.AG else 'GEMM+RS'} overlap requires"
-            + "a valid `ub` communicator object."
-        )
-
-    if ub is not None:
-        assert ub_type is not None, "Comm+GEMM overlap requires a valid `comm_type` argument."
-        if ub_type == tex.CommOverlapType.RS:
-            if not (bulk_overlap and not ub.is_fp8_ubuf()):
-                assert extra_output is not None, "GEMM+RS overlap requires extra output tensor."
-
     if out is not None:
         if not out.is_contiguous():
             raise ValueError("Output tensor is not contiguous.")
 
-    debug_quantizer = None
-    if isinstance(quantization_params, DebugQuantizer):
-        debug_quantizer = quantization_params
-        quantization_params = quantization_params.parent_quantizer
-        A = A.get_tensor(not transa)
-        B = B.get_tensor(transb)
-
     # Use bfloat16 as default bias_dtype
     bias_dtype = TE_DType[torch.bfloat16 if bias is None else bias.dtype]
 
-    if isinstance(A, Float8BlockwiseQTensorStorage) or isinstance(B, Float8BlockwiseQTensorStorage):
-        # There is not use_split_accumulator == False
-        # implementation for Float8BlockwiseQTensorStorage GEMM
-        use_split_accumulator = True
+    s = -1
+    b = -1
+    orig_A_shape = A.shape
+    orig_B_shape = B.shape
+    shape_a_changed = False
+    shape_b_changed = False
 
-        # Check that data format is supported
-        if (
-            A._data_format != tex.Float8BlockScaleTensorFormat.GEMM_READY
-            or B._data_format != tex.Float8BlockScaleTensorFormat.GEMM_READY
-        ):
-            raise RuntimeError("GEMM with Float8BlockwiseQTensor requires GEMM_READY format")
+    if A.ndim == 3:
+        A = A.view(-1, A.shape[-1])
+        shape_a_changed = True
 
-    # for wgrad computation
-    if not transa and transb:
-        s = -1
-        b = -1
-        orig_A_shape = A.shape
-        orig_B_shape = B.shape
-        # shape_a_changed = False
-        shape_b_changed = False
+    if B.ndim == 3:
+        s, b, _ = B.shape
+        B = B.view(-1, B.shape[-1])
+        shape_b_changed = True
 
-        # A = A.to(torch.float32)
-        # B = B.to(torch.float32)
+    A_comp = A.T if transa else A
+    B_comp = B.T if transb else B
 
-        if A.ndim == 3:
-            A = A.view(-1, A.shape[-1])
-            # shape_a_changed = True
+    out1 = flag_gems.mm(B_comp, A_comp)
 
-        if B.ndim == 3:
-            s, b, _ = B.shape
-            # B = B.view(-1, B.shape[-1])
-            shape_b_changed = True
+    if shape_b_changed:
+        out1 = out1.view(s, b, -1)
+    
+    if out_dtype is not None and out1.dtype != out_dtype:
+        with torch.enable_grad():
+            out1 = out1.to(out_dtype)
 
-        A_comp = A.T if transa else A
-        B_comp = B.T if transb else B
-        out1 = flag_gems.mm(B_comp, A_comp)
-
-        # if transa:
-        #     A = A.transpose(0, 1)
-        # if transb:
-        #     B = B.transpose(0, 1)
-
-        # if shape_a_changed:
-        #     A = A.view(orig_A_shape)
-        if shape_b_changed:
-            out1 = out1.view(s, b, -1)
-            # B = B.view(orig_B_shape)
-
-        # out1 = out.to(torch.float32) + out1
-        # out.copy_(out1)
-
-        # out.copy_(out.to(torch.float32).add_(out1))
-        out.add_(out1)
-
-    # for input_grad and output computation
-    else:
-        s = -1
-        b = -1
-        orig_A_shape = A.shape
-        orig_B_shape = B.shape
-        shape_a_changed = False
-        shape_b_changed = False
-
-        if A.ndim == 3:
-            A = A.view(-1, A.shape[-1])
-            shape_a_changed = True
-
-        if B.ndim == 3:
-            s, b, _ = B.shape
-            B = B.view(-1, B.shape[-1])
-            shape_b_changed = True
-
-        if transa:
-            A = A.transpose(0, 1)
-        if transb:
-            B = B.transpose(0, 1)
-
-        out = flag_gems.mm(B, A)
-
-        if transa:
-            A = A.transpose(0, 1)
-        if transb:
-            B = B.transpose(0, 1)
-
-        if shape_a_changed:
-            A = A.view(orig_A_shape)
-        if shape_b_changed:
-            out = out.view(s, b, -1)
-            B = B.view(orig_B_shape)
-
-    # TODO(lixianduo)
-    # do not supported now
     bias_grad = None
     gelu_input = None
     extra_output = None
+    if out is not None:
+        out.add_(out1)
+        return out, bias_grad, gelu_input, extra_output
+    else:
+        return out1, bias_grad, gelu_input, extra_output
 
-    if debug_quantizer is not None:
-        out = debug_quantizer.process_gemm_output(out)
-
-    return out, bias_grad, gelu_input, extra_output
