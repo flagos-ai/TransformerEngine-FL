@@ -358,8 +358,7 @@ def gems_general_gemm(
         out1 = out1.view(s, b, -1)
     
     if out_dtype is not None and out1.dtype != out_dtype:
-        with torch.enable_grad():
-            out1 = out1.to(out_dtype)
+        out1 = out1.to(out_dtype)
 
     bias_grad = None
     gelu_input = None
