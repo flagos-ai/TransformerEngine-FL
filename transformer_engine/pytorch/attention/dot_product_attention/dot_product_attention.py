@@ -319,7 +319,6 @@ class DotProductAttention(TransformerEngineBaseModule):
         softmax_scale: Optional[float] = None,
         softmax_type: str = "vanilla",
         return_max_logit: Optional[bool] = False,
-        use_engine_fl: Optional[bool] = False,
     ) -> None:
         super().__init__()
 
@@ -347,7 +346,6 @@ class DotProductAttention(TransformerEngineBaseModule):
         self.cp_global_ranks = cp_global_ranks
         self.cp_stream = cp_stream
         self.cp_comm_type = cp_comm_type
-        self.use_engine_fl = use_engine_fl
 
         self.hidden_size_per_attention_head_k = (
             kv_channels if isinstance(kv_channels, int) else kv_channels[0]
@@ -1402,7 +1400,7 @@ class DotProductAttention(TransformerEngineBaseModule):
             )
 
             # TODO(lixianduo): to be polished
-            if self.use_engine_fl:
+            if os.environ.get('USE_TRANSFORMER_ENGINE_FL', False):
                 use_flash_attention = False
                 use_fused_attention = False
                 use_unfused_attention = False
@@ -1653,3 +1651,4 @@ class DotProductAttention(TransformerEngineBaseModule):
                 )
 
             return None
+

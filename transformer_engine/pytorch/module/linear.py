@@ -7,6 +7,7 @@ from typing import Callable, Dict, Optional, Tuple, Union, List
 from functools import reduce
 from operator import mul as multiply_op
 import warnings
+import os
 
 import torch
 
@@ -129,7 +130,6 @@ class _Linear(torch.autograd.Function):
             symmetric_ar_type,
             save_original_input,
             debug,
-            use_engine_fl,
         ) = non_tensor_args
 
         # NVTX label for profiling
@@ -324,7 +324,7 @@ class _Linear(torch.autograd.Function):
         # ------------------------------------------------------
         nvtx_range_push(f"{nvtx_label}.gemm")
         # TODO(lixianduo): Polish
-        if not use_engine_fl:
+        if not os.environ.get('USE_TRANSFORMER_ENGINE_FL', False):
             gemm_out, *_, reduce_scatter_out = general_gemm(
                 weightmat,
                 inputmat_total,
@@ -455,7 +455,6 @@ class _Linear(torch.autograd.Function):
             ctx.save_for_backward(*tensors_to_save)
             ctx.tensor_objects = tensor_objects
 
-            ctx.use_engine_fl = use_engine_fl
             ctx.activation_dtype = activation_dtype
             ctx.fp8 = fp8
             ctx.fp8_recipe = FP8GlobalStateManager.get_fp8_recipe() if fp8 else None
@@ -737,7 +736,7 @@ class _Linear(torch.autograd.Function):
 
                 nvtx_range_push(f"{nvtx_label}.dgrad_gemm")
                 # TODO(lixianduo): polish
-                if not ctx.use_engine_fl:
+                if not os.environ.get('USE_TRANSFORMER_ENGINE_FL', False):
                     gemm_out, *_, reduce_scatter_out = general_gemm(
                         weight_fp8,
                         grad_output,
@@ -915,7 +914,7 @@ class _Linear(torch.autograd.Function):
                     """
                     nvtx_range_push(f"{nvtx_label}.wgrad_gemm")
                     # TODO(lixianduo): polish
-                    if not ctx.use_engine_fl:
+                    if not os.environ.get('USE_TRANSFORMER_ENGINE_FL', False):
                         dw, db, *_ = general_gemm(x, dy, **wgrad_gemm_kwargs)
                     else:
                         dw, db, *_ = gems_general_gemm(x, dy, **wgrad_gemm_kwargs)
@@ -1134,7 +1133,6 @@ class Linear(TransformerEngineBaseModule):
         symmetric_ar_type: Optional[str] = None,
         save_original_input: bool = False,
         name: Optional[str] = None,
-        use_engine_fl: Optional[bool] = False,
     ) -> None:
         super().__init__()
 
@@ -1150,7 +1148,6 @@ class Linear(TransformerEngineBaseModule):
         self.symmetric_ar_type = symmetric_ar_type
         self.save_original_input = save_original_input
         self.name = name
-        self.use_engine_fl = use_engine_fl
 
         self.wgrad_store = WeightGradStore(delay_wgrad_compute, ub_bulk_wgrad)
 
@@ -1504,7 +1501,6 @@ class Linear(TransformerEngineBaseModule):
                 self.symmetric_ar_type,
                 self.save_original_input,
                 debug,
-                self.use_engine_fl,
             )
             out = linear_fn(
                 *autograd_ctx,
@@ -1742,3 +1738,4 @@ class Linear(TransformerEngineBaseModule):
                 self.quantizers["scaling_bwd"][
                     tex.FP8BwdTensors.GRAD_OUTPUT1
                 ].all_gather_usage = True
+

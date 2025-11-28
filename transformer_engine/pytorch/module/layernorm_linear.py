@@ -144,7 +144,6 @@ class _LayerNormLinear(torch.autograd.Function):
             skip_fp8_weight_update,
             symmetric_ar_type,
             debug,
-            use_engine_fl,
         ) = non_tensor_args
 
         # NVTX label for profiling
@@ -224,7 +223,7 @@ class _LayerNormLinear(torch.autograd.Function):
         # Apply normalization
         nvtx_range_push(f"{nvtx_label}.norm")
         # TODO(lixianduo): polish
-        if not use_engine_fl:
+        if not os.environ.get('USE_TRANSFORMER_ENGINE_FL', False):
             ln_out, mu, rsigma = apply_normalization(
                 inputmat,
                 None,  # ln_out
@@ -372,7 +371,7 @@ class _LayerNormLinear(torch.autograd.Function):
         # Note: y = x * w^T
         # ------------------------------------------------------
         nvtx_range_push(f"{nvtx_label}.gemm")
-        if not use_engine_fl:
+        if not os.environ.get('USE_TRANSFORMER_ENGINE_FL', False):
             gemm_out, *_, reduce_scatter_out = general_gemm(
                 weightmat,
                 ln_out_total,
@@ -553,7 +552,6 @@ class _LayerNormLinear(torch.autograd.Function):
             ctx.wgrad_store = wgrad_store
             ctx.debug = debug
             ctx.eps = eps
-            ctx.use_engine_fl = use_engine_fl
 
         # ------------------------------------------------------
         # Cached state for backward pass is ready...
@@ -763,7 +761,7 @@ class _LayerNormLinear(torch.autograd.Function):
             # Note: dx = dy * w
             nvtx_range_push(f"{nvtx_label}.dgrad_gemm")
             # TODO(lixianduo): polish
-            if not ctx.use_engine_fl:
+            if not os.environ.get('USE_TRANSFORMER_ENGINE_FL', False):
                 gemm_out, *_, reduce_scatter_out = general_gemm(
                     weight,
                     grad_output,
@@ -942,7 +940,7 @@ class _LayerNormLinear(torch.autograd.Function):
                     """
                     nvtx_range_push(f"{nvtx_label}.wgrad_gemm")
                     # TODO(lixianduo): polish
-                    if not ctx.use_engine_fl:
+                    if not os.environ.get('USE_TRANSFORMER_ENGINE_FL', False):
                         dw, db, *_ = general_gemm(x, dy, **wgrad_gemm_kwargs)
                     else:
                         dw, db, *_ = gems_general_gemm(x, dy, **wgrad_gemm_kwargs)
@@ -1031,7 +1029,7 @@ class _LayerNormLinear(torch.autograd.Function):
                 dgrad = dgrad.reshape(inputmat.size())
             elif ctx.normalization == "RMSNorm":
                 # TODO(lixianduo): polish
-                if not ctx.use_engine_fl:
+                if not os.environ.get('USE_TRANSFORMER_ENGINE_FL', False):
                     dgrad, dgamma = tex.rmsnorm_bwd(
                         dgrad,
                         inputmat,
@@ -1223,7 +1221,6 @@ class LayerNormLinear(TransformerEngineBaseModule):
         delay_wgrad_compute: bool = False,
         symmetric_ar_type: Optional[str] = None,
         name: str = None,
-        use_engine_fl: Optional[bool] = False,
     ) -> None:
         super().__init__()
 
@@ -1245,7 +1242,6 @@ class LayerNormLinear(TransformerEngineBaseModule):
 
         self.wgrad_store = WeightGradStore(delay_wgrad_compute, ub_bulk_wgrad)
         self.name = name
-        self.use_engine_fl = use_engine_fl
 
         if tp_group is None:
             self.tp_size = tp_size
@@ -1648,7 +1644,6 @@ class LayerNormLinear(TransformerEngineBaseModule):
                 skip_fp8_weight_update,
                 self.symmetric_ar_type,
                 debug,
-                self.use_engine_fl,
             )
             out = fwd_fn(
                 *autograd_ctx,
@@ -1883,3 +1878,4 @@ class LayerNormLinear(TransformerEngineBaseModule):
                 self.quantizers["scaling_fwd"][
                     tex.FP8FwdTensors.GEMM1_INPUT
                 ].all_gather_usage = True
+

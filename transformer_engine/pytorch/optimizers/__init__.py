@@ -4,8 +4,6 @@
 
 """Fused optimizers and multi-tensor kernels."""
 from transformer_engine_torch import (
-    # multi_tensor_scale,
-    # multi_tensor_l2norm,
     multi_tensor_unscale_l2norm,
     multi_tensor_adam,
     multi_tensor_adam_fp8,
@@ -20,3 +18,4 @@ from .multi_tensor_apply import MultiTensorApply, multi_tensor_applier
 # TODO(lixianduo): polish
 from .multi_tensor_apply import native_multi_tensor_l2_norm as multi_tensor_l2norm
 from .multi_tensor_apply import native_multi_tensor_scale as multi_tensor_scale
+

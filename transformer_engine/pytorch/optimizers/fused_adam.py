@@ -9,6 +9,7 @@ from copy import deepcopy
 from itertools import chain
 from typing import Optional, List, Union
 import warnings
+import os
 
 import torch
 import transformer_engine_torch as tex
@@ -125,7 +126,6 @@ class FusedAdam(torch.optim.Optimizer):
         use_decoupled_grad=False,
         store_param_remainders=False,
         set_grad_none: Optional[bool] = None,  # deprecated
-        use_engine_fl: Optional[bool] = False,
     ):
 
         if amsgrad:
@@ -167,8 +167,6 @@ class FusedAdam(torch.optim.Optimizer):
 
         self.capturable = capturable
         self.master_weights = master_weights
-
-        self.use_engine_fl = use_engine_fl
 
         if capturable:
             for idx, group in enumerate(self.param_groups):
@@ -688,7 +686,7 @@ class FusedAdam(torch.optim.Optimizer):
                         out_dtype = p_master.dtype if out_dtype is None else out_dtype
                         p.data = p.data.to(out_dtype)
 
-            def apply_multi_tensor_adam(adam_func, tensor_lists, inv_scale=None, out_dtype=None, use_engine_fl=False):
+            def apply_multi_tensor_adam(adam_func, tensor_lists, inv_scale=None, out_dtype=None):
                 # Closures defined in a loop can have unexpected
                 # behavior when called outside the loop. However, this
                 # function is called in the same loop iteration as it
@@ -696,7 +694,7 @@ class FusedAdam(torch.optim.Optimizer):
                 # pylint: disable=cell-var-from-loop
 
                 # TODO(lixianduo): Polish
-                if not use_engine_fl:
+                if not os.environ.get('USE_TRANSFORMER_ENGINE_FL', False):
                     inv_scale_arg = () if inv_scale is None else (inv_scale,)
                     out_dtype_arg = () if out_dtype is None else (out_dtype,)
                     multi_tensor_applier(
@@ -801,7 +799,7 @@ class FusedAdam(torch.optim.Optimizer):
                             self.multi_tensor_adam_param_remainder, tensor_lists
                         )
                     else:
-                        apply_multi_tensor_adam(self.multi_tensor_adam, tensor_lists, use_engine_fl=self.use_engine_fl)
+                        apply_multi_tensor_adam(self.multi_tensor_adam, tensor_lists)
                 if len(p_fp8_model) > 0:
                     tensor_lists = [
                         g_of_fp8_model,
@@ -821,14 +819,14 @@ class FusedAdam(torch.optim.Optimizer):
                         m_of_f32_model,
                         v_of_f32_model,
                     ]
-                    apply_multi_tensor_adam(self.multi_tensor_adam, tensor_lists, use_engine_fl=self.use_engine_fl)
+                    apply_multi_tensor_adam(self.multi_tensor_adam, tensor_lists)
             else:  # self.master_weights=False and self.capturable=False
                 if len(p_f16_model) > 0:
                     tensor_lists = [g_of_f16_model, p_f16_model, m_of_f16_model, v_of_f16_model]
-                    apply_multi_tensor_adam(self.multi_tensor_adam, tensor_lists, use_engine_fl=self.use_engine_fl)
+                    apply_multi_tensor_adam(self.multi_tensor_adam, tensor_lists)
                 if len(p_f32_model) > 0:
                     tensor_lists = [g_of_f32_model, p_f32_model, m_of_f32_model, v_of_f32_model]
-                    apply_multi_tensor_adam(self.multi_tensor_adam, tensor_lists, use_engine_fl=self.use_engine_fl)
+                    apply_multi_tensor_adam(self.multi_tensor_adam, tensor_lists)
 
             # Scaling
             for name in ["exp_avg", "exp_avg_sq", "master_param"]:
@@ -842,3 +840,4 @@ class FusedAdam(torch.optim.Optimizer):
             del unscaled_lists
 
         return loss
+

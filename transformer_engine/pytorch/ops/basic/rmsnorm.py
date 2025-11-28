@@ -76,12 +76,10 @@ class RMSNorm(BasicOperation):
         dtype: Optional[torch.dtype] = None,
         zero_centered_gamma: bool = False,
         sm_margin: int = 0,
-        use_engine_fl: Optional[bool] = False,
     ) -> None:
         super().__init__()
         self.eps: float = eps
         self.zero_centered_gamma: bool = zero_centered_gamma
-        self.use_engine_fl = use_engine_fl
 
         # Parameter shape
         if not isinstance(normalized_shape, Iterable):
@@ -187,7 +185,7 @@ class RMSNorm(BasicOperation):
 
         # Compute RMSNorm
         sm_margin = self._sm_margins["forward" if ctx.requires_grad else "inference"]
-        if not self.use_engine_fl:
+        if not os.environ.get('USE_TRANSFORMER_ENGINE_FL', False):
             y, _, rstdevs = rmsnorm_fwd(
                 x,
                 w,
@@ -237,7 +235,7 @@ class RMSNorm(BasicOperation):
 
         # TODO(lixianduo): polish
         # Compute RMSNorm backward pass
-        if not self.use_engine_fl:
+        if not os.environ.get('USE_TRANSFORMER_ENGINE_FL', False):
             dx, dw = rmsnorm_bwd(
                 dy,
                 x,
@@ -274,3 +272,4 @@ class RMSNorm(BasicOperation):
         variance = input_.pow(2).mean(-1, keepdim=True)
         normalized = input_ * torch.rsqrt(variance + self.eps)
         return normalized * weight
+
