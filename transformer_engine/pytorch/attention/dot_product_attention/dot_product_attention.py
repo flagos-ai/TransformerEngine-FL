@@ -1552,5 +1552,4 @@ class DotProductAttention(TransformerEngineBaseModule):
                     quantizers=self.quantizers,
                     fp8_output=fp8_output,
                 )
-
             return None
