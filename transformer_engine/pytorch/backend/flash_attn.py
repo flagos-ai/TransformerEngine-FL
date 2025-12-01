@@ -4,33 +4,20 @@
 
 """Attention Backends."""
 from contextlib import nullcontext
-from importlib.metadata import version as get_pkg_version
-from importlib.metadata import PackageNotFoundError
 import os
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import warnings
-import logging
 from packaging.version import Version as PkgVersion
 
 import torch
-import torch.nn.functional as F
-import transformer_engine_torch as tex
 from transformer_engine.pytorch.utils import (
     get_device_compute_capability,
-    split_tensor_along_dim,
 )
 from transformer_engine.pytorch.utils import (
-    attention_mask_func,
     nvtx_range_push,
     nvtx_range_pop,
-    get_nvtx_range_context,
-)
-from transformer_engine.pytorch.tensor.float8_tensor import (
-    Float8Quantizer,
-    Float8CurrentScalingQuantizer,
 )
 from transformer_engine.pytorch.quantized_tensor import (
-    QuantizedTensorStorage,
     prepare_for_saving,
     restore_from_saved,
 )
@@ -40,20 +27,8 @@ from transformer_engine.pytorch.constants import (
     QKVLayouts,
     dist_group_type,
 )
-from transformer_engine.pytorch.cpp_extensions.fused_attn import (
-    fused_attn_fwd,
-    fused_attn_bwd,
-    FusedAttnBackend,
-    META_O,
-    META_QKV,
-)
-from transformer_engine.pytorch.quantization import get_fp8_torch_dtype, FP8GlobalStateManager
 from transformer_engine.pytorch.distributed import get_distributed_world_size
 from transformer_engine.pytorch.jit import no_torch_dynamo
-from transformer_engine.pytorch.attention.dot_product_attention.context_parallel import (
-    attn_forward_func_with_cp,
-)
-from transformer_engine.pytorch.attention.dot_product_attention.softmax import FusedScaleMaskSoftmax
 from transformer_engine.pytorch.attention.inference import InferenceParams
 from transformer_engine.pytorch.cpu_offload import (
     is_cpu_offload_enabled,
@@ -65,20 +40,6 @@ from transformer_engine.pytorch.cpu_offload_v1 import is_current_layer_offloaded
 
 # Import attention utils
 import transformer_engine.pytorch.attention.dot_product_attention.utils as dpa_utils
-from transformer_engine.pytorch.attention.dot_product_attention.utils import (
-    FlashAttentionUtils as fa_utils,
-    combine_and_quantize,
-    combine_and_dequantize,
-    print_quantizers,
-    ConvertTHDtoBSHD,
-    ConvertBSHDtoTHD,
-)
-from transformer_engine.pytorch.attention.dot_product_attention.utils import (
-    AttentionLogging as attn_log,
-)
-from transformer_engine.pytorch import export
-from transformer_engine.pytorch.export import is_in_onnx_export_mode
-from transformer_engine.pytorch.graph import is_graph_capturing
 
 from transformer_engine.pytorch.backend.gems_sdpa import (
     scaled_dot_product_attention_forward,
