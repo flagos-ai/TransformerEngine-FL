@@ -15,7 +15,7 @@ from .fused_adam import FusedAdam
 from .fused_sgd import FusedSGD
 from .multi_tensor_apply import MultiTensorApply, multi_tensor_applier
 
-# TODO(lixianduo): polish
-from .multi_tensor_apply import native_multi_tensor_l2_norm as multi_tensor_l2norm
-from .multi_tensor_apply import native_multi_tensor_scale as multi_tensor_scale
+from transformer_engine.pytorch.backend.multi_tensor_apply import native_multi_tensor_l2_norm as multi_tensor_l2norm
+from transformer_engine.pytorch.backend.multi_tensor_apply import native_multi_tensor_scale as multi_tensor_scale
+
 

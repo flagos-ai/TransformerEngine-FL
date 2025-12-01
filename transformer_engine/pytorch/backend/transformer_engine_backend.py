@@ -84,6 +84,11 @@ def gems_rmsnorm_bwd(
     )
     return dx, dw
 
+### AdamW
+from transformer_engine.pytorch.backend.fused_adam import (
+    fl_multi_tensor_adam,
+)
+from transformer_engine_torch import multi_tensor_adam
 
 class TransformerEngineBackend:
 
@@ -123,7 +128,14 @@ class TransformerEngineBackend:
             logger.info("TE-Native RmsNorm BWD")
             trimmed_args = args[:-1]  # cut eps
             return rmsnorm_bwd(*trimmed_args, **kwargs)
-
+    
+    def multi_tensor_adam(self):
+        if self.use_te_fl():
+            logger.info("TE-FL Fused Adam")
+            return fl_multi_tensor_adam
+        else:
+            logger.info("TE-Native Fused Adam")
+            return multi_tensor_adam
 
 backend = TransformerEngineBackend()
 
