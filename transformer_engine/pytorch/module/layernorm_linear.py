@@ -80,7 +80,6 @@ from ..cpp_extensions import (
     general_gemm,
 )
 
-from .gems_rms_norm import rms_norm_forward, rms_norm_backward
 from transformer_engine.pytorch.backend.transformer_engine_backend import backend
 
 __all__ = ["LayerNormLinear"]
@@ -222,28 +221,18 @@ class _LayerNormLinear(torch.autograd.Function):
 
         # Apply normalization
         nvtx_range_push(f"{nvtx_label}.norm")
-        # TODO(lixianduo): polish
-        if not os.environ.get('USE_TRANSFORMER_ENGINE_FL', False):
-            ln_out, mu, rsigma = apply_normalization(
-                inputmat,
-                None,  # ln_out
-                ln_weight,
-                ln_bias,
-                eps,
-                input_quantizer if with_quantized_norm else None,
-                inputmat.dtype,
-                normalization,
-                fwd_ln_sm_margin,
-                zero_centered_gamma,
-            )
-        else:
-            ln_out, rsigma = rms_norm_forward(
-                inputmat,
-                [inputmat.shape[-1]],
-                ln_weight,
-                eps,
-            )
-            mu = None
+        ln_out, mu, rsigma = backend.apply_normalization(
+            inputmat,
+            None,  # ln_out
+            ln_weight,
+            ln_bias,
+            eps,
+            input_quantizer if with_quantized_norm else None,
+            inputmat.dtype,
+            normalization,
+            fwd_ln_sm_margin,
+            zero_centered_gamma,
+        )
         nvtx_range_pop(f"{nvtx_label}.norm")
 
         # Store unquantized layer norm output if we need to return it
@@ -371,7 +360,7 @@ class _LayerNormLinear(torch.autograd.Function):
         # Note: y = x * w^T
         # ------------------------------------------------------
         nvtx_range_push(f"{nvtx_label}.gemm")
-        gemm_out, *_, reduce_scatter_out = backend.gemm()(
+        gemm_out, *_, reduce_scatter_out = backend.gemm(
             weightmat,
             ln_out_total,
             quantization_params=output_quantizer,
@@ -748,7 +737,7 @@ class _LayerNormLinear(torch.autograd.Function):
             # Note: dx = dy * w
             nvtx_range_push(f"{nvtx_label}.dgrad_gemm")
             # TODO(lixianduo): polish
-            gemm_out, *_, reduce_scatter_out = backend.gemm()(
+            gemm_out, *_, reduce_scatter_out = backend.gemm(
                 weight,
                 grad_output,
                 layout="NN",
@@ -911,7 +900,7 @@ class _LayerNormLinear(torch.autograd.Function):
                     """
                     nvtx_range_push(f"{nvtx_label}.wgrad_gemm")
                     # TODO(lixianduo): polish
-                    dw, db, *_ = backend.gemm()(x, dy, **wgrad_gemm_kwargs)
+                    dw, db, *_ = backend.gemm(x, dy, **wgrad_gemm_kwargs)
                     nvtx_range_pop(f"{nvtx_label}.wgrad_gemm")
                     return dw, db
 
@@ -996,25 +985,15 @@ class _LayerNormLinear(torch.autograd.Function):
                 )
                 dgrad = dgrad.reshape(inputmat.size())
             elif ctx.normalization == "RMSNorm":
-                # TODO(lixianduo): polish
-                if not os.environ.get('USE_TRANSFORMER_ENGINE_FL', False):
-                    dgrad, dgamma = tex.rmsnorm_bwd(
-                        dgrad,
-                        inputmat,
-                        rsigma,
-                        ln_weight,
-                        ctx.bwd_ln_sm_margin,
-                        ctx.zero_centered_gamma,
-                    )
-                else:
-                    dgrad, dgamma = rms_norm_backward(
-                        dgrad,
-                        inputmat,
-                        rsigma,
-                        [inputmat.shape[-1]],
-                        ln_weight,
-                        ctx.eps,
-                    )
+                dgrad, dgamma = backend.rmsnorm_bwd(
+                    dgrad,
+                    inputmat,
+                    rsigma,
+                    ln_weight,
+                    ctx.bwd_ln_sm_margin,
+                    ctx.zero_centered_gamma,
+                    ctx.eps,
+                )
                 dgrad = dgrad.reshape(inputmat.size())
                 dbeta = None
             nvtx_range_pop(f"{nvtx_label}.norm")

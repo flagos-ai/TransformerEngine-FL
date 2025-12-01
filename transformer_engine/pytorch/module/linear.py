@@ -326,7 +326,7 @@ class _Linear(torch.autograd.Function):
         nvtx_range_push(f"{nvtx_label}.gemm")
         
         # TODO(lixianduo): Polish
-        gemm_out, *_, reduce_scatter_out = backend.gemm()(
+        gemm_out, *_, reduce_scatter_out = backend.gemm(
             weightmat,
             inputmat_total,
             quantization_params=output_quantizer,
@@ -724,7 +724,7 @@ class _Linear(torch.autograd.Function):
                 # Note: dx = dy * w
 
                 nvtx_range_push(f"{nvtx_label}.dgrad_gemm")
-                gemm_out, *_, reduce_scatter_out = backend.gemm()(
+                gemm_out, *_, reduce_scatter_out = backend.gemm(
                     weight_fp8,
                     grad_output,
                     layout="NN",
@@ -885,7 +885,7 @@ class _Linear(torch.autograd.Function):
 
                     """
                     nvtx_range_push(f"{nvtx_label}.wgrad_gemm")
-                    dw, db, *_ = backend.gemm()(x, dy, **wgrad_gemm_kwargs)
+                    dw, db, *_ = backend.gemm(x, dy, **wgrad_gemm_kwargs)
                     nvtx_range_pop(f"{nvtx_label}.wgrad_gemm")
                     return dw, db
 

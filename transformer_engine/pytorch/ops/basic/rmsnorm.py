@@ -26,7 +26,8 @@ from ...utils import (
 from ..op import BasicOperation, OperationContext
 from .._common import maybe_autocast_dtype, maybe_dequantize
 
-from ...module.gems_rms_norm import rms_norm_forward, rms_norm_backward
+from transformer_engine.pytorch.backend.transformer_engine_backend import backend
+
 
 class RMSNorm(BasicOperation):
     r"""Root Mean Square Layer Normalization
@@ -185,24 +186,16 @@ class RMSNorm(BasicOperation):
 
         # Compute RMSNorm
         sm_margin = self._sm_margins["forward" if ctx.requires_grad else "inference"]
-        if not os.environ.get('USE_TRANSFORMER_ENGINE_FL', False):
-            y, _, rstdevs = rmsnorm_fwd(
-                x,
-                w,
-                self.eps,
-                None,
-                next_op_input_quantizer,
-                TE_DType[dtype],
-                sm_margin,
-                self.zero_centered_gamma,
-            )
-        else:
-            y, rstdevs = rms_norm_forward(
-                x,
-                [x.shape[-1]],
-                w,
-                self.eps,
-            )
+        y, _, rstdevs = backend.rmsnorm_fwd(
+            x,
+            w,
+            self.eps,
+            None,
+            next_op_input_quantizer,
+            TE_DType[dtype],
+            sm_margin,
+            self.zero_centered_gamma,
+        )
 
         # Save state for backward pass
         if ctx.requires_grad:
@@ -233,26 +226,15 @@ class RMSNorm(BasicOperation):
         dy = maybe_dequantize(grad_output.contiguous(), dtype).view(x.size())
         w = maybe_dequantize(self.weight, dtype).view((inner_dim,))
 
-        # TODO(lixianduo): polish
-        # Compute RMSNorm backward pass
-        if not os.environ.get('USE_TRANSFORMER_ENGINE_FL', False):
-            dx, dw = rmsnorm_bwd(
-                dy,
-                x,
-                rstdevs,
-                w,
-                self._sm_margins["backward"],
-                self.zero_centered_gamma,
-            )
-        else:
-            dx, dw = rms_norm_backward(
-                dy,
-                x,
-                rstdevs,
-                [x.shape[-1]],
-                w,
-                self.eps,
-            )
+        dx, dw = backend.rmsnorm_bwd(
+            dy,
+            x,
+            rstdevs,
+            w,
+            self._sm_margins["backward"],
+            self.zero_centered_gamma,
+            self.eps,
+        )
 
         # Clear saved tensors if possible
         clear_tensor_data(x)
@@ -272,4 +254,5 @@ class RMSNorm(BasicOperation):
         variance = input_.pow(2).mean(-1, keepdim=True)
         normalized = input_ * torch.rsqrt(variance + self.eps)
         return normalized * weight
+
 
