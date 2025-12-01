@@ -175,4 +175,3 @@ class RMSNorm(_RMSNormOp):
         """Shim for backward compatibility"""
         warnings.warn("inf_rmsnorm_sm_margin attr is deprecated", DeprecationWarning, stacklevel=2)
         self._sm_margins["inference"] = val
-

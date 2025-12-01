@@ -1825,5 +1825,3 @@ class LayerNormLinear(TransformerEngineBaseModule):
                 self.quantizers["scaling_fwd"][
                     tex.FP8FwdTensors.GEMM1_INPUT
                 ].all_gather_usage = True
-
-

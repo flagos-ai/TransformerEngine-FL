@@ -7,9 +7,8 @@ from __future__ import annotations
 from collections.abc import Iterable
 from copy import deepcopy
 from itertools import chain
-from typing import Optional, List, Union
+from typing import Optional
 import warnings
-import os
 
 import torch
 import transformer_engine_torch as tex
@@ -754,5 +753,3 @@ class FusedAdam(torch.optim.Optimizer):
             del unscaled_lists
 
         return loss
-
-

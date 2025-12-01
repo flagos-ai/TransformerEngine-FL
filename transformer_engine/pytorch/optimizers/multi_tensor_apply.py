@@ -3,7 +3,6 @@
 # See LICENSE for license information.
 
 """Multi-tensor apply entry."""
-import torch
 from torch.distributed._tensor import DTensor
 
 

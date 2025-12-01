@@ -7,7 +7,6 @@ from typing import Callable, Dict, Optional, Tuple, Union, List
 from functools import reduce
 from operator import mul as multiply_op
 import warnings
-import os
 
 import torch
 
@@ -1706,5 +1705,3 @@ class Linear(TransformerEngineBaseModule):
                 self.quantizers["scaling_bwd"][
                     tex.FP8BwdTensors.GRAD_OUTPUT1
                 ].all_gather_usage = True
-
-

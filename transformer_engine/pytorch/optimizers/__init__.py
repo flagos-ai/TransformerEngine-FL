@@ -17,5 +17,3 @@ from .multi_tensor_apply import MultiTensorApply, multi_tensor_applier
 
 from transformer_engine.pytorch.backend.multi_tensor_apply import native_multi_tensor_l2_norm as multi_tensor_l2norm
 from transformer_engine.pytorch.backend.multi_tensor_apply import native_multi_tensor_scale as multi_tensor_scale
-
-

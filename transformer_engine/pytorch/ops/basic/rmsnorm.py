@@ -254,5 +254,3 @@ class RMSNorm(BasicOperation):
         variance = input_.pow(2).mean(-1, keepdim=True)
         normalized = input_ * torch.rsqrt(variance + self.eps)
         return normalized * weight
-
-
