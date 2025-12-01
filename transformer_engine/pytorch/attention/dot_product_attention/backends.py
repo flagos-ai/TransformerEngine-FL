@@ -80,7 +80,6 @@ from transformer_engine.pytorch import export
 from transformer_engine.pytorch.export import is_in_onnx_export_mode
 from transformer_engine.pytorch.graph import is_graph_capturing
 
-
 # Global vars for flash attn v2 and v3 imports
 flash_attn_cuda_bwd = None
 flash_attn_func = None
