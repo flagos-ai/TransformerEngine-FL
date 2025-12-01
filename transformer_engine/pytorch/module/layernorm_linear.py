@@ -78,10 +78,10 @@ from ..export import is_in_onnx_export_mode, assert_warmed_up
 
 from ..cpp_extensions import (
     general_gemm,
-    gems_general_gemm,
 )
 
 from .gems_rms_norm import rms_norm_forward, rms_norm_backward
+from transformer_engine.pytorch.backend.transformer_engine_backend import backend
 
 __all__ = ["LayerNormLinear"]
 
@@ -371,7 +371,6 @@ class _LayerNormLinear(torch.autograd.Function):
         # Note: y = x * w^T
         # ------------------------------------------------------
         nvtx_range_push(f"{nvtx_label}.gemm")
-        from transformer_engine.pytorch.backend.transformer_engine_backend import backend
         gemm_out, *_, reduce_scatter_out = backend.gemm()(
             weightmat,
             ln_out_total,
@@ -749,7 +748,6 @@ class _LayerNormLinear(torch.autograd.Function):
             # Note: dx = dy * w
             nvtx_range_push(f"{nvtx_label}.dgrad_gemm")
             # TODO(lixianduo): polish
-            from transformer_engine.pytorch.backend.transformer_engine_backend import backend
             gemm_out, *_, reduce_scatter_out = backend.gemm()(
                 weight,
                 grad_output,
@@ -913,7 +911,6 @@ class _LayerNormLinear(torch.autograd.Function):
                     """
                     nvtx_range_push(f"{nvtx_label}.wgrad_gemm")
                     # TODO(lixianduo): polish
-                    from transformer_engine.pytorch.backend.transformer_engine_backend import backend
                     dw, db, *_ = backend.gemm()(x, dy, **wgrad_gemm_kwargs)
                     nvtx_range_pop(f"{nvtx_label}.wgrad_gemm")
                     return dw, db

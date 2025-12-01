@@ -77,6 +77,8 @@ from ..cpu_offload import (
 )
 from ...debug.pytorch.debug_state import TEDebugState
 
+from transformer_engine.pytorch.backend.transformer_engine_backend import backend
+
 __all__ = ["Linear"]
 
 
@@ -324,7 +326,6 @@ class _Linear(torch.autograd.Function):
         nvtx_range_push(f"{nvtx_label}.gemm")
         
         # TODO(lixianduo): Polish
-        from transformer_engine.pytorch.backend.transformer_engine_backend import backend
         gemm_out, *_, reduce_scatter_out = backend.gemm()(
             weightmat,
             inputmat_total,
@@ -723,8 +724,6 @@ class _Linear(torch.autograd.Function):
                 # Note: dx = dy * w
 
                 nvtx_range_push(f"{nvtx_label}.dgrad_gemm")
-                # TODO(lixianduo): polish
-                from transformer_engine.pytorch.backend.transformer_engine_backend import backend
                 gemm_out, *_, reduce_scatter_out = backend.gemm()(
                     weight_fp8,
                     grad_output,
@@ -886,8 +885,6 @@ class _Linear(torch.autograd.Function):
 
                     """
                     nvtx_range_push(f"{nvtx_label}.wgrad_gemm")
-                    # TODO(lixianduo): polish
-                    from transformer_engine.pytorch.backend.transformer_engine_backend import backend
                     dw, db, *_ = backend.gemm()(x, dy, **wgrad_gemm_kwargs)
                     nvtx_range_pop(f"{nvtx_label}.wgrad_gemm")
                     return dw, db
