@@ -91,12 +91,7 @@ from transformer_engine.pytorch.backend.fused_adam import (
 from transformer_engine_torch import multi_tensor_adam
 
 ### Flash-Attn
-from transformer_engine.pytorch.attention.dot_product_attention.backends import (
-    FlashAttention,
-)
-from transformer_engine.pytorch.backend.flash_attn import (
-    GemsFlashAttention,
-)
+
 class TransformerEngineBackend:
 
     def use_te_fl(self) -> bool:
@@ -144,13 +139,19 @@ class TransformerEngineBackend:
             logger.info("TE-Native Fused Adam")
             return multi_tensor_adam
     
-    def flash_attention(self):
+    def flash_attention(self, *args, **kwargs):
         if self.use_te_fl():
             logger.info("TE-FL Gems Flash Attention")
-            return GemsFlashAttention
+            from transformer_engine.pytorch.backend.flash_attn import (
+                GemsFlashAttention,
+            )
+            return GemsFlashAttention(*args, **kwargs)
         else:
             logger.info("TE-Native Flash Attention")
-            return FlashAttention
+            from transformer_engine.pytorch.attention.dot_product_attention.backends import (
+                FlashAttention,
+            )
+            return FlashAttention(*args, **kwargs)
 
 backend = TransformerEngineBackend()
 
