@@ -323,8 +323,6 @@ class _Linear(torch.autograd.Function):
         # Note: y = x * w^T
         # ------------------------------------------------------
         nvtx_range_push(f"{nvtx_label}.gemm")
-        
-        # TODO(lixianduo): Polish
         gemm_out, *_, reduce_scatter_out = backend.gemm(
             weightmat,
             inputmat_total,

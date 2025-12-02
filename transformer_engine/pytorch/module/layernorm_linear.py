@@ -736,7 +736,6 @@ class _LayerNormLinear(torch.autograd.Function):
             # dgrad GEMM
             # Note: dx = dy * w
             nvtx_range_push(f"{nvtx_label}.dgrad_gemm")
-            # TODO(lixianduo): polish
             gemm_out, *_, reduce_scatter_out = backend.gemm(
                 weight,
                 grad_output,
@@ -899,7 +898,6 @@ class _LayerNormLinear(torch.autograd.Function):
 
                     """
                     nvtx_range_push(f"{nvtx_label}.wgrad_gemm")
-                    # TODO(lixianduo): polish
                     dw, db, *_ = backend.gemm(x, dy, **wgrad_gemm_kwargs)
                     nvtx_range_pop(f"{nvtx_label}.wgrad_gemm")
                     return dw, db
