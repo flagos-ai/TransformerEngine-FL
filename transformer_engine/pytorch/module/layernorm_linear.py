@@ -80,7 +80,7 @@ from ..cpp_extensions import (
     general_gemm,
 )
 
-from transformer_engine.pytorch.backend.transformer_engine_backend import backend
+from transformer_engine.extensions.transformer_engine_backend import backend
 
 __all__ = ["LayerNormLinear"]
 

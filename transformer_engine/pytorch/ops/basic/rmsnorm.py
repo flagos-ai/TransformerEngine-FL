@@ -26,7 +26,7 @@ from ...utils import (
 from ..op import BasicOperation, OperationContext
 from .._common import maybe_autocast_dtype, maybe_dequantize
 
-from transformer_engine.pytorch.backend.transformer_engine_backend import backend
+from transformer_engine.extensions.transformer_engine_backend import backend
 
 
 class RMSNorm(BasicOperation):

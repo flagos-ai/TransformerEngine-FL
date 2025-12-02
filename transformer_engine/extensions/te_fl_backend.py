@@ -13,16 +13,16 @@ logger = get_logger()
 
 
 ### GEMM
-te_fl_general_gemm = safety_import('transformer_engine.pytorch.backend.modules.gemm', 'te_fl_general_gemm')
+te_fl_general_gemm = safety_import('transformer_engine.extensions.modules.gemm', 'te_fl_general_gemm')
 ### RMSNORM
-gems_rmsnorm_fwd = safety_import('transformer_engine.pytorch.backend.modules.gems_rms_norm', 'rms_norm_forward')
-gems_rmsnorm_bwd = safety_import('transformer_engine.pytorch.backend.modules.gems_rms_norm', 'rms_norm_backward')
+gems_rmsnorm_fwd = safety_import('transformer_engine.extensions.modules.gems_rms_norm', 'rms_norm_forward')
+gems_rmsnorm_bwd = safety_import('transformer_engine.extensions.modules.gems_rms_norm', 'rms_norm_backward')
 ### AdamW
-te_fl_multi_tensor_adam = safety_import('transformer_engine.pytorch.backend.modules.fused_adam', 'te_fl_multi_tensor_adam')
+te_fl_multi_tensor_adam = safety_import('transformer_engine.extensions.modules.fused_adam', 'te_fl_multi_tensor_adam')
 ### Flash-Attn
 # Use lazy=True to avoid circular imports (flash_attn -> dot_product_attention -> transformer_engine_backend)
 TEFLFlashAttention = safety_import(
-    'transformer_engine.pytorch.backend.modules.flash_attn',
+    'transformer_engine.extensions.modules.flash_attn',
     'TEFLFlashAttention',
     lazy=True
 )
