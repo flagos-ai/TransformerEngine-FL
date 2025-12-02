@@ -6,7 +6,7 @@ import os
 import torch
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from .register_backend import get_backend, get_selected_backend, register_backend
+from .register import get_backend, get_selected_backend, register_backend
 from .logger import get_logger
 logger = get_logger()
 
@@ -132,8 +132,31 @@ class BackendDispatch:
             return native_backend.get("flash_attention")(*args, **kwargs)
 
 
-from .native_backend import register_native_backend
-from .te_fl_backend import register_te_fl_backend
-register_native_backend()
-register_te_fl_backend()
-backend = BackendDispatch()
+# Backend initialization state
+_backends_initialized = False
+_backend_instance = None
+
+def _initialize_backends():
+    """
+    Initialize all backend registrations.
+    This function is called automatically on first use.
+    """
+    global _backends_initialized, _backend_instance
+    
+    if _backends_initialized:
+        return
+    
+    from .native_backend import register_native_backend
+    from .te_fl_backend import register_te_fl_backend
+    
+    register_native_backend()
+    register_te_fl_backend()
+    
+    _backend_instance = BackendDispatch()
+    _backends_initialized = True
+    
+    logger.info("Backend system initialized successfully")
+
+# Create backend instance on module import
+_initialize_backends()
+backend = _backend_instance

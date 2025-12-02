@@ -7,7 +7,7 @@ import torch
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from .import_utils import safety_import
-from .register_backend import register_backend
+from .register import register_backend
 from .logger import get_logger
 logger = get_logger()
 
