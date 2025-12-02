@@ -1,3 +1,7 @@
+# Copyright (c) 2025, BAAI. All rights reserved.
+#
+# See LICENSE for license information.
+
 import logging
 import math
 
@@ -206,4 +210,3 @@ def rms_norm_backward(dy, x, inv_rms, normalized_shape, weight, eps):
         dw = torch.sum(partial_buffer, dim=0, dtype=x.dtype).reshape(-1)
 
     return dx, dw
-

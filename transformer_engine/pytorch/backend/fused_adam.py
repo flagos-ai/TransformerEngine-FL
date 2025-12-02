@@ -1,3 +1,7 @@
+# Copyright (c) 2025, BAAI. All rights reserved.
+#
+# See LICENSE for license information.
+
 from itertools import chain
 from typing import Optional, List, Union
 import warnings
@@ -5,7 +9,7 @@ import os
 
 import torch
 
-def fl_multi_tensor_adam(
+def te_fl_multi_tensor_adam(
     chunk_size: int,
     noop_flag: torch.Tensor,
     tensor_lists: List[List[torch.Tensor]],
@@ -74,4 +78,3 @@ def fl_multi_tensor_adam(
             p_master.data.copy_(p.data)
             out_dtype = p_master.dtype if out_dtype is None else out_dtype
             p.data = p.data.to(out_dtype)
-

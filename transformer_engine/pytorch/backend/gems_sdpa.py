@@ -1,3 +1,7 @@
+# Copyright (c) 2025, BAAI. All rights reserved.
+#
+# See LICENSE for license information.
+
 import logging
 import math
 from functools import partial
@@ -1387,5 +1391,3 @@ def scaled_dot_product_attention_backward(
         dv = dv.sum(dim=2)
 
     return dq, dk, dv
-
-

@@ -1,8 +1,6 @@
-# Copyright (c) 2022-2025, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# Copyright (c) 2025, BAAI. All rights reserved.
 #
 # See LICENSE for license information.
-
-"""Python interface for GEMM extensions"""
 
 from typing import Iterable, Optional, Tuple, Union, List
 import os
@@ -20,7 +18,7 @@ except:
     HAVE_GEMS = False
 
 __all__ = [
-    "gems_general_gemm",
+    "te_fl_general_gemm",
 ]
 
 
@@ -33,7 +31,7 @@ def validate_gemm_scale(scale: Optional[float], required: bool) -> float:
     return 0.0
 
 
-def gems_general_gemm(
+def te_fl_general_gemm(
     A: torch.Tensor,
     B: torch.Tensor,
     out_dtype: Optional[torch.dtype] = None,
@@ -109,6 +107,3 @@ def gems_general_gemm(
         return out, bias_grad, gelu_input, extra_output
     else:
         return out1, bias_grad, gelu_input, extra_output
-
-
-
