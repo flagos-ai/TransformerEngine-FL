@@ -10,11 +10,15 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
-from flag_gems.config import use_c_extension
-from flag_gems.ops.flash_api import mha_fwd, mha_varlan_fwd
-from flag_gems.ops.flash_kernel import keep
-from flag_gems.runtime import torch_device_fn
+try:
+    from flag_gems import runtime
+    from flag_gems.config import use_c_extension
+    from flag_gems.ops.flash_api import mha_fwd, mha_varlan_fwd
+    from flag_gems.ops.flash_kernel import keep
+    from flag_gems.runtime import torch_device_fn
+    HAVE_GEMS = True
+except:
+    HAVE_GEMS = False
 
 logger = logging.getLogger(__name__)
 
@@ -342,6 +346,8 @@ def scaled_dot_product_attention_forward(
     enable_gqa=False,
 ):
     logger.debug("GEMS SCALED DOT PRODUCT ATTENTION")
+    assert HAVE_GEMS, "GEMS is not installed"
+
     # shape constraints
     HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]
     # when v is in float8_e5m2 it is transposed.
