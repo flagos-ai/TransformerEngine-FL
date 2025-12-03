@@ -16,8 +16,8 @@ logger = get_logger()
 fl_general_gemm = safety_import('transformer_engine.plugins.cpp_extensions.gemm', 'fl_general_gemm')
 ### RMSNORM
 fl_apply_normalization = safety_import('transformer_engine.plugins.module._common', 'fl_apply_normalization')
-fl_rmsnorm_bwd = safety_import('transformer_engine.plugins.cpp_extensions', 'rmsnorm_bwd')
-fl_rmsnorm_fwd = safety_import('transformer_engine.plugins.cpp_extensions', 'rmsnorm_fwd')
+fl_rmsnorm_bwd = safety_import('transformer_engine.plugins.cpp_extensions', 'fl_rmsnorm_bwd')
+fl_rmsnorm_fwd = safety_import('transformer_engine.plugins.cpp_extensions', 'fl_rmsnorm_fwd')
 ### AdamW
 fl_multi_tensor_adam = safety_import('transformer_engine.plugins.cpp_extensions', 'fl_multi_tensor_adam')
 ### Flash-Attn
