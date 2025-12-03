@@ -56,7 +56,7 @@ def safety_import(module_path: str, name: Optional[str] = None, lazy: bool = Fal
     
     Args:
         module_path: Full module path
-        name: Optional attribute name to import from the module (e.g., 'TEFLAttention')
+        name: Optional attribute name to import from the module (e.g., 'FLAttention')
               If None, returns the module itself.
         lazy: If True, returns a lazy proxy that defers import until first use.
               If False (default), imports immediately but caches the result.

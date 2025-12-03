@@ -15,7 +15,7 @@ import transformer_engine_torch as tex
 from transformer_engine.pytorch.tensor.float8_tensor import Float8Tensor, Float8Quantizer
 from .multi_tensor_apply import multi_tensor_applier
 
-from transformer_engine.plugins.transformer_engine_backend import backend
+from transformer_engine.plugins.backend import backend
 
 def get_fp8_meta(fp8_tensor):
     """FP8 metadata getter."""

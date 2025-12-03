@@ -18,7 +18,7 @@ except:
     HAVE_GEMS = False
 
 __all__ = [
-    "te_fl_general_gemm",
+    "fl_general_gemm",
 ]
 
 
@@ -31,7 +31,7 @@ def validate_gemm_scale(scale: Optional[float], required: bool) -> float:
     return 0.0
 
 
-def te_fl_general_gemm(
+def fl_general_gemm(
     A: torch.Tensor,
     B: torch.Tensor,
     out_dtype: Optional[torch.dtype] = None,

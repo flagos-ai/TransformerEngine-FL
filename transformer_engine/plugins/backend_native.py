@@ -21,7 +21,7 @@ native_rmsnorm_fwd = safety_import('transformer_engine_torch', 'rmsnorm_fwd')
 ### AdamW
 native_multi_tensor_adam = safety_import('transformer_engine_torch', 'multi_tensor_adam')
 ### Flash-Attn
-# Use lazy=True to avoid circular imports (flash_attn -> dot_product_attention -> transformer_engine_backend)
+# Use lazy=True to avoid circular imports
 NativeFlashAttention = safety_import(
     'transformer_engine.pytorch.attention.dot_product_attention.backends',
     'FlashAttention',

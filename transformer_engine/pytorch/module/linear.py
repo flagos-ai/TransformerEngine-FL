@@ -76,7 +76,7 @@ from ..cpu_offload import (
 )
 from ...debug.pytorch.debug_state import TEDebugState
 
-from transformer_engine.plugins.transformer_engine_backend import backend
+from transformer_engine.plugins.backend import backend
 
 __all__ = ["Linear"]
 

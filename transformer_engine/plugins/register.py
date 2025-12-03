@@ -127,9 +127,9 @@ def register_backend(backend_name: str, implementations: Dict[str, Any]):
         
         # Register TE-FL backend
         register_backend("te_fl", {
-            "gemm": te_fl_gemm,
-            "rmsnorm_fwd": te_fl_rmsnorm_fwd,
-            "flash_attention": te_fl_flash_attn,
+            "gemm": fl_gemm,
+            "rmsnorm_fwd": fl_rmsnorm_fwd,
+            "flash_attention": fl_flash_attn,
         })
         
         # Register custom backend

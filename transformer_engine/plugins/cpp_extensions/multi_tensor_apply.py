@@ -6,7 +6,7 @@ import torch
 from torch.distributed._tensor import DTensor
 
 
-def te_fl_multi_tensor_l2_norm(chunk_size, noop_flag, tensor_lists, per_tensor, *args):
+def fl_multi_tensor_l2_norm(chunk_size, noop_flag, tensor_lists, per_tensor, *args):
     """
     Computes l2 norm for a list of contiguous tensors
     works as a drop-in replacement for amp_C.multi_tensor_l2norm
@@ -17,8 +17,7 @@ def te_fl_multi_tensor_l2_norm(chunk_size, noop_flag, tensor_lists, per_tensor, 
     return l2_cuda, None
 
 
-# works as a drop-in replacement for amp_C.multi_tensor_scale
-def te_fl_multi_tensor_scale(chunk_size, noop_flag, tensor_lists, scale):
+def fl_multi_tensor_scale(chunk_size, noop_flag, tensor_lists, scale):
     """Works as a drop-in replacement for amp_C.multi_tensor_scale."""
     for src, dst in zip(tensor_lists[0], tensor_lists[1]):
         dst.copy_(src * scale)

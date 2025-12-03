@@ -146,11 +146,11 @@ def _initialize_backends():
     if _backends_initialized:
         return
     
-    from .native_backend import register_native_backend
-    from .te_fl_backend import register_te_fl_backend
+    from .backend_native import register_native_backend
+    from .backend_fl import register_fl_backend
     
     register_native_backend()
-    register_te_fl_backend()
+    register_fl_backend()
     
     _backend_instance = BackendDispatch()
     _backends_initialized = True

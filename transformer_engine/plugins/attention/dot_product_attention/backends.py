@@ -46,7 +46,7 @@ from .gems_sdpa import (
     scaled_dot_product_attention_backward,
 )
 
-class TEFLAttnFunc(torch.autograd.Function):
+class FLAttnFunc(torch.autograd.Function):
     """FusedAttention forward and backward implementation"""
 
     @staticmethod
@@ -73,7 +73,7 @@ class TEFLAttnFunc(torch.autograd.Function):
     ):
         # pylint: disable=missing-function-docstring
         # add NVTX range
-        nvtx_label = "transformer_engine.TEFLAttnFunc.forward"
+        nvtx_label = "transformer_engine.FLAttnFunc.forward"
         nvtx_range_push(f"{nvtx_label}")
 
         if is_cpu_offload_enabled():
@@ -198,7 +198,7 @@ class TEFLAttnFunc(torch.autograd.Function):
         out_permuted, m = aux_ctx_tensors
         rest = [None]
 
-        with torch.cuda.nvtx.range("TEFLAttnFunc.backward"):
+        with torch.cuda.nvtx.range("FLAttnFunc.backward"):
             # get nominal data type of dq, dk, dv
             # FP16/BF16 attention: torch.float16 or torch.bfloat16
             # FP8 attention:       torch.float16 or torch.bfloat16
@@ -248,7 +248,7 @@ class TEFLAttnFunc(torch.autograd.Function):
         )
 
 
-class TEFLFlashAttention(torch.nn.Module):
+class FLFlashAttention(torch.nn.Module):
     """Dot product attention
     """
 
@@ -324,13 +324,13 @@ class TEFLFlashAttention(torch.nn.Module):
         assert all(
             x.dtype in [torch.float16, torch.bfloat16] or isinstance(x, Float8Tensor)
             for x in [query_layer, key_layer, value_layer]
-        ), "TEFLAttention only supports FP16 and BF16 data types, or Float8Tensors."
+        ), "FLAttention only supports FP16 and BF16 data types, or Float8Tensors."
         assert (
             query_layer.is_cuda and key_layer.is_cuda and value_layer.is_cuda
-        ), "TEFLAttention only supports CUDA tensors."
+        ), "FLAttention only supports CUDA tensors."
         assert (
             qkv_layout in QKVLayouts
-        ), f"TEFLAttention does not support qkv_layout = {qkv_layout}!"
+        ), f"FLAttention does not support qkv_layout = {qkv_layout}!"
 
         cp_size = 1
         if isinstance(cp_group, dist_group_type):
@@ -339,7 +339,7 @@ class TEFLFlashAttention(torch.nn.Module):
             for group in cp_group:
                 cp_size *= get_distributed_world_size(group)
         context_parallel = cp_size > 1
-        assert not context_parallel, "TEFLAttention do not support context parallel now"
+        assert not context_parallel, "FLAttention do not support context parallel now"
 
         # get q_format and kv_format for training and inference
         qkv_format, q_format, kv_format = dpa_utils.get_qkv_format(qkv_layout, inference_params)
@@ -406,7 +406,7 @@ class TEFLFlashAttention(torch.nn.Module):
             page_table = inference_params.cache_manager.page_table
 
         with self.attention_dropout_ctx():
-            _attn_impl = TEFLAttnFunc
+            _attn_impl = FLAttnFunc
             output = _attn_impl.apply(
                 self.training,
                 max_seqlen_q,
