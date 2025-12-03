@@ -24,11 +24,13 @@ def fl_apply_normalization(
     zero_centered_gamma: bool,
 ):
     normalization_func = fl_rmsnorm_fwd
-    ln_out, rsigma = normalization_func(
+    return normalization_func(
         inputmat,
-        [inputmat.shape[-1]],
         ln_weight,
         eps,
+        ln_out,
+        output_quantizer,
+        output_dtype,
+        fwd_ln_sm_margin,
+        zero_centered_gamma,
     )
-    mu = None
-    return ln_out, mu, rsigma
