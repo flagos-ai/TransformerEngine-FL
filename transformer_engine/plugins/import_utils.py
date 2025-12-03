@@ -55,7 +55,7 @@ def safety_import(module_path: str, name: Optional[str] = None, lazy: bool = Fal
     they are actually needed, and caches the result for performance.
     
     Args:
-        module_path: Full module path (e.g., 'transformer_engine.extensions.modules.flash_attn')
+        module_path: Full module path
         name: Optional attribute name to import from the module (e.g., 'TEFLAttention')
               If None, returns the module itself.
         lazy: If True, returns a lazy proxy that defers import until first use.
@@ -64,20 +64,6 @@ def safety_import(module_path: str, name: Optional[str] = None, lazy: bool = Fal
     
     Returns:
         The imported module or attribute (or a lazy proxy if lazy=True).
-    
-    Examples:
-        # Immediate import (safe for non-circular dependencies)
-        general_gemm = safety_import('transformer_engine.pytorch.cpp_extensions', 'general_gemm')
-        
-        # Lazy import (for circular dependencies)
-        TEFLAttention = safety_import(
-            'transformer_engine.extensions.modules.flash_attn',
-            'TEFLFlashAttention',
-            lazy=True
-        )
-        
-        # Import a module
-        flash_attn_module = safety_import('transformer_engine.extensions.modules.flash_attn')
     """
     cache_key = f"{module_path}.{name}" if name else module_path
     
