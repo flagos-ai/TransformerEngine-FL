@@ -41,10 +41,16 @@ from transformer_engine.pytorch.cpu_offload_v1 import is_current_layer_offloaded
 # Import attention utils
 import transformer_engine.pytorch.attention.dot_product_attention.utils as dpa_utils
 
-from .gems_sdpa import (
-    scaled_dot_product_attention_forward,
-    scaled_dot_product_attention_backward,
-)
+try:
+    from .gems_sdpa import (
+        scaled_dot_product_attention_forward,
+        scaled_dot_product_attention_backward,
+    )
+    HAVE_GEMS = True
+except:
+    scaled_dot_product_attention_forward = None
+    scaled_dot_product_attention_backward = None
+    HAVE_GEMS = False
 
 class FLAttnFunc(torch.autograd.Function):
     """FusedAttention forward and backward implementation"""
@@ -321,6 +327,7 @@ class FLFlashAttention(torch.nn.Module):
         fp8_output: bool = False,
         num_splits: Optional[int] = 1,
     ) -> torch.Tensor:
+        assert HAVE_GEMS, "GEMS is not installed"
         assert all(
             x.dtype in [torch.float16, torch.bfloat16] or isinstance(x, Float8Tensor)
             for x in [query_layer, key_layer, value_layer]
