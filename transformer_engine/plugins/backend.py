@@ -153,7 +153,8 @@ def _initialize_backends():
         return
     
     from .backend_native import register_native_backend
-    from .backend_fl import register_fl_backend
+    if HAVE_GEMS:
+        from .backend_fl import register_fl_backend
     
     register_native_backend()
     if HAVE_GEMS:
