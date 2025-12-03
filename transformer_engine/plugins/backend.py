@@ -10,6 +10,12 @@ from .register import get_backend, get_selected_backend, register_backend
 from .logger import get_logger
 logger = get_logger()
 
+try:
+    import flag_gems
+    HAVE_GEMS = True
+except:
+    HAVE_GEMS = False
+
 class BackendDispatch:
     """
     Transformer Engine Backend that routes operations to appropriate implementations.
@@ -150,7 +156,8 @@ def _initialize_backends():
     from .backend_fl import register_fl_backend
     
     register_native_backend()
-    register_fl_backend()
+    if HAVE_GEMS:
+        register_fl_backend()
     
     _backend_instance = BackendDispatch()
     _backends_initialized = True

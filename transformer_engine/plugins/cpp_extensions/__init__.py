@@ -3,7 +3,13 @@
 # See LICENSE for license information.
 
 """Python interface for c++ extensions"""
-from .gemm import *
-from .rmsnorm import *
+try:
+    import flag_gems
+    from .gemm import *
+    from .rmsnorm import *
+    HAVE_GEMS = True
+except:
+    HAVE_GEMS = False
+
 from .fused_adam import *
 from .multi_tensor_apply import *
