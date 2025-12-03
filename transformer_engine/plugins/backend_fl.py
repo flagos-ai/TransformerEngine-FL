@@ -13,7 +13,7 @@ logger = get_logger()
 
 
 ### GEMM
-fl_general_gemm = safety_import('transformer_engine.plugins.cpp_extensions.gemm', 'fl_general_gemm')
+fl_general_gemm = safety_import('transformer_engine.plugins.cpp_extensions', 'fl_general_gemm')
 ### RMSNORM
 fl_apply_normalization = safety_import('transformer_engine.plugins.module._common', 'fl_apply_normalization')
 fl_rmsnorm_bwd = safety_import('transformer_engine.plugins.cpp_extensions', 'fl_rmsnorm_bwd')
