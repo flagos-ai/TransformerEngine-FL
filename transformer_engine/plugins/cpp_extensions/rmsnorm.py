@@ -6,17 +6,17 @@ import os
 import torch
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from ..import_utils import safety_import
+from ..import_utils import safety_import, have_gems
 
 ### RMSNORM
-try:
+HAVE_GEMS = have_gems()
+
+if HAVE_GEMS:
     gems_rmsnorm_fwd = safety_import('transformer_engine.plugins.cpp_extensions.gems_rms_norm', 'rms_norm_forward')
     gems_rmsnorm_bwd = safety_import('transformer_engine.plugins.cpp_extensions.gems_rms_norm', 'rms_norm_backward')
-    HAVE_GEMS = True
-except:
+else:
     gems_rmsnorm_fwd = None
     gems_rmsnorm_bwd = None
-    HAVE_GEMS = False
 
 def fl_rmsnorm_fwd(
     input,

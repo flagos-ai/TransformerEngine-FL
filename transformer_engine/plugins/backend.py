@@ -10,11 +10,9 @@ from .register import get_backend, get_selected_backend, register_backend
 from .logger import get_logger
 logger = get_logger()
 
-try:
-    import flag_gems
-    HAVE_GEMS = True
-except:
-    HAVE_GEMS = False
+from .import_utils import have_gems
+
+HAVE_GEMS = have_gems()
 
 class BackendDispatch:
     """

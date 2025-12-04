@@ -41,16 +41,18 @@ from transformer_engine.pytorch.cpu_offload_v1 import is_current_layer_offloaded
 # Import attention utils
 import transformer_engine.pytorch.attention.dot_product_attention.utils as dpa_utils
 
-try:
+from ...import_utils import have_gems
+
+HAVE_GEMS = have_gems()
+
+if HAVE_GEMS:
     from .gems_sdpa import (
         scaled_dot_product_attention_forward,
         scaled_dot_product_attention_backward,
     )
-    HAVE_GEMS = True
-except:
+else:
     scaled_dot_product_attention_forward = None
     scaled_dot_product_attention_backward = None
-    HAVE_GEMS = False
 
 class FLAttnFunc(torch.autograd.Function):
     """FusedAttention forward and backward implementation"""

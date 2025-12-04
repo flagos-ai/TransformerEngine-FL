@@ -11,11 +11,9 @@ from transformer_engine.pytorch.constants import TE_DType
 
 from transformer_engine.pytorch.quantized_tensor import Quantizer
 
-try:
-    import flag_gems
-    HAVE_GEMS = True
-except:
-    HAVE_GEMS = False
+from ..import_utils import have_gems
+
+HAVE_GEMS = have_gems()
 
 __all__ = [
     "fl_general_gemm",

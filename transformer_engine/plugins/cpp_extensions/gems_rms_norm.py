@@ -9,13 +9,18 @@ import torch
 import triton
 import triton.language as tl
 
-try:
+from ..import_utils import have_gems
+
+HAVE_GEMS = have_gems()
+
+if HAVE_GEMS:
     from flag_gems.runtime import torch_device_fn
     from flag_gems.utils import libentry
     from flag_gems.utils import triton_lang_extension as tle
-    HAVE_GEMS = True
-except:
-    HAVE_GEMS = False
+else:
+    torch_device_fn = None
+    libentry = None
+    tle = None
 
 
 @libentry()
