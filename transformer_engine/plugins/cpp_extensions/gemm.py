@@ -14,6 +14,8 @@ from transformer_engine.pytorch.quantized_tensor import Quantizer
 from ..import_utils import have_flag_gems
 
 HAVE_FLAG_GEMS = have_flag_gems()
+if HAVE_FLAG_GEMS:
+    import flag_gems
 
 __all__ = [
     "fl_general_gemm",
