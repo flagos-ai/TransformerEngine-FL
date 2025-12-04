@@ -46,7 +46,7 @@ from ...import_utils import have_flag_gems
 HAVE_FLAG_GEMS = have_flag_gems()
 
 if HAVE_FLAG_GEMS:
-    from .gems_sdpa import (
+    from .sdpa_fl import (
         scaled_dot_product_attention_forward,
         scaled_dot_product_attention_backward,
     )
