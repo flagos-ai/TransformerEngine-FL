@@ -13,28 +13,28 @@ logger = get_logger()
 
 
 ### GEMM
-fl_general_gemm = safety_import('transformer_engine.plugins.cpp_extensions', 'fl_general_gemm')
+general_gemm_fl = safety_import('transformer_engine.plugins.cpp_extensions', 'general_gemm_fl')
 ### RMSNORM
-fl_apply_normalization = safety_import('transformer_engine.plugins.module._common', 'fl_apply_normalization')
-fl_rmsnorm_bwd = safety_import('transformer_engine.plugins.cpp_extensions', 'fl_rmsnorm_bwd')
-fl_rmsnorm_fwd = safety_import('transformer_engine.plugins.cpp_extensions', 'fl_rmsnorm_fwd')
+apply_normalization_fl = safety_import('transformer_engine.plugins.module._common', 'apply_normalization_fl')
+rmsnorm_bwd_fl = safety_import('transformer_engine.plugins.cpp_extensions', 'rmsnorm_bwd_fl')
+rmsnorm_fwd_fl = safety_import('transformer_engine.plugins.cpp_extensions', 'rmsnorm_fwd_fl')
 ### AdamW
-fl_multi_tensor_adam = safety_import('transformer_engine.plugins.cpp_extensions', 'fl_multi_tensor_adam')
+multi_tensor_adam_fl = safety_import('transformer_engine.plugins.cpp_extensions', 'multi_tensor_adam_fl')
 ### Flash-Attn
 # Use lazy=True to avoid circular imports
-FLFlashAttention = safety_import(
+FlashAttentionFL = safety_import(
     'transformer_engine.plugins.attention.dot_product_attention.backends',
-    'FLFlashAttention',
+    'FlashAttentionFL',
     lazy=True
 )
 
-def register_fl_backend():
+def register_backend_fl():
     # Register TE-FL backend
     register_backend("te_fl", {
-        "gemm": fl_general_gemm,
-        "apply_normalization": fl_apply_normalization,
-        "rmsnorm_fwd": fl_rmsnorm_fwd,
-        "rmsnorm_bwd": fl_rmsnorm_bwd,
-        "adam": fl_multi_tensor_adam,
-        "flash_attention": FLFlashAttention,
+        "gemm": general_gemm_fl,
+        "apply_normalization": apply_normalization_fl,
+        "rmsnorm_fwd": rmsnorm_fwd_fl,
+        "rmsnorm_bwd": rmsnorm_bwd_fl,
+        "adam": multi_tensor_adam_fl,
+        "flash_attention": FlashAttentionFL,
     })

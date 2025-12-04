@@ -54,7 +54,7 @@ else:
     scaled_dot_product_attention_forward = None
     scaled_dot_product_attention_backward = None
 
-class FLAttnFunc(torch.autograd.Function):
+class AttnFuncFL(torch.autograd.Function):
     """FusedAttention forward and backward implementation"""
 
     @staticmethod
@@ -81,7 +81,7 @@ class FLAttnFunc(torch.autograd.Function):
     ):
         # pylint: disable=missing-function-docstring
         # add NVTX range
-        nvtx_label = "transformer_engine.FLAttnFunc.forward"
+        nvtx_label = "transformer_engine.AttnFuncFL.forward"
         nvtx_range_push(f"{nvtx_label}")
 
         if is_cpu_offload_enabled():
@@ -206,7 +206,7 @@ class FLAttnFunc(torch.autograd.Function):
         out_permuted, m = aux_ctx_tensors
         rest = [None]
 
-        with torch.cuda.nvtx.range("FLAttnFunc.backward"):
+        with torch.cuda.nvtx.range("AttnFuncFL.backward"):
             # get nominal data type of dq, dk, dv
             # FP16/BF16 attention: torch.float16 or torch.bfloat16
             # FP8 attention:       torch.float16 or torch.bfloat16
@@ -256,7 +256,7 @@ class FLAttnFunc(torch.autograd.Function):
         )
 
 
-class FLFlashAttention(torch.nn.Module):
+class FlashAttentionFL(torch.nn.Module):
     """Dot product attention
     """
 
@@ -415,7 +415,7 @@ class FLFlashAttention(torch.nn.Module):
             page_table = inference_params.cache_manager.page_table
 
         with self.attention_dropout_ctx():
-            _attn_impl = FLAttnFunc
+            _attn_impl = AttnFuncFL
             output = _attn_impl.apply(
                 self.training,
                 max_seqlen_q,

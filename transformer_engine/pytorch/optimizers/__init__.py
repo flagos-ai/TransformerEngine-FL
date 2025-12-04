@@ -15,5 +15,5 @@ from .fused_adam import FusedAdam
 from .fused_sgd import FusedSGD
 from .multi_tensor_apply import MultiTensorApply, multi_tensor_applier
 
-from transformer_engine.plugins.cpp_extensions import fl_multi_tensor_l2_norm as multi_tensor_l2norm
-from transformer_engine.plugins.cpp_extensions import fl_multi_tensor_scale as multi_tensor_scale
+from transformer_engine.plugins.cpp_extensions import multi_tensor_l2_norm_fl as multi_tensor_l2norm
+from transformer_engine.plugins.cpp_extensions import multi_tensor_scale_fl as multi_tensor_scale

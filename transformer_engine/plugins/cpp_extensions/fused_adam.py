@@ -9,7 +9,7 @@ import os
 
 import torch
 
-def fl_multi_tensor_adam(
+def multi_tensor_adam_fl(
     chunk_size: int,
     noop_flag: torch.Tensor,
     tensor_lists: List[List[torch.Tensor]],

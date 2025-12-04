@@ -18,7 +18,7 @@ else:
     gems_rmsnorm_fwd = None
     gems_rmsnorm_bwd = None
 
-def fl_rmsnorm_fwd(
+def rmsnorm_fwd_fl(
     input,
     weight,
     eps,
@@ -38,7 +38,7 @@ def fl_rmsnorm_fwd(
     return y, None, rstdevs
 
 
-def fl_rmsnorm_bwd(
+def rmsnorm_bwd_fl(
     dy,
     x,
     rsigma,

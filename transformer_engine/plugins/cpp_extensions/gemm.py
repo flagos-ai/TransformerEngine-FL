@@ -18,7 +18,7 @@ if HAVE_FLAG_GEMS:
     import flag_gems
 
 __all__ = [
-    "fl_general_gemm",
+    "general_gemm_fl",
 ]
 
 
@@ -31,7 +31,7 @@ def validate_gemm_scale(scale: Optional[float], required: bool) -> float:
     return 0.0
 
 
-def fl_general_gemm(
+def general_gemm_fl(
     A: torch.Tensor,
     B: torch.Tensor,
     out_dtype: Optional[torch.dtype] = None,

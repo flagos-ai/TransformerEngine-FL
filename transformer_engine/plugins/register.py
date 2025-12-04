@@ -120,16 +120,16 @@ def register_backend(backend_name: str, implementations: Dict[str, Any]):
     Usage:
         # Register native backend
         register_backend("native", {
-            "gemm": native_gemm,
-            "rmsnorm_fwd": native_rmsnorm_fwd,
-            "flash_attention": native_flash_attn,
+            "gemm": gemm_native,
+            "rmsnorm_fwd": rmsnorm_fwd_native,
+            "flash_attention": flash_attn_native,
         })
         
         # Register TE-FL backend
         register_backend("te_fl", {
-            "gemm": fl_gemm,
-            "rmsnorm_fwd": fl_rmsnorm_fwd,
-            "flash_attention": fl_flash_attn,
+            "gemm": gemm_fl,
+            "rmsnorm_fwd": rmsnorm_fwd_fl,
+            "flash_attention": flash_attn_fl,
         })
         
         # Register custom backend

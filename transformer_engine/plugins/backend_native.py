@@ -13,31 +13,31 @@ logger = get_logger()
 
 
 ### GEMM
-native_general_gemm = safety_import('transformer_engine.pytorch.cpp_extensions', 'general_gemm')
+general_gemm_native = safety_import('transformer_engine.pytorch.cpp_extensions', 'general_gemm')
 ### RMSNORM
-native_apply_normalization = safety_import('transformer_engine.pytorch.module._common', 'apply_normalization')
-native_rmsnorm_bwd = safety_import('transformer_engine_torch', 'rmsnorm_bwd')
-native_rmsnorm_fwd = safety_import('transformer_engine_torch', 'rmsnorm_fwd')
+apply_normalization_native = safety_import('transformer_engine.pytorch.module._common', 'apply_normalization')
+rmsnorm_bwd_native = safety_import('transformer_engine_torch', 'rmsnorm_bwd')
+rmsnorm_fwd_native = safety_import('transformer_engine_torch', 'rmsnorm_fwd')
 ### AdamW
-native_multi_tensor_adam = safety_import('transformer_engine_torch', 'multi_tensor_adam')
+multi_tensor_adam_native = safety_import('transformer_engine_torch', 'multi_tensor_adam')
 ### Flash-Attn
 # Use lazy=True to avoid circular imports
-NativeFlashAttention = safety_import(
+FlashAttentionNative = safety_import(
     'transformer_engine.pytorch.attention.dot_product_attention.backends',
     'FlashAttention',
     lazy=True
 )
 
 # Register native backend
-def register_native_backend():
+def register_backend_native():
     # Note: native_rmsnorm_bwd doesn't take eps as the last argument, so we wrap it
-    def native_rmsnorm_bwd_wrapper(*args, **kwargs):
-        return native_rmsnorm_bwd(*args[:-1], **kwargs)
+    def rmsnorm_bwd_native_wrapper(*args, **kwargs):
+        return rmsnorm_bwd_native(*args[:-1], **kwargs)
     register_backend("native", {
-        "gemm": native_general_gemm,
-        "apply_normalization": native_apply_normalization,
-        "rmsnorm_fwd": native_rmsnorm_fwd,
-        "rmsnorm_bwd": native_rmsnorm_bwd_wrapper,
-        "adam": native_multi_tensor_adam,
-        "flash_attention": NativeFlashAttention,
+        "gemm": general_gemm_native,
+        "apply_normalization": apply_normalization_native,
+        "rmsnorm_fwd": rmsnorm_fwd_native,
+        "rmsnorm_bwd": rmsnorm_bwd_native_wrapper,
+        "adam": multi_tensor_adam_native,
+        "flash_attention": FlashAttentionNative,
     })
