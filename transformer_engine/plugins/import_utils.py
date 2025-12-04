@@ -12,8 +12,8 @@ logger = get_logger()
 # Safety import cache to avoid circular imports and improve performance
 _import_cache: dict[str, Any] = {}
 
-# Cache for HAVE_GEMS check to avoid repeated imports
-_HAVE_GEMS_CACHE: Optional[bool] = None
+# Cache for HAVE_FLAG_GEMS check to avoid repeated imports
+_HAVE_FLAG_GEMS_CACHE: Optional[bool] = None
 
 
 class _LazyImport:
@@ -89,7 +89,7 @@ def safety_import(module_path: str, name: Optional[str] = None, lazy: bool = Fal
     return _import_cache[cache_key]
 
 
-def have_gems() -> bool:
+def have_flag_gems() -> bool:
     """
     Check if flag_gems is installed and available.
     
@@ -99,15 +99,15 @@ def have_gems() -> bool:
     Returns:
         True if flag_gems is available, False otherwise.
     """
-    global _HAVE_GEMS_CACHE
+    global _HAVE_FLAG_GEMS_CACHE
     
-    if _HAVE_GEMS_CACHE is None:
+    if _HAVE_FLAG_GEMS_CACHE is None:
         try:
             import flag_gems
-            _HAVE_GEMS_CACHE = True
+            _HAVE_FLAG_GEMS_CACHE = True
             logger.info("flag_gems is available. FL backend implementations can be used.")
         except ImportError:
-            _HAVE_GEMS_CACHE = False
+            _HAVE_FLAG_GEMS_CACHE = False
             logger.info("flag_gems is not installed. Only native backend implementations will be used.")
     
-    return _HAVE_GEMS_CACHE
+    return _HAVE_FLAG_GEMS_CACHE

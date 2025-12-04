@@ -10,9 +10,9 @@ from .register import get_backend, get_selected_backend, register_backend
 from .logger import get_logger
 logger = get_logger()
 
-from .import_utils import have_gems
+from .import_utils import have_flag_gems
 
-HAVE_GEMS = have_gems()
+HAVE_FLAG_GEMS = have_flag_gems()
 
 class BackendDispatch:
     """
@@ -152,7 +152,7 @@ def _initialize_backends():
     
     from .backend_native import register_native_backend
     register_native_backend()
-    if HAVE_GEMS:
+    if HAVE_FLAG_GEMS:
         from .backend_fl import register_fl_backend
         register_fl_backend()
     

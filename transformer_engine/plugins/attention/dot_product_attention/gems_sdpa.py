@@ -10,11 +10,11 @@ import torch
 import triton
 import triton.language as tl
 
-from ...import_utils import have_gems
+from ...import_utils import have_flag_gems
 
-HAVE_GEMS = have_gems()
+HAVE_FLAG_GEMS = have_flag_gems()
 
-if HAVE_GEMS:
+if HAVE_FLAG_GEMS:
     from flag_gems import runtime
     from flag_gems.config import use_c_extension
     from flag_gems.ops.flash_api import mha_fwd, mha_varlan_fwd
@@ -347,7 +347,7 @@ def scaled_dot_product_attention_forward(
     enable_gqa=False,
 ):
     logger.debug("GEMS SCALED DOT PRODUCT ATTENTION")
-    assert HAVE_GEMS, "GEMS is not installed"
+    assert HAVE_FLAG_GEMS, "GEMS is not installed"
 
     # shape constraints
     HEAD_DIM_Q, HEAD_DIM_K = query.shape[-1], key.shape[-1]

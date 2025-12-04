@@ -6,12 +6,12 @@ import os
 import torch
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from ..import_utils import safety_import, have_gems
+from ..import_utils import safety_import, have_flag_gems
 
 ### RMSNORM
-HAVE_GEMS = have_gems()
+HAVE_FLAG_GEMS = have_flag_gems()
 
-if HAVE_GEMS:
+if HAVE_FLAG_GEMS:
     gems_rmsnorm_fwd = safety_import('transformer_engine.plugins.cpp_extensions.gems_rms_norm', 'rms_norm_forward')
     gems_rmsnorm_bwd = safety_import('transformer_engine.plugins.cpp_extensions.gems_rms_norm', 'rms_norm_backward')
 else:
@@ -28,7 +28,7 @@ def fl_rmsnorm_fwd(
     sm_margin,
     zero_centered_gamma,
 ):
-    assert HAVE_GEMS, "GEMS is not installed"
+    assert HAVE_FLAG_GEMS, "GEMS is not installed"
     y, rstdevs = gems_rmsnorm_fwd(
         input,
         [input.shape[-1]],
@@ -47,7 +47,7 @@ def fl_rmsnorm_bwd(
     zero_centered_gamma,
     eps,
 ):
-    assert HAVE_GEMS, "GEMS is not installed"
+    assert HAVE_FLAG_GEMS, "GEMS is not installed"
     dx, dw = gems_rmsnorm_bwd(
         dy,
         x,

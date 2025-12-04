@@ -9,11 +9,11 @@ import torch
 import triton
 import triton.language as tl
 
-from ..import_utils import have_gems
+from ..import_utils import have_flag_gems
 
-HAVE_GEMS = have_gems()
+HAVE_FLAG_GEMS = have_flag_gems()
 
-if HAVE_GEMS:
+if HAVE_FLAG_GEMS:
     from flag_gems.runtime import torch_device_fn
     from flag_gems.utils import libentry
     from flag_gems.utils import triton_lang_extension as tle
@@ -158,7 +158,7 @@ def rms_norm_grad_dw_kernel(
 
 
 def rms_norm_forward(x, normalized_shape, weight, eps=1e-5):
-    assert HAVE_GEMS, "GEMS is not installed"
+    assert HAVE_FLAG_GEMS, "GEMS is not installed"
 
     dim = x.ndim - len(normalized_shape)
     M = math.prod(x.shape[:dim])

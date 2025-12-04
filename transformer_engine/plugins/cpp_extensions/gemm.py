@@ -11,9 +11,9 @@ from transformer_engine.pytorch.constants import TE_DType
 
 from transformer_engine.pytorch.quantized_tensor import Quantizer
 
-from ..import_utils import have_gems
+from ..import_utils import have_flag_gems
 
-HAVE_GEMS = have_gems()
+HAVE_FLAG_GEMS = have_flag_gems()
 
 __all__ = [
     "fl_general_gemm",
@@ -50,7 +50,7 @@ def fl_general_gemm(
     bulk_overlap: bool = False,
 ) -> Iterable[Optional[torch.Tensor]]:
 
-    assert HAVE_GEMS, "Triton-Based General Gemm needs FlagGems"
+    assert HAVE_FLAG_GEMS, "Triton-Based General Gemm needs FlagGems"
     assert not gelu and gelu_in is None, "Triton-Based General Gemm do not support gelu now"
     assert ub is None and ub_type is None, "Triton-Based General Gemm do not support ub comm in kernels"
     assert quantization_params is None, "Triton-Based General Gemm do not support quantization now"
