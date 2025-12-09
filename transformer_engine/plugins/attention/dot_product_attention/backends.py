@@ -46,6 +46,7 @@ from ...import_utils import have_flag_gems
 HAVE_FLAG_GEMS = have_flag_gems()
 
 if HAVE_FLAG_GEMS:
+    import flag_gems
     from .sdpa_fl import (
         scaled_dot_product_attention_forward,
         scaled_dot_product_attention_backward,
@@ -105,7 +106,7 @@ class AttnFuncFL(torch.autograd.Function):
         q_permuted = q.permute(1, 2, 0, 3) #[s, b, n_h, h] -> [b, n_h, s, h]
         k_permuted = k.permute(1, 2, 0, 3)
         v_permuted = v.permute(1, 2, 0, 3)
-        (out_permuted, m) = scaled_dot_product_attention_forward(
+        (out_permuted, m) = flag_gems.scaled_dot_product_attention_forward(
             q_permuted,
             k_permuted,
             v_permuted,
