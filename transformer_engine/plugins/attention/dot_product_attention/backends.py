@@ -217,7 +217,7 @@ class AttnFuncFL(torch.autograd.Function):
 
             q_permuted, k_permuted, v_permuted, m = map(lambda x: x.contiguous() if not x.is_contiguous() else x, (q_permuted, k_permuted, v_permuted, m))
             d_out_permuted = d_out.permute(1, 2, 0, 3).contiguous() # [s, b, n_h, h] -> [b, n_h, s, h]
-            dq_permuted, dk_permuted, dv_permuted = scaled_dot_product_attention_backward(
+            dq_permuted, dk_permuted, dv_permuted = flag_gems.scaled_dot_product_attention_backward(
                 d_out_permuted,
                 q_permuted,
                 k_permuted,
