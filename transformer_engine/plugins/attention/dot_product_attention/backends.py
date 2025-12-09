@@ -44,16 +44,9 @@ import transformer_engine.pytorch.attention.dot_product_attention.utils as dpa_u
 from ...import_utils import have_flag_gems
 
 HAVE_FLAG_GEMS = have_flag_gems()
-
 if HAVE_FLAG_GEMS:
     import flag_gems
-    from .sdpa_fl import (
-        scaled_dot_product_attention_forward,
-        scaled_dot_product_attention_backward,
-    )
-else:
-    scaled_dot_product_attention_forward = None
-    scaled_dot_product_attention_backward = None
+
 
 class AttnFuncFL(torch.autograd.Function):
     """FusedAttention forward and backward implementation"""
