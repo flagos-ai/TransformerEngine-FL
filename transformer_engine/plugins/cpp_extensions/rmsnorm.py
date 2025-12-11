@@ -25,7 +25,7 @@ def rmsnorm_fwd_fl(
     zero_centered_gamma,
 ):
     assert HAVE_FLAG_GEMS, "GEMS is not installed"
-    y, rstdevs = flag_gems.rmsnorm_fwd(
+    y, rstdevs = flag_gems.rms_norm_forward(
         input,
         [input.shape[-1]],
         weight,
@@ -44,7 +44,7 @@ def rmsnorm_bwd_fl(
     eps,
 ):
     assert HAVE_FLAG_GEMS, "GEMS is not installed"
-    dx, dw = flag_gems.rmsnorm_bwd(
+    dx, dw = flag_gems.rms_norm_backward(
         dy,
         x,
         rsigma,
