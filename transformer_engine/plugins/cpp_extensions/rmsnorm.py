@@ -12,11 +12,7 @@ from ..import_utils import safety_import, have_flag_gems
 HAVE_FLAG_GEMS = have_flag_gems()
 
 if HAVE_FLAG_GEMS:
-    rmsnorm_fwd = safety_import('transformer_engine.plugins.cpp_extensions.rms_norm_fl', 'rms_norm_forward')
-    rmsnorm_bwd = safety_import('transformer_engine.plugins.cpp_extensions.rms_norm_fl', 'rms_norm_backward')
-else:
-    rmsnorm_fwd = None
-    rmsnorm_bwd = None
+    import flag_gems
 
 def rmsnorm_fwd_fl(
     input,
@@ -29,7 +25,7 @@ def rmsnorm_fwd_fl(
     zero_centered_gamma,
 ):
     assert HAVE_FLAG_GEMS, "GEMS is not installed"
-    y, rstdevs = rmsnorm_fwd(
+    y, rstdevs = flag_gems.rmsnorm_fwd(
         input,
         [input.shape[-1]],
         weight,
@@ -48,7 +44,7 @@ def rmsnorm_bwd_fl(
     eps,
 ):
     assert HAVE_FLAG_GEMS, "GEMS is not installed"
-    dx, dw = rmsnorm_bwd(
+    dx, dw = flag_gems.rmsnorm_bwd(
         dy,
         x,
         rsigma,
