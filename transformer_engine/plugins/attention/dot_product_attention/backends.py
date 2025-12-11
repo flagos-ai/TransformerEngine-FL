@@ -1,4 +1,4 @@
-# Copyright (c) 2022-2025, BAAI. All rights reserved.
+# Copyright (c) 2025, BAAI. All rights reserved.
 #
 # See LICENSE for license information.
 
@@ -32,7 +32,6 @@ from transformer_engine.pytorch.attention.inference import InferenceParams
 
 # Import attention utils
 import transformer_engine.pytorch.attention.dot_product_attention.utils as dpa_utils
-
 
 from ...import_utils import have_flag_gems
 
