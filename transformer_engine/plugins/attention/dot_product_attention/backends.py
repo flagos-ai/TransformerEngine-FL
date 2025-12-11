@@ -1,4 +1,4 @@
-# Copyright (c) 2025, BAAI. All rights reserved.
+# Copyright (c) 2022-2025, BAAI. All rights reserved.
 #
 # See LICENSE for license information.
 
@@ -13,11 +13,9 @@ import torch
 from transformer_engine.pytorch.utils import (
     get_device_compute_capability,
 )
-from transformer_engine.pytorch.utils import (
-    nvtx_range_push,
-    nvtx_range_pop,
-)
-from transformer_engine.pytorch.quantized_tensor import (
+from transformer_engine.pytorch.utils import nvtx_range_push, nvtx_range_pop
+
+from transformer_engine.pytorch.tensor.quantized_tensor import (
     prepare_for_saving,
     restore_from_saved,
 )
@@ -27,19 +25,14 @@ from transformer_engine.pytorch.constants import (
     QKVLayouts,
     dist_group_type,
 )
+
 from transformer_engine.pytorch.distributed import get_distributed_world_size
 from transformer_engine.pytorch.jit import no_torch_dynamo
 from transformer_engine.pytorch.attention.inference import InferenceParams
-from transformer_engine.pytorch.cpu_offload import (
-    is_cpu_offload_enabled,
-    start_offload,
-    mark_activation_offload,
-    NVTE_CPU_OFFLOAD_V1,
-)
-from transformer_engine.pytorch.cpu_offload_v1 import is_current_layer_offloaded
 
 # Import attention utils
 import transformer_engine.pytorch.attention.dot_product_attention.utils as dpa_utils
+
 
 from ...import_utils import have_flag_gems
 

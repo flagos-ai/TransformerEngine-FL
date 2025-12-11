@@ -34,6 +34,7 @@ def validate_gemm_scale(scale: Optional[float], required: bool) -> float:
 def general_gemm_fl(
     A: torch.Tensor,
     B: torch.Tensor,
+    workspace: torch.Tensor,
     out_dtype: Optional[torch.dtype] = None,
     quantization_params: Optional[Quantizer] = None,
     gelu: bool = False,
