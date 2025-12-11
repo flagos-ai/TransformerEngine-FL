@@ -9,7 +9,7 @@ import torch
 import transformer_engine_torch as tex
 from transformer_engine.pytorch.constants import TE_DType
 
-from transformer_engine.pytorch.quantized_tensor import Quantizer
+from transformer_engine.pytorch.tensor.quantized_tensor import Quantizer
 
 from ..import_utils import have_flag_gems
 
