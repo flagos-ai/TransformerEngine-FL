@@ -92,15 +92,15 @@ def safety_import(module_path: str, name: Optional[str] = None, lazy: bool = Fal
 def have_flag_gems() -> bool:
     """
     Check if flag_gems is installed and available.
-    
+
     This function caches the result to avoid repeated import attempts.
     On first check, logs whether flag_gems is available.
-    
+
     Returns:
         True if flag_gems is available, False otherwise.
     """
     global _HAVE_FLAG_GEMS_CACHE
-    
+
     if _HAVE_FLAG_GEMS_CACHE is None:
         try:
             import flag_gems
@@ -109,5 +109,56 @@ def have_flag_gems() -> bool:
         except ImportError:
             _HAVE_FLAG_GEMS_CACHE = False
             logger.info("flag_gems is not installed. Only native backend implementations will be used.")
-    
+
     return _HAVE_FLAG_GEMS_CACHE
+
+
+# Cache for native backend availability check
+_HAVE_NATIVE_BACKEND_CACHE: Optional[bool] = None
+
+
+def have_native_backend() -> bool:
+    """
+    Check if the native CUDA backend is available.
+
+    This function checks if the transformer_engine_torch C extension is built
+    and importable. When TE_FL_SKIP_CUDA_BUILD=1 is used during installation,
+    the native backend will not be available.
+
+    Returns:
+        True if native backend (CUDA) is available, False otherwise.
+    """
+    import os
+    global _HAVE_NATIVE_BACKEND_CACHE
+
+    if _HAVE_NATIVE_BACKEND_CACHE is None:
+        # If TE_FL_SKIP_CUDA_BUILD is set, native backend is not available
+        if bool(int(os.environ.get("TE_FL_SKIP_CUDA_BUILD", "0"))):
+            _HAVE_NATIVE_BACKEND_CACHE = False
+            logger.info(
+                "Native CUDA backend is not available (TE_FL_SKIP_CUDA_BUILD=1). "
+                "Only FL backend implementations will be used."
+            )
+        else:
+            try:
+                import transformer_engine_torch
+                # Check if it's the real module or our stub
+                # The stub module has a _not_supported function that we can check
+                if hasattr(transformer_engine_torch, '_not_supported'):
+                    _HAVE_NATIVE_BACKEND_CACHE = False
+                    logger.info(
+                        "Native CUDA backend is not available (stub module loaded). "
+                        "Only FL backend implementations will be used."
+                    )
+                else:
+                    _HAVE_NATIVE_BACKEND_CACHE = True
+                    logger.info("Native CUDA backend is available.")
+            except ImportError:
+                _HAVE_NATIVE_BACKEND_CACHE = False
+                logger.info(
+                    "Native CUDA backend is not available. "
+                    "This is expected if TE_FL_SKIP_CUDA_BUILD=1 was used during installation. "
+                    "Only FL backend implementations will be used."
+                )
+
+    return _HAVE_NATIVE_BACKEND_CACHE

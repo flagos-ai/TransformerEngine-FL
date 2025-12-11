@@ -132,6 +132,14 @@ if __name__ == "__main__":
     with open("README.rst", encoding="utf-8") as f:
         long_description = f.read()
 
+    # Check if we should skip CUDA build (for AMD/ROCm or pure FL backend usage)
+    skip_cuda_build = bool(int(os.getenv("TE_FL_SKIP_CUDA_BUILD", "0")))
+    if skip_cuda_build:
+        print("=" * 60)
+        print("TE_FL_SKIP_CUDA_BUILD=1: Skipping CUDA/native backend compilation")
+        print("Only FL (Flag-Gems/Triton) backend will be available")
+        print("=" * 60)
+
     # Settings for building top level empty package for dependency management.
     if bool(int(os.getenv("NVTE_BUILD_METAPACKAGE", "0"))):
         assert bool(
@@ -148,6 +156,13 @@ if __name__ == "__main__":
             "pytorch": [f"transformer_engine_torch=={__version__}"],
             "jax": [f"transformer_engine_jax=={__version__}"],
         }
+    elif skip_cuda_build:
+        # Skip CUDA build - only install Python packages for FL backend
+        install_requires, test_requires = setup_requirements()
+        ext_modules = []  # No CUDA extensions
+        package_data = {"": ["VERSION.txt"]}
+        include_package_data = True
+        extras_require = {"test": test_requires}
     else:
         install_requires, test_requires = setup_requirements()
         ext_modules = [setup_common_extension()]
