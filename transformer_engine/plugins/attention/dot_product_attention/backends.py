@@ -46,13 +46,8 @@ from ...import_utils import have_flag_gems
 HAVE_FLAG_GEMS = have_flag_gems()
 
 if HAVE_FLAG_GEMS:
-    from .sdpa_fl import (
-        scaled_dot_product_attention_forward,
-        scaled_dot_product_attention_backward,
-    )
-else:
-    scaled_dot_product_attention_forward = None
-    scaled_dot_product_attention_backward = None
+    import flag_gems
+
 
 class AttnFuncFL(torch.autograd.Function):
     """FusedAttention forward and backward implementation"""
@@ -105,7 +100,7 @@ class AttnFuncFL(torch.autograd.Function):
         q_permuted = q.permute(1, 2, 0, 3) #[s, b, n_h, h] -> [b, n_h, s, h]
         k_permuted = k.permute(1, 2, 0, 3)
         v_permuted = v.permute(1, 2, 0, 3)
-        (out_permuted, m) = scaled_dot_product_attention_forward(
+        (out_permuted, m) = flag_gems.scaled_dot_product_attention_forward(
             q_permuted,
             k_permuted,
             v_permuted,
@@ -216,7 +211,7 @@ class AttnFuncFL(torch.autograd.Function):
 
             q_permuted, k_permuted, v_permuted, m = map(lambda x: x.contiguous() if not x.is_contiguous() else x, (q_permuted, k_permuted, v_permuted, m))
             d_out_permuted = d_out.permute(1, 2, 0, 3).contiguous() # [s, b, n_h, h] -> [b, n_h, s, h]
-            dq_permuted, dk_permuted, dv_permuted = scaled_dot_product_attention_backward(
+            dq_permuted, dk_permuted, dv_permuted = flag_gems.scaled_dot_product_attention_backward(
                 d_out_permuted,
                 q_permuted,
                 k_permuted,
