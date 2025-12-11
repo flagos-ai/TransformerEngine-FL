@@ -18,6 +18,24 @@ import sysconfig
 from typing import Optional, Tuple
 
 
+def _skip_cuda_build() -> bool:
+    """Check if CUDA build was skipped (FL-only mode)."""
+    return bool(int(os.environ.get("TE_FL_SKIP_CUDA_BUILD", "0")))
+
+
+# Register stub module for transformer_engine_torch if in FL-only mode
+# This must happen before any other module tries to import transformer_engine_torch
+if _skip_cuda_build() and "transformer_engine_torch" not in sys.modules:
+    # Dynamically create and register the stub module
+    import importlib.util
+    _stub_path = Path(__file__).parent.parent / "pytorch" / "_tex_stub.py"
+    if _stub_path.exists():
+        _spec = importlib.util.spec_from_file_location("transformer_engine_torch", _stub_path)
+        _tex_stub = importlib.util.module_from_spec(_spec)
+        sys.modules["transformer_engine_torch"] = _tex_stub
+        _spec.loader.exec_module(_tex_stub)
+
+
 @functools.lru_cache(maxsize=None)
 def _is_package_installed(package) -> bool:
     """Check if the given package is installed via pip."""
@@ -150,6 +168,10 @@ def load_framework_extension(framework: str) -> None:
     and check verify correctness if installed via PyPI.
     """
 
+    # Skip loading native extensions if CUDA build was skipped (FL-only mode)
+    if _skip_cuda_build():
+        return
+
     # Supported frameworks.
     assert framework in ("jax", "torch"), f"Unsupported framework {framework}"
 
@@ -194,6 +216,10 @@ def load_framework_extension(framework: str) -> None:
 
 def sanity_checks_for_pypi_installation() -> None:
     """Ensure that package is installed correctly if using PyPI."""
+
+    # Skip sanity checks if CUDA build was skipped (FL-only mode)
+    if _skip_cuda_build():
+        return
 
     te_core_installed, te_core_package_name, te_core_version = get_te_core_package_info()
     te_installed = _is_package_installed("transformer_engine")
@@ -390,13 +416,16 @@ def _load_core_library():
 
 if "NVTE_PROJECT_BUILDING" not in os.environ or bool(int(os.getenv("NVTE_RELEASE_BUILD", "0"))):
     sanity_checks_for_pypi_installation()
-    _CUDNN_LIB_CTYPES = _load_cudnn()
-    _NVRTC_LIB_CTYPES = _load_nvrtc()
-    _CURAND_LIB_CTYPES = _load_curand()
-    _CUBLAS_LIB_CTYPES = _load_nvidia_cuda_library("cublas")
-    _CUDART_LIB_CTYPES = _load_nvidia_cuda_library("cuda_runtime")
-    _TE_LIB_CTYPES = _load_core_library()
 
-    # Needed to find the correct headers for NVRTC kernels.
-    if not os.getenv("NVTE_CUDA_INCLUDE_DIR") and _nvidia_cudart_include_dir():
-        os.environ["NVTE_CUDA_INCLUDE_DIR"] = _nvidia_cudart_include_dir()
+    # Skip loading CUDA libraries if CUDA build was skipped (FL-only mode)
+    if not _skip_cuda_build():
+        _CUDNN_LIB_CTYPES = _load_cudnn()
+        _NVRTC_LIB_CTYPES = _load_nvrtc()
+        _CURAND_LIB_CTYPES = _load_curand()
+        _CUBLAS_LIB_CTYPES = _load_nvidia_cuda_library("cublas")
+        _CUDART_LIB_CTYPES = _load_nvidia_cuda_library("cuda_runtime")
+        _TE_LIB_CTYPES = _load_core_library()
+
+        # Needed to find the correct headers for NVRTC kernels.
+        if not os.getenv("NVTE_CUDA_INCLUDE_DIR") and _nvidia_cudart_include_dir():
+            os.environ["NVTE_CUDA_INCLUDE_DIR"] = _nvidia_cudart_include_dir()

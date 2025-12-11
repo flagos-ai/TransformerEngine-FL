@@ -77,15 +77,32 @@ def get_selected_backend() -> Backend:
     """
     Get the selected backend instance based on global environment variable.
     No longer depends on operation-specific flags.
-    
+
+    When native backend is not available (TE_FL_SKIP_CUDA_BUILD=1),
+    automatically selects the FL backend.
+
     Returns:
         Backend instance to use
     """
     global_flag = os.environ.get("USE_TRANSFORMER_ENGINE_FL", "0")
+
+    # Check if user explicitly requested FL backend
     if global_flag.lower() in ("1", "true", "yes", "on"):
         backend_name = "te_fl"
     else:
+        # Default to native, but check if it's available
         backend_name = "native"
+        # If native backend has no implementations, fallback to te_fl
+        native_backend = _backends.get("native")
+        if native_backend is None or not native_backend._implementations:
+            te_fl_backend = _backends.get("te_fl")
+            if te_fl_backend is not None and te_fl_backend._implementations:
+                logger.info(
+                    "Native backend not available, automatically selecting FL backend. "
+                    "Set USE_TRANSFORMER_ENGINE_FL=1 to suppress this message."
+                )
+                backend_name = "te_fl"
+
     return get_backend(backend_name)
 
 
