@@ -23,6 +23,7 @@ def apply_normalization_fl(
     fwd_ln_sm_margin: int,
     zero_centered_gamma: bool,
 ):
+    assert normalization == "RMSNorm", "Triton-based LayerNorm is not supported in TE-FL"
     normalization_func = rmsnorm_fwd_fl
     return normalization_func(
         inputmat,
