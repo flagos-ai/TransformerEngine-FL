@@ -59,6 +59,8 @@ def general_gemm_fl(
     assert quantization_params is None, "Triton-Based General Gemm do not support quantization now"
     assert bias is None, "Triton-Based General Gemm do not support bias now"
     assert layout in ("TN", "NN", "NT"), f"GEMM layout {layout} not supported."
+    assert alpha == 1.0 and beta is None and not accumulate, "Triton-Based General Gemm do not support scaling with alpha and beta"
+    assert not grad, "Triton-Based General Gemm do not support grad now"
 
     transa = layout[0] == "T"
     transb = layout[1] == "T"

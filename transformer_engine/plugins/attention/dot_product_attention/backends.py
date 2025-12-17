@@ -292,7 +292,12 @@ class FlashAttentionFL(torch.nn.Module):
         flash_attention_backend: Optional[PkgVersion] = PkgVersion("0"),
         fp8_output: bool = False,
     ) -> torch.Tensor:
-        assert HAVE_FLAG_GEMS, "GEMS is not installed"
+        assert HAVE_FLAG_GEMS, "FlagGems is not installed"
+        assert cu_seqlens_q is None and cu_seqlens_kv is None, "Triton-Based FlashAttention do not support varlen attention now"
+        assert window_size is None, "Triton-Based FlashAttention do not support sliding windows now"
+        assert alibi_slopes is None, "Triton-Based FlashAttention do not support alibi now"
+        assert not fp8, "Triton-Based FlashAttention do not support fp8 now"
+
         assert all(
             x.dtype in [torch.float16, torch.bfloat16] or isinstance(x, Float8Tensor)
             for x in [query_layer, key_layer, value_layer]
