@@ -293,8 +293,7 @@ class FlashAttentionFL(torch.nn.Module):
         fp8_output: bool = False,
     ) -> torch.Tensor:
         assert HAVE_FLAG_GEMS, "FlagGems is not installed"
-        assert window_size is None, "Triton-Based FlashAttention do not support sliding windows now"
-        assert alibi_slopes is None, "Triton-Based FlashAttention do not support alibi now"
+        assert window_size == (-1, 0), "Triton-Based FlashAttention do not support sliding windows now"
         assert not fp8, "Triton-Based FlashAttention do not support fp8 now"
         assert attn_mask_type == "causal", "Triton-Based FlashAttention do not support padding mask now"
 
