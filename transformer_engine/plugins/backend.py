@@ -126,14 +126,26 @@ class BackendDispatch:
             return native_backend.get("adam")
     
     def flash_attention(self, *args, **kwargs):
+        """Flash Attention Initialization."""
+        selected_backend = get_selected_backend()
+        selected_class = selected_backend.get("flash_attention")
+        native_backend = get_backend("native")
+        native_class = native_backend.get("flash_attention")
+        if selected_class is not None:
+            selected_impl = selected_class(*args, **kwargs)
+            selected_backend.register("flash_attention_forward", selected_impl)
+        native_impl = native_class(*args, **kwargs)
+        native_backend.register("flash_attention_forward", native_impl)
+    
+    def flash_attention_forward(self, *args, **kwargs):
         """Flash Attention with automatic fallback to native."""
-        impl = self._get_impl("flash_attention")
+        impl = self._get_impl("flash_attention_forward")
         try:
             return impl(*args, **kwargs)
         except Exception as e:
-            logger.warning(f"Flash Attention implementation failed, falling back to native: {e}")
+            logger.warning(f"Flash Attention Forward implementation failed, falling back to native: {e}")
             native_backend = get_backend("native")
-            return native_backend.get("flash_attention")(*args, **kwargs)
+            return native_backend.get("flash_attention_forward")(*args, **kwargs)
 
 
 # Backend initialization state
