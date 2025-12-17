@@ -106,7 +106,7 @@ def general_gemm_fl(
     bias_grad = None
     gelu_input = None
     extra_output = None
-    if accumulate and out is not None:
+    if out is not None:
         out.add_(out1)
         return out, bias_grad, gelu_input, extra_output
     else:
