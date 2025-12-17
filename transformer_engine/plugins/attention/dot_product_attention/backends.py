@@ -291,7 +291,6 @@ class FlashAttentionFL(torch.nn.Module):
         inference_params: Optional[InferenceParams] = None,
         flash_attention_backend: Optional[PkgVersion] = PkgVersion("0"),
         fp8_output: bool = False,
-        num_splits: Optional[int] = 1,
     ) -> torch.Tensor:
         assert HAVE_FLAG_GEMS, "GEMS is not installed"
         assert all(
