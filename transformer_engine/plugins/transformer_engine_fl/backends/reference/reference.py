@@ -33,27 +33,9 @@ from .impl import (
 )
 
 class ReferenceBackend(TEFLBackendBase):
-    NAME = "reference"
-    PRIORITY = 100
-
     @staticmethod
     def check_available() -> bool:
         return True
-
-    def __init__(self):
-        pass
-
-    @property
-    def name(self) -> str:
-        return "reference"
-
-    @property
-    def vendor(self) -> str:
-        return "PyTorch"
-
-    @property
-    def priority(self) -> int:
-        return 100
 
     def is_available(self) -> bool:
         return True
@@ -111,7 +93,6 @@ class ReferenceBackend(TEFLBackendBase):
             alpha=alpha,
             beta=beta,
         )
-
 
     def te_general_grouped_gemm(self, *args, **kwargs) -> Any:
         raise NotImplementedError("te_general_grouped_gemm - not implemented in reference backend")

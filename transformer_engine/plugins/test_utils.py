@@ -41,14 +41,62 @@ def get_available_backends() -> List[str]:
 
 def get_backend(name: str):
     """
-    Get a backend-like object that dispatches to OpRegistry.
+    Get a backend-like object that dispatches to a specific implementation.
 
-    This creates a dynamic object that calls tefl_module methods.
+    Args:
+        name: Backend name (e.g., "cuda", "flagos", "torch")
+
+    Returns:
+        A wrapper object that calls the specific backend implementation
     """
-    from transformer_engine.plugins.transformer_engine_fl import get_tefl_module
+    from transformer_engine.plugins.transformer_engine_fl import get_registry
+    from transformer_engine.plugins.transformer_engine_fl.logger_manager import get_logger
+    import functools
 
-    # Return the tefl_module itself as it has all operator methods
-    return get_tefl_module()
+    logger = get_logger()
+
+    class BackendWrapper:
+        """Wrapper that calls specific backend implementations"""
+
+        def __init__(self, backend_name: str):
+            self.backend_name = backend_name
+            self.registry = get_registry()
+            self._called_ops = set()  # Track which ops have been called (for logging)
+
+        def _find_impl(self, op_name: str):
+            """Find implementation matching the backend name"""
+            impls = self.registry.get_implementations(op_name)
+
+            # Try to find implementation matching backend_name
+            # Match against impl_id suffix (e.g., "vendor.cuda" matches "cuda")
+            for impl in impls:
+                if impl.impl_id.endswith(f".{self.backend_name}") or impl.impl_id == self.backend_name:
+                    if impl.is_available():
+                        return impl
+                    else:
+                        raise RuntimeError(
+                            f"Implementation '{impl.impl_id}' for op '{op_name}' is not available"
+                        )
+
+            raise NotImplementedError(
+                f"No implementation found for op '{op_name}' with backend '{self.backend_name}'"
+            )
+
+        def __getattr__(self, op_name: str):
+            """Dynamically resolve operator to specific backend implementation"""
+            impl = self._find_impl(op_name)
+
+            # Log on first call to this op for this backend
+            if op_name not in self._called_ops:
+                self._called_ops.add(op_name)
+                logger.info(
+                    f"[Test] Op '{op_name}' using '{impl.impl_id}' "
+                    f"(kind={impl.kind.value}, vendor={impl.vendor})"
+                )
+
+            return impl.fn
+
+    return BackendWrapper(name)
 
 
 def allclose(a: torch.Tensor, b: torch.Tensor, rtol: float = 1e-5, atol: float = 1e-8) -> bool:

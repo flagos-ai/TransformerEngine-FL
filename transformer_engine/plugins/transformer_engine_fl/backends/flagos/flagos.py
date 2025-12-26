@@ -21,23 +21,9 @@ def _check_flagos_available() -> bool:
 
 
 class FlagOSBackend(TEFLBackendBase):
-    NAME = "flagos"
-    PRIORITY = 150
-
     @staticmethod
     def check_available() -> bool:
         return _check_flagos_available()
-
-    @property
-    def name(self) -> str:
-        return "flagos"
-    @property
-    def vendor(self) -> str:
-        return "FlagOS/BAAI"
-
-    @property
-    def priority(self) -> int:
-        return 150
 
     def is_available(self) -> bool:
         return _check_flagos_available()

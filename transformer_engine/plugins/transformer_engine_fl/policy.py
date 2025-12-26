@@ -16,6 +16,7 @@ from .types import BackendImplKind
 @dataclass(frozen=True)
 class SelectionPolicy:
     prefer_vendor: bool = True
+    prefer_reference: bool = False
     strict: bool = False
     per_op_order: Tuple[Tuple[str, Tuple[str, ...]], ...] = field(default_factory=tuple)
 
@@ -29,6 +30,7 @@ class SelectionPolicy:
     def from_dict(
         cls,
         prefer_vendor: bool = True,
+        prefer_reference: bool = False,
         strict: bool = False,
         per_op_order: Optional[Dict[str, List[str]]] = None,
         deny_vendors: Optional[Set[str]] = None,
@@ -42,6 +44,7 @@ class SelectionPolicy:
 
         return cls(
             prefer_vendor=prefer_vendor,
+            prefer_reference=prefer_reference,
             strict=strict,
             per_op_order=per_op_tuple,
             deny_vendors=frozenset(deny_vendors) if deny_vendors else frozenset(),
@@ -61,7 +64,9 @@ class SelectionPolicy:
         return None
 
     def get_default_order(self) -> List[str]:
-        if self.prefer_vendor:
+        if self.prefer_reference:
+            return ["reference", "default", "vendor"]
+        elif self.prefer_vendor:
             return ["vendor", "default", "reference"]
         else:
             return ["default", "vendor", "reference"]
@@ -76,6 +81,7 @@ class SelectionPolicy:
     def fingerprint(self) -> str:
         parts = [
             f"pv={int(self.prefer_vendor)}",
+            f"pr={int(self.prefer_reference)}",
             f"st={int(self.strict)}",
         ]
 
@@ -96,6 +102,7 @@ class SelectionPolicy:
     def __hash__(self) -> int:
         return hash((
             self.prefer_vendor,
+            self.prefer_reference,
             self.strict,
             self.per_op_order,
             self.deny_vendors,
@@ -194,6 +201,7 @@ class PolicyManager:
 
     def _policy_from_env(self) -> SelectionPolicy:
         prefer_vendor = os.environ.get("TE_FL_PREFER_VENDOR", "1").strip() != "0"
+        prefer_reference = os.environ.get("TE_FL_PREFER_REFERENCE", "0").strip() == "1"
         strict = os.environ.get("TE_FL_STRICT", "0").strip() == "1"
 
         deny_str = os.environ.get("TE_FL_DENY_VENDORS", "").strip()
@@ -207,6 +215,7 @@ class PolicyManager:
 
         return SelectionPolicy.from_dict(
             prefer_vendor=prefer_vendor,
+            prefer_reference=prefer_reference,
             strict=strict,
             per_op_order=per_op_order,
             deny_vendors=deny_vendors,
@@ -283,6 +292,7 @@ def with_strict_mode() -> _PolicyContext:
     current = get_policy()
     strict_policy = SelectionPolicy.from_dict(
         prefer_vendor=current.prefer_vendor,
+        prefer_reference=current.prefer_reference,
         strict=True,
         per_op_order={k: list(v) for k, v in current.per_op_order},
         deny_vendors=set(current.deny_vendors),
@@ -296,6 +306,7 @@ def with_vendor_preference(prefer: bool) -> _PolicyContext:
     current = get_policy()
     policy = SelectionPolicy.from_dict(
         prefer_vendor=prefer,
+        prefer_reference=current.prefer_reference,
         strict=current.strict,
         per_op_order={k: list(v) for k, v in current.per_op_order},
         deny_vendors=set(current.deny_vendors),
@@ -309,6 +320,7 @@ def with_allowed_vendors(*vendors: str) -> _PolicyContext:
     current = get_policy()
     policy = SelectionPolicy.from_dict(
         prefer_vendor=current.prefer_vendor,
+        prefer_reference=current.prefer_reference,
         strict=current.strict,
         per_op_order={k: list(v) for k, v in current.per_op_order},
         deny_vendors=set(current.deny_vendors),
@@ -324,6 +336,7 @@ def with_denied_vendors(*vendors: str) -> _PolicyContext:
     denied.update(vendors)
     policy = SelectionPolicy.from_dict(
         prefer_vendor=current.prefer_vendor,
+        prefer_reference=current.prefer_reference,
         strict=current.strict,
         per_op_order={k: list(v) for k, v in current.per_op_order},
         deny_vendors=denied,

@@ -179,21 +179,6 @@ class CommOverlapP2P:
         )
 
 class TEFLBackendBase(ABC):
-    @property
-    @abstractmethod
-    def name(self) -> str:
-        raise NotImplementedError
-
-    @property
-    @abstractmethod
-    def vendor(self) -> str:
-        raise NotImplementedError
-
-    @property
-    @abstractmethod
-    def priority(self) -> int:
-        raise NotImplementedError
-
     @abstractmethod
     def is_available(self) -> bool:
         raise NotImplementedError
@@ -1141,7 +1126,6 @@ class TEFLModule:
 
         self._manager = manager if manager is not None else get_default_manager()
         self._logger = get_logger()
-        self._called_ops = set()  # Track which ops have been called
 
         self.DType = DType
         self.Float8BlockScaleTensorFormat = Float8BlockScaleTensorFormat
@@ -1167,55 +1151,31 @@ class TEFLModule:
         self.FusedAdamCUDAKernel = FusedAdamCUDAKernel
         self.FusedSGDCUDAKernel = FusedSGDCUDAKernel
 
-    def _wrap_op_with_logging(self, op_name: str, fn: Any) -> Any:
-        """Wrap an operator function to log its first call"""
-        import functools
-
-        @functools.wraps(fn)
-        def wrapper(*args, **kwargs):
-            # Print info on first call
-            if op_name not in self._called_ops:
-                self._called_ops.add(op_name)
-                impl_id = self._manager.get_selected_impl_id(op_name)
-                # Get implementation details from registry
-                snap = self._manager.registry.snapshot()
-                for impl in snap.impls_by_op.get(op_name, []):
-                    if impl.impl_id == impl_id:
-                        self._logger.info(
-                            f"Op '{op_name}' using '{impl_id}' (kind={impl.kind.value}, vendor={impl.vendor})"
-                        )
-                        break
-            return fn(*args, **kwargs)
-
-        return wrapper
-
     def __getattr__(self, name: str) -> Any:
         """
         Dynamically resolve operators through OpManager.
-
-        This delegates to OpManager.resolve() which handles:
-        - Lazy initialization
-        - Plugin discovery
-        - Policy-based selection
-        - Availability checking
-        - Result caching
         """
         if name.startswith('_'):
             raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
-        # Try to resolve through OpManager
+        # Verify the operator exists before returning the bound call method
         try:
-            fn = self._manager.resolve(name)
-            # Wrap the function to log first call
-            return self._wrap_op_with_logging(name, fn)
+            self._manager.ensure_initialized()
+            available_ops = self._manager.registry.list_operators()
+            if name not in available_ops:
+                raise AttributeError(
+                    f"Operator '{name}' not found. "
+                    f"Available operators: {available_ops}"
+                )
         except RuntimeError as e:
             # Re-raise as AttributeError for better error messages
-            available_ops = self._manager.registry.list_operators()
             raise AttributeError(
-                f"Operator '{name}' not found or not available. "
-                f"Available operators: {available_ops}. "
-                f"Original error: {e}"
-            )
+                f"Error accessing operator '{name}': {e}"
+            ) from e
+
+        # Return a bound call method for this operator
+        import functools
+        return functools.partial(self._manager.call, name)
 
     def __dir__(self):
         module_attrs = [
@@ -1251,25 +1211,9 @@ class TEFLModule:
         """
         Get FlashAttention implementation through OpManager.
         """
-        # Get the flash attention class getter through OpManager
-        get_flash_attention_class_fn = self._manager.resolve("get_flash_attention_class")
-
-        # Call the getter to get the FlashAttention class
-        flash_attn_class = get_flash_attention_class_fn()
-
-        # Print info on first call to flash_attention
-        op_name = "flash_attention"
-        if op_name not in self._called_ops:
-            self._called_ops.add(op_name)
-            impl_id = self._manager.get_selected_impl_id("get_flash_attention_class")
-            # Get implementation details from registry
-            snap = self._manager.registry.snapshot()
-            for impl in snap.impls_by_op.get("get_flash_attention_class", []):
-                if impl.impl_id == impl_id:
-                    self._logger.info(
-                        f"Op '{op_name}' using '{impl_id}' (kind={impl.kind.value}, vendor={impl.vendor})"
-                    )
-                    break
+        # Get the flash attention class getter through OpManager.call
+        # This provides the same fallback support and logging as other operators
+        flash_attn_class = self._manager.call("get_flash_attention_class")
 
         # Instantiate and return the FlashAttention
         return flash_attn_class(

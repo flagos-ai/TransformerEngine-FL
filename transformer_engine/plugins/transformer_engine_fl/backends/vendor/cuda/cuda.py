@@ -180,9 +180,6 @@ def _convert_dtype_params(func):
     return wrapper
 
 class CUDABackend(TEFLBackendBase):
-    NAME = "cuda"
-    PRIORITY = 100
-
     @staticmethod
     def check_available() -> bool:
         return _check_cuda_available()
@@ -197,18 +194,6 @@ class CUDABackend(TEFLBackendBase):
 
     def _to_te_dtype(self, torch_dtype):
         return _torch_dtype_to_te_dtype(torch_dtype, self._get_tex())
-
-    @property
-    def name(self) -> str:
-        return "cuda"
-
-    @property
-    def vendor(self) -> str:
-        return "CUDA"
-
-    @property
-    def priority(self) -> int:
-        return 100
 
     def is_available(self) -> bool:
         return _check_cuda_available()

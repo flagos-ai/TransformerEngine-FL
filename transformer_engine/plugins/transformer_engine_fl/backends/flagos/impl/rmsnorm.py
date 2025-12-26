@@ -5,6 +5,7 @@
 import torch
 import flag_gems
 
+
 def rmsnorm_fwd_fl(
     input,
     weight,
@@ -15,22 +16,23 @@ def rmsnorm_fwd_fl(
     sm_margin,
     zero_centered_gamma,
 ):
-    if zero_centered_gamma:
-        weight_adj = 1 + weight
-    else:
-        weight_adj = weight
+    with flag_gems.use_gems():
+        if zero_centered_gamma:
+            weight_adj = 1 + weight
+        else:
+            weight_adj = weight
 
-    y, rstdevs = flag_gems.rms_norm_forward(
-        input,
-        [input.shape[-1]],
-        weight_adj,
-        eps,
-    )
+        y, rstdevs = flag_gems.rms_norm_forward(
+            input,
+            [input.shape[-1]],
+            weight_adj,
+            eps,
+        )
 
-    if rstdevs.shape != input.shape[:-1]:
-        rstdevs = rstdevs.view(input.shape[:-1])
+        if rstdevs.shape != input.shape[:-1]:
+            rstdevs = rstdevs.view(input.shape[:-1])
 
-    return y, None, rstdevs
+        return y, None, rstdevs
 
 
 def rmsnorm_bwd_fl(
@@ -42,12 +44,13 @@ def rmsnorm_bwd_fl(
     zero_centered_gamma,
     eps,
 ):
-    dx, dw = flag_gems.rms_norm_backward(
-        dy,
-        x,
-        rsigma,
-        [x.shape[-1]],
-        gamma,
-        eps,
-    )
-    return dx, dw
+    with flag_gems.use_gems():
+        dx, dw = flag_gems.rms_norm_backward(
+            dy,
+            x,
+            rsigma,
+            [x.shape[-1]],
+            gamma,
+            eps,
+        )
+        return dx, dw

@@ -1393,8 +1393,7 @@ class DotProductAttention(TransformerEngineBaseModule):
                         max_seqlen_kv,
                         alibi_slopes=alibi_slopes,
                     )
-                return backend.flash_attention(
-                    self.flash_attention,
+                return self.flash_attention(
                     query_layer,
                     key_layer,
                     value_layer,

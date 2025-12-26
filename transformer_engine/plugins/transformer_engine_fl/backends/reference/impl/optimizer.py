@@ -10,6 +10,7 @@ __all__ = [
     "multi_tensor_l2norm_torch",
     "multi_tensor_adam_torch",
     "multi_tensor_sgd_torch",
+    "multi_tensor_compute_scale_and_scale_inv_torch",
 ]
 
 
@@ -150,3 +151,53 @@ def multi_tensor_sgd_torch(
                 grad = buf
 
         param.add_(grad, alpha=-lr)
+
+
+def multi_tensor_compute_scale_and_scale_inv_torch(
+    chunk_size: int,
+    noop_flag: torch.Tensor,
+    tensor_lists: List[List[torch.Tensor]],
+    max_fp8: float,
+    force_pow_2_scales: bool = False,
+    amax_epsilon: float = 0.0,
+) -> None:
+    """
+    Compute scale and scale_inv from amax values for FP8 quantization.
+
+    Args:
+        chunk_size: Chunk size (unused in PyTorch implementation)
+        noop_flag: If non-zero, skip computation
+        tensor_lists: [amaxes, scales, scale_invs]
+        max_fp8: Maximum representable value in FP8 format (e.g., 448.0 for E4M3)
+        force_pow_2_scales: If True, force scales to be powers of 2
+        amax_epsilon: Small epsilon to add to amax to avoid division by zero
+    """
+    if noop_flag.item() != 0:
+        return
+
+    if len(tensor_lists) != 3:
+        raise ValueError("tensor_lists should contain [amaxes, scales, scale_invs]")
+
+    amaxes, scales, scale_invs = tensor_lists
+
+    if not (len(amaxes) == len(scales) == len(scale_invs)):
+        raise ValueError("All tensor lists must have the same length")
+
+    for amax, scale, scale_inv in zip(amaxes, scales, scale_invs):
+        # Add epsilon to avoid division by zero
+        amax_val = amax + amax_epsilon
+
+        # Compute scale: max_fp8 / amax
+        # Clamp amax to avoid very small values
+        amax_val = torch.clamp(amax_val, min=1e-12)
+        computed_scale = max_fp8 / amax_val
+
+        if force_pow_2_scales:
+            # Round scale to nearest power of 2
+            log2_scale = torch.log2(computed_scale)
+            log2_scale = torch.round(log2_scale)
+            computed_scale = torch.pow(2.0, log2_scale)
+
+        # Update scale and scale_inv
+        scale.copy_(computed_scale)
+        scale_inv.copy_(1.0 / computed_scale)
