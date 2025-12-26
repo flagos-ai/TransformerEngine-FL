@@ -1,0 +1,8 @@
+include README.md
+include LICENSE
+include pyproject.toml
+recursive-include acme_te_plugin *.py
+prune tests
+prune docs
+global-exclude __pycache__
+global-exclude *.py[co]

@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "acme-te-plugin"
+version = "1.0.0"
+description = "ACME TransformerEngine Plugin Example"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "Apache-2.0"}
+authors = [
+    {name = "ACME Corporation", email = "support@acme.example.com"}
+]
+keywords = ["transformer", "deep-learning", "plugin", "acme"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+dependencies = [
+    "torch>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/acme/acme-te-plugin"
+Documentation = "https://acme-te-plugin.readthedocs.io"
+Repository = "https://github.com/acme/acme-te-plugin"
+"Bug Tracker" = "https://github.com/acme/acme-te-plugin/issues"
+
+[project.entry-points."te_fl.plugins"]
+acme = "acme_te_plugin:te_fl_register"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["acme_te_plugin*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
