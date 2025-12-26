@@ -8,7 +8,7 @@ Test and example for In-tree vendor plugin integration.
 This demonstrates:
 - How to register vendor implementations in-tree (open source contribution)
 - Using OpImplKind.VENDOR with vendor name
-- Policy-based selection with prefer_vendor
+- Policy-based selection with TE_FL_PREFER
 - Per-op ordering and vendor filtering
 """
 
@@ -154,10 +154,15 @@ class TestInTreeVendorPlugin(unittest.TestCase):
             priority=100,
         ))
 
-        # Test prefer_vendor=True (default)
-        policy = SelectionPolicy(prefer_vendor=True)
+        # Test prefer="vendor"
+        policy = SelectionPolicy(prefer="vendor")
         order = policy.get_default_order()
         self.assertEqual(order, ["vendor", "default", "reference"])
+
+        # Test prefer="default"
+        policy_default = SelectionPolicy(prefer="default")
+        order_default = policy_default.get_default_order()
+        self.assertEqual(order_default, ["default", "vendor", "reference"])
 
         # Verify vendor token matching
         impls = registry.get_implementations("rmsnorm_fwd")
@@ -171,7 +176,7 @@ class TestInTreeVendorPlugin(unittest.TestCase):
 
         # Create policy with per-op ordering
         policy = SelectionPolicy.from_dict(
-            prefer_vendor=True,
+            prefer="vendor",
             per_op_order={
                 "rmsnorm_fwd": ["vendor:acme", "vendor:nvidia", "default"],
                 "rope_fwd": ["default", "vendor"],
@@ -210,12 +215,45 @@ class TestInTreeVendorPlugin(unittest.TestCase):
 
     def test_env_var_configuration(self):
         """Test environment variable configuration"""
-        from transformer_engine.plugins.transformer_engine_fl.policy import policy_from_env
+        from transformer_engine.plugins.transformer_engine_fl.policy import policy_from_env, reset_global_policy
 
-        # Test PREFER_VENDOR
-        os.environ["TE_FL_PREFER_VENDOR"] = "0"
+        # Test TE_FL_PREFER (highest priority)
+        os.environ["TE_FL_PREFER"] = "vendor"
+        reset_global_policy()
         policy = policy_from_env()
-        self.assertFalse(policy.prefer_vendor)
+        self.assertEqual(policy.prefer, "vendor")
+
+        os.environ["TE_FL_PREFER"] = "reference"
+        reset_global_policy()
+        policy = policy_from_env()
+        self.assertEqual(policy.prefer, "reference")
+
+        os.environ["TE_FL_PREFER"] = "default"
+        reset_global_policy()
+        policy = policy_from_env()
+        self.assertEqual(policy.prefer, "default")
+
+        # Test TE_FL_PREFER_VENDOR (legacy, lower priority)
+        del os.environ["TE_FL_PREFER"]
+        os.environ["TE_FL_PREFER_VENDOR"] = "1"
+        reset_global_policy()
+        policy = policy_from_env()
+        self.assertEqual(policy.prefer, "vendor")
+
+        os.environ["TE_FL_PREFER_VENDOR"] = "0"
+        reset_global_policy()
+        policy = policy_from_env()
+        self.assertEqual(policy.prefer, "default")
+
+        # Test TE_FL_PREFER overrides TE_FL_PREFER_VENDOR
+        os.environ["TE_FL_PREFER"] = "reference"
+        os.environ["TE_FL_PREFER_VENDOR"] = "1"  # Should be ignored
+        reset_global_policy()
+        policy = policy_from_env()
+        self.assertEqual(policy.prefer, "reference")  # TE_FL_PREFER wins
+
+        del os.environ["TE_FL_PREFER"]
+        del os.environ["TE_FL_PREFER_VENDOR"]
 
         # Test STRICT mode
         os.environ["TE_FL_STRICT"] = "1"
@@ -250,21 +288,21 @@ class TestInTreeVendorPlugin(unittest.TestCase):
         )
 
         # Set global policy
-        global_policy = SelectionPolicy(prefer_vendor=True, strict=False)
+        global_policy = SelectionPolicy(prefer="vendor", strict=False)
         set_global_policy(global_policy)
 
         # Verify global policy
-        self.assertTrue(get_policy().prefer_vendor)
+        self.assertEqual(get_policy().prefer, "vendor")
         self.assertFalse(get_policy().strict)
 
         # Override with context
-        override_policy = SelectionPolicy(prefer_vendor=False, strict=True)
+        override_policy = SelectionPolicy(prefer="default", strict=True)
         with policy_context(override_policy):
-            self.assertFalse(get_policy().prefer_vendor)
+            self.assertEqual(get_policy().prefer, "default")
             self.assertTrue(get_policy().strict)
 
         # Verify restored
-        self.assertTrue(get_policy().prefer_vendor)
+        self.assertEqual(get_policy().prefer, "vendor")
         self.assertFalse(get_policy().strict)
 
     def test_in_tree_vendor_example_acme(self):
@@ -339,6 +377,124 @@ class TestInTreeVendorPlugin(unittest.TestCase):
             self.assertEqual(output.shape, input_tensor.shape)
 
 
+class TestVendorWithOpManager(unittest.TestCase):
+    """
+    Test vendor plugin using OpManager to see logging output.
+
+    This demonstrates how to use the global OpManager to:
+    1. Register vendor implementations
+    2. Call operators through the manager (which prints logs)
+    3. See which backend is being used for each op
+    """
+
+    def setUp(self):
+        """Reset environment and managers before each test"""
+        for key in list(os.environ.keys()):
+            if key.startswith("TE_FL_"):
+                del os.environ[key]
+
+        from transformer_engine.plugins.transformer_engine_fl.policy import reset_global_policy
+        from transformer_engine.plugins.transformer_engine_fl.manager import reset_default_manager
+        reset_global_policy()
+        reset_default_manager()
+
+    def test_vendor_call_with_logging(self):
+        """
+        Test calling vendor implementation through OpManager.
+
+        This will print logs like:
+        [2025-xx-xx TE-FL manager.py:390 INFO] Op 'test_rmsnorm' using 'vendor.acme' (kind=vendor, vendor=acme)
+        """
+        from transformer_engine.plugins.transformer_engine_fl.types import BackendImplKind, OpImpl
+        from transformer_engine.plugins.transformer_engine_fl.manager import OpManager
+        from transformer_engine.plugins.transformer_engine_fl.registry import OpRegistry
+        from transformer_engine.plugins.transformer_engine_fl.policy import SelectionPolicy, set_global_policy
+
+        print("\n" + "=" * 60)
+        print("TEST: Vendor call with OpManager logging")
+        print("=" * 60)
+
+        # Create registry and manager
+        registry = OpRegistry()
+        manager = OpManager(registry)
+
+        # Register DEFAULT implementation
+        def default_rmsnorm(input, weight, eps=1e-5, **kwargs):
+            print("  [CALLED] default_rmsnorm")
+            variance = input.pow(2).mean(-1, keepdim=True)
+            return input * torch.rsqrt(variance + eps) * weight, torch.rsqrt(variance + eps)
+
+        registry.register_impl(OpImpl(
+            op_name="test_rmsnorm",
+            impl_id="default.flagos",
+            kind=BackendImplKind.DEFAULT,
+            fn=default_rmsnorm,
+            priority=50,
+        ))
+
+        # Register VENDOR implementation (ACME)
+        def acme_rmsnorm(input, weight, eps=1e-5, **kwargs):
+            print("  [CALLED] acme_rmsnorm (vendor)")
+            variance = input.pow(2).mean(-1, keepdim=True)
+            return input * torch.rsqrt(variance + eps) * weight, torch.rsqrt(variance + eps)
+
+        acme_rmsnorm._is_available = lambda: True
+
+        registry.register_impl(OpImpl(
+            op_name="test_rmsnorm",
+            impl_id="vendor.acme",
+            kind=BackendImplKind.VENDOR,
+            vendor="acme",
+            fn=acme_rmsnorm,
+            priority=100,
+        ))
+
+        # Register REFERENCE implementation
+        def reference_rmsnorm(input, weight, eps=1e-5, **kwargs):
+            print("  [CALLED] reference_rmsnorm")
+            variance = input.pow(2).mean(-1, keepdim=True)
+            return input * torch.rsqrt(variance + eps) * weight, torch.rsqrt(variance + eps)
+
+        registry.register_impl(OpImpl(
+            op_name="test_rmsnorm",
+            impl_id="reference.torch",
+            kind=BackendImplKind.REFERENCE,
+            fn=reference_rmsnorm,
+            priority=10,
+        ))
+
+        # Print registered implementations
+        snap = registry.snapshot()
+        impl_ids = sorted(set(impl.impl_id for impls in snap.impls_by_op.values() for impl in impls))
+        print(f"Registered impl_ids: {impl_ids}")
+
+        # Test data
+        input_tensor = torch.randn(2, 4, 8)
+        weight_tensor = torch.ones(8)
+
+        # Test 1: Default policy (prefer default)
+        print("\n--- Test 1: prefer='default' ---")
+        set_global_policy(SelectionPolicy(prefer="default"))
+        result, _ = manager.call("test_rmsnorm", input_tensor, weight_tensor, eps=1e-5)
+        self.assertEqual(result.shape, input_tensor.shape)
+
+        # Test 2: Prefer vendor
+        print("\n--- Test 2: prefer='vendor' ---")
+        set_global_policy(SelectionPolicy(prefer="vendor"))
+        result, _ = manager.call("test_rmsnorm", input_tensor, weight_tensor, eps=1e-5)
+        self.assertEqual(result.shape, input_tensor.shape)
+
+        # Test 3: Prefer reference
+        print("\n--- Test 3: prefer='reference' ---")
+        set_global_policy(SelectionPolicy(prefer="reference"))
+        result, _ = manager.call("test_rmsnorm", input_tensor, weight_tensor, eps=1e-5)
+        self.assertEqual(result.shape, input_tensor.shape)
+
+        print("\n" + "=" * 60)
+        print("TEST COMPLETED: Check logs above to see which backend was used")
+        print("=" * 60 + "\n")
+
+
 class TestVendorTokenMatching(unittest.TestCase):
     """Test vendor-specific token matching for policy selection"""
 
@@ -396,6 +552,7 @@ def run_tests():
     suite = unittest.TestSuite()
 
     suite.addTests(loader.loadTestsFromTestCase(TestInTreeVendorPlugin))
+    suite.addTests(loader.loadTestsFromTestCase(TestVendorWithOpManager))
     suite.addTests(loader.loadTestsFromTestCase(TestVendorTokenMatching))
 
     runner = unittest.TextTestRunner(verbosity=2)

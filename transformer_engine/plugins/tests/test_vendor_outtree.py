@@ -539,22 +539,30 @@ class TestCompleteOutOfTreeExample(unittest.TestCase):
 
         # Test different policy scenarios
 
-        # 1. Prefer vendor (default)
-        policy1 = SelectionPolicy(prefer_vendor=True)
+        # 1. Prefer vendor
+        policy1 = SelectionPolicy(prefer="vendor")
         self.assertEqual(policy1.get_default_order(), ["vendor", "default", "reference"])
 
-        # 2. Prefer default (disable vendor)
+        # 2. Prefer default using TE_FL_PREFER_VENDOR=0
         os.environ["TE_FL_PREFER_VENDOR"] = "0"
         policy2 = policy_from_env()
-        self.assertFalse(policy2.prefer_vendor)
+        self.assertEqual(policy2.prefer, "default")
         self.assertEqual(policy2.get_default_order(), ["default", "vendor", "reference"])
 
-        # 3. Block specific vendor
+        # 3. TE_FL_PREFER overrides TE_FL_PREFER_VENDOR
+        os.environ["TE_FL_PREFER"] = "reference"
+        os.environ["TE_FL_PREFER_VENDOR"] = "1"  # Should be ignored
+        policy2b = policy_from_env()
+        self.assertEqual(policy2b.prefer, "reference")
+        del os.environ["TE_FL_PREFER"]
+        del os.environ["TE_FL_PREFER_VENDOR"]
+
+        # 4. Block specific vendor
         os.environ["TE_FL_DENY_VENDORS"] = "acme"
         policy3 = policy_from_env()
         self.assertFalse(policy3.is_vendor_allowed("acme"))
 
-        # 4. Allow only specific vendors
+        # 5. Allow only specific vendors
         os.environ["TE_FL_ALLOW_VENDORS"] = "nvidia,amd"
         del os.environ["TE_FL_DENY_VENDORS"]
         policy4 = policy_from_env()

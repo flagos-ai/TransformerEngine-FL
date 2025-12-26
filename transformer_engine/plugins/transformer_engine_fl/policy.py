@@ -13,10 +13,30 @@ from typing import Dict, FrozenSet, List, Optional, Set, Tuple
 from .types import BackendImplKind
 
 
+# Valid preference values for TE_FL_PREFER
+PREFER_DEFAULT = "default"
+PREFER_VENDOR = "vendor"
+PREFER_REFERENCE = "reference"
+
+VALID_PREFER_VALUES = frozenset({PREFER_DEFAULT, PREFER_VENDOR, PREFER_REFERENCE})
+
+
 @dataclass(frozen=True)
 class SelectionPolicy:
-    prefer_vendor: bool = True
-    prefer_reference: bool = False
+    """
+    Policy for selecting operator implementations.
+
+    Attributes:
+        prefer: Which implementation kind to prefer. One of:
+            - "default": Prefer DEFAULT (FlagOS) implementations
+            - "vendor": Prefer VENDOR (CUDA) implementations
+            - "reference": Prefer REFERENCE (PyTorch) implementations
+        strict: If True, raise error when primary implementation fails
+        per_op_order: Per-operator custom selection order
+        deny_vendors: Set of vendor names to deny
+        allow_vendors: Set of vendor names to allow (whitelist)
+    """
+    prefer: str = PREFER_DEFAULT
     strict: bool = False
     per_op_order: Tuple[Tuple[str, Tuple[str, ...]], ...] = field(default_factory=tuple)
 
@@ -24,13 +44,16 @@ class SelectionPolicy:
     allow_vendors: Optional[FrozenSet[str]] = None
 
     def __post_init__(self):
-        pass
+        if self.prefer not in VALID_PREFER_VALUES:
+            raise ValueError(
+                f"Invalid prefer value: '{self.prefer}'. "
+                f"Must be one of: {', '.join(sorted(VALID_PREFER_VALUES))}"
+            )
 
     @classmethod
     def from_dict(
         cls,
-        prefer_vendor: bool = True,
-        prefer_reference: bool = False,
+        prefer: str = PREFER_DEFAULT,
         strict: bool = False,
         per_op_order: Optional[Dict[str, List[str]]] = None,
         deny_vendors: Optional[Set[str]] = None,
@@ -43,8 +66,7 @@ class SelectionPolicy:
             )
 
         return cls(
-            prefer_vendor=prefer_vendor,
-            prefer_reference=prefer_reference,
+            prefer=prefer.lower(),
             strict=strict,
             per_op_order=per_op_tuple,
             deny_vendors=frozenset(deny_vendors) if deny_vendors else frozenset(),
@@ -64,11 +86,12 @@ class SelectionPolicy:
         return None
 
     def get_default_order(self) -> List[str]:
-        if self.prefer_reference:
+        """Get the default selection order based on preference setting."""
+        if self.prefer == PREFER_REFERENCE:
             return ["reference", "default", "vendor"]
-        elif self.prefer_vendor:
+        elif self.prefer == PREFER_VENDOR:
             return ["vendor", "default", "reference"]
-        else:
+        else:  # PREFER_DEFAULT
             return ["default", "vendor", "reference"]
 
     def is_vendor_allowed(self, vendor_name: str) -> bool:
@@ -80,8 +103,7 @@ class SelectionPolicy:
 
     def fingerprint(self) -> str:
         parts = [
-            f"pv={int(self.prefer_vendor)}",
-            f"pr={int(self.prefer_reference)}",
+            f"prefer={self.prefer}",
             f"st={int(self.strict)}",
         ]
 
@@ -101,8 +123,7 @@ class SelectionPolicy:
 
     def __hash__(self) -> int:
         return hash((
-            self.prefer_vendor,
-            self.prefer_reference,
+            self.prefer,
             self.strict,
             self.per_op_order,
             self.deny_vendors,
@@ -200,8 +221,33 @@ class PolicyManager:
         return result
 
     def _policy_from_env(self) -> SelectionPolicy:
-        prefer_vendor = os.environ.get("TE_FL_PREFER_VENDOR", "1").strip() != "0"
-        prefer_reference = os.environ.get("TE_FL_PREFER_REFERENCE", "0").strip() == "1"
+        # Priority: TE_FL_PREFER (highest) > TE_FL_PREFER_VENDOR (legacy)
+        #
+        # TE_FL_PREFER: Explicit preference by name (default, vendor, reference)
+        # TE_FL_PREFER_VENDOR: Legacy boolean flag (1=vendor, 0=default)
+
+        prefer_str = None
+
+        # 1. Check TE_FL_PREFER first (highest priority)
+        te_fl_prefer = os.environ.get("TE_FL_PREFER", "").strip().lower()
+        if te_fl_prefer:
+            if te_fl_prefer in VALID_PREFER_VALUES:
+                prefer_str = te_fl_prefer
+            else:
+                print(f"[WARNING] Invalid TE_FL_PREFER value: '{te_fl_prefer}'. "
+                      f"Valid values: {', '.join(sorted(VALID_PREFER_VALUES))}")
+
+        # 2. Fall back to TE_FL_PREFER_VENDOR (legacy)
+        if prefer_str is None:
+            prefer_vendor = os.environ.get("TE_FL_PREFER_VENDOR", "").strip()
+            if prefer_vendor == "1":
+                prefer_str = PREFER_VENDOR
+            elif prefer_vendor == "0":
+                prefer_str = PREFER_DEFAULT
+            else:
+                # Default behavior: prefer default (FlagOS)
+                prefer_str = PREFER_DEFAULT
+
         strict = os.environ.get("TE_FL_STRICT", "0").strip() == "1"
 
         deny_str = os.environ.get("TE_FL_DENY_VENDORS", "").strip()
@@ -214,8 +260,7 @@ class PolicyManager:
         per_op_order = self._parse_per_op(per_op_str) if per_op_str else None
 
         return SelectionPolicy.from_dict(
-            prefer_vendor=prefer_vendor,
-            prefer_reference=prefer_reference,
+            prefer=prefer_str,
             strict=strict,
             per_op_order=per_op_order,
             deny_vendors=deny_vendors,
@@ -291,8 +336,7 @@ def with_strict_mode() -> _PolicyContext:
     """Context manager to enable strict mode"""
     current = get_policy()
     strict_policy = SelectionPolicy.from_dict(
-        prefer_vendor=current.prefer_vendor,
-        prefer_reference=current.prefer_reference,
+        prefer=current.prefer,
         strict=True,
         per_op_order={k: list(v) for k, v in current.per_op_order},
         deny_vendors=set(current.deny_vendors),
@@ -301,12 +345,21 @@ def with_strict_mode() -> _PolicyContext:
     return policy_context(strict_policy)
 
 
-def with_vendor_preference(prefer: bool) -> _PolicyContext:
-    """Context manager to set vendor preference"""
+def with_preference(prefer: str) -> _PolicyContext:
+    """
+    Context manager to set implementation preference.
+
+    Args:
+        prefer: One of "default", "vendor", or "reference"
+
+    Example:
+        >>> with with_preference("vendor"):
+        ...     # Prefer vendor implementations in this context
+        ...     result = manager.resolve("op_name")
+    """
     current = get_policy()
     policy = SelectionPolicy.from_dict(
-        prefer_vendor=prefer,
-        prefer_reference=current.prefer_reference,
+        prefer=prefer,
         strict=current.strict,
         per_op_order={k: list(v) for k, v in current.per_op_order},
         deny_vendors=set(current.deny_vendors),
@@ -319,8 +372,7 @@ def with_allowed_vendors(*vendors: str) -> _PolicyContext:
     """Context manager to set allowed vendors whitelist"""
     current = get_policy()
     policy = SelectionPolicy.from_dict(
-        prefer_vendor=current.prefer_vendor,
-        prefer_reference=current.prefer_reference,
+        prefer=current.prefer,
         strict=current.strict,
         per_op_order={k: list(v) for k, v in current.per_op_order},
         deny_vendors=set(current.deny_vendors),
@@ -335,8 +387,7 @@ def with_denied_vendors(*vendors: str) -> _PolicyContext:
     denied = set(current.deny_vendors)
     denied.update(vendors)
     policy = SelectionPolicy.from_dict(
-        prefer_vendor=current.prefer_vendor,
-        prefer_reference=current.prefer_reference,
+        prefer=current.prefer,
         strict=current.strict,
         per_op_order={k: list(v) for k, v in current.per_op_order},
         deny_vendors=denied,

@@ -26,9 +26,13 @@ from .policy import (
     get_policy_epoch,
     bump_policy_epoch,
     with_strict_mode,
-    with_vendor_preference,
+    with_preference,
     with_allowed_vendors,
     with_denied_vendors,
+    PREFER_DEFAULT,
+    PREFER_VENDOR,
+    PREFER_REFERENCE,
+    VALID_PREFER_VALUES,
 )
 
 from .manager import OpManager, get_default_manager, reset_default_manager
