@@ -1,4 +1,4 @@
-name: QA L0 PYTHORCH
+name: QA L0 PYTHORCH Unittest
 
 on:
   push:
@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  qa-l0-pytorch:
+  qa-l0-pytorch-unittest:
     runs-on: self-hosted
     defaults:
       run:
@@ -48,7 +48,7 @@ jobs:
           lfs: false
           submodules: recursive
           set-safe-directory: true
-      
+
       - name: Pre-Check Environment
         timeout-minutes: 5
         run: |
@@ -74,44 +74,16 @@ jobs:
           echo "===== Available memory ====="
           free -h
 
-      # - name: Install dependencies and build transformer_engine
-      #   run: |
-      #     echo "\n=============== Install transformer_engine ==============="
-      #     pip install --no-build-isolation -vvv . --no-deps
-      #     cp -rf transformer_engine/plugins/ /usr/local/lib/python3.10/dist-packages/transformer_engine/plugins/
+      - name: Install dependencies and build transformer_engine
+        run: |
+          echo "\n=============== Install transformer_engine ==============="
+          pip install --no-build-isolation -vvv . --no-deps
+          cp -rf transformer_engine/plugins/ /usr/local/lib/python3.10/dist-packages/transformer_engine/plugins/
 
       - name: Verify installation
         shell: bash
         run: |
           python3 tests/pytorch/test_sanity_import.py
-
-      - name: PyTorch C++ Lint
-        id: pytorch_cpplint
-        env:
-          CPP_ONLY: 1
-          TE_PATH: .
-        run: |
-          bash ./qa/L0_pytorch_lint/test.sh
-
-          echo ""
-          echo "-----------------------------------------------------"
-          echo "Note: Pylint check ignores errors C0411 (incorrect import position) and W0611 (unused import), which can be achieved by adding the parameter --disable=C0411,W0611"
-          echo "-----------------------------------------------------"
-        continue-on-error: true
-
-      - name: PyTorch Python Lint
-        id: pytorch_pylint
-        env:
-          PYTHON_ONLY: 1
-          TE_PATH: .
-        run: |
-          bash ./qa/L0_pytorch_lint/test.sh
-
-          echo ""
-          echo "-----------------------------------------------------"
-          echo "Note: Pylint check ignores errors C0411 (incorrect import position) and W0611 (unused import), which can be achieved by adding the parameter --disable=C0411,W0611"
-          echo "-----------------------------------------------------"
-        continue-on-error: true
 
       - name: GPU Usage Check / Verification
         run: |
@@ -149,7 +121,7 @@ jobs:
 
           for file in "${ignore_files[@]}"; do
               escaped_file=$(echo "$file" | sed 's/\//\\\//g')              
-              sed -i 's/^.*\($file\).*$/#&/' ./qa/L0_pytorch_unittest/test.sh
+              sed -i "s/^.*\($escaped_file\).*$/#&/" ./qa/L0_pytorch_unittest/test.sh
           done
 
           cat ./qa/L0_pytorch_unittest/test.sh
@@ -157,7 +129,7 @@ jobs:
           bash ./qa/L0_pytorch_unittest/test.sh
 
       - name: Upload Installation Logs
-        if: failure()
+        if: (failure() && (steps.L0_pytorch_debug_unittest.outcome == 'failure' || steps.L0_pytorch_unittest.outcome == 'failure')) && always()
         uses: actions/upload-artifact@v4
         with:
           name: L0_pytorch-logs-${{ github.run_id }}
