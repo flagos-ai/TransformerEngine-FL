@@ -89,16 +89,24 @@ jobs:
         id: pytorch_cpplint
         env:
           CPP_ONLY: 1
-          TE_PATH: ./
-        run: bash ./qa/L0_pytorch_lint/test.sh
+          TE_PATH: .
+        run: |
+          bash ./qa/L0_pytorch_lint/test.sh
+          echo "\n-----------------------------------------------------"
+          echo "Note: Pylint check ignores errors C0411 (incorrect import position) and W0611 (unused import), which can be achieved by adding the parameter --disable=C0411,W0611"
+          echo "-----------------------------------------------------"
         continue-on-error: true
 
       - name: PyTorch Python Lint
         id: pytorch_pylint
         env:
           PYTHON_ONLY: 1
-          TE_PATH: ./
-        run: bash ./qa/L0_pytorch_lint/test.sh
+          TE_PATH: .
+        run: |
+          bash ./qa/L0_pytorch_lint/test.sh
+          echo "\n-----------------------------------------------------"
+          echo "Note: Pylint check ignores errors C0411 (incorrect import position) and W0611 (unused import), which can be achieved by adding the parameter --disable=C0411,W0611"
+          echo "-----------------------------------------------------"
         continue-on-error: true
 
       - name: GPU Usage Check / Verification
@@ -120,7 +128,7 @@ jobs:
       #       -Bbuild \
       #       -DTE_LIB="${TE_LIB_FULL_PATH}" \
       #       .
-      #     cmake --build build --verbose | tee test.log
+      #     cmake --build build --verbose
       #     export OMP_NUM_THREADS=$((NUM_PHYSICAL_CORES / NUM_PARALLEL_JOBS))
       #     ctest --test-dir build -j$NUM_PARALLEL_JOBS
 
@@ -131,13 +139,15 @@ jobs:
         continue-on-error: true
         env:
           XML_LOG_DIR: "/logs/pytorch/debug"
-          TE_PATH: ./
+          TE_PATH: .
         run: |
           ignore_files=("test_api_features.py" "test_numerics.py")
 
           for file in "${ignore_files[@]}"; do
               sed -i 's/^.*${file}.*$/#&/' ./qa/L0_pytorch_debug_unittest/test.sh
           done
+
+          cat ./qa/L0_pytorch_debug_unittest/test.sh
 
           bash ./qa/L0_pytorch_debug_unittest/test.sh
 
@@ -146,7 +156,7 @@ jobs:
         continue-on-error: true
         env:
           XML_LOG_DIR: "/logs/pytorch"
-          TE_PATH: ./
+          TE_PATH: .
         run: |
           ignore_files=("test_numerics.py" "test_permutation.py" "test_attention.py" "test_checkpoint.py")
 
@@ -154,12 +164,12 @@ jobs:
               sed -i 's/^.*${file}.*$/#&/' ./qa/L0_pytorch_unittest/test.sh
           done
 
+          cat ./qa/L0_pytorch_unittest/test.sh
+
           bash ./qa/L0_pytorch_unittest/test.sh
 
       - name: Upload Installation Logs
-        if: |
-          (steps.L0_pytorch_debug_unittest.outcome == 'failure' || steps.L0_pytorch_unittest.outcome == 'failure')
-          && failure()
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: L0_pytorch-logs-${{ github.run_id }}
