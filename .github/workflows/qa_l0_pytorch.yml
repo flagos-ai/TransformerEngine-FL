@@ -92,7 +92,9 @@ jobs:
           TE_PATH: .
         run: |
           bash ./qa/L0_pytorch_lint/test.sh
-          echo "\n-----------------------------------------------------"
+
+          echo ""
+          echo "-----------------------------------------------------"
           echo "Note: Pylint check ignores errors C0411 (incorrect import position) and W0611 (unused import), which can be achieved by adding the parameter --disable=C0411,W0611"
           echo "-----------------------------------------------------"
         continue-on-error: true
@@ -104,7 +106,9 @@ jobs:
           TE_PATH: .
         run: |
           bash ./qa/L0_pytorch_lint/test.sh
-          echo "\n-----------------------------------------------------"
+
+          echo ""
+          echo "-----------------------------------------------------"
           echo "Note: Pylint check ignores errors C0411 (incorrect import position) and W0611 (unused import), which can be achieved by adding the parameter --disable=C0411,W0611"
           echo "-----------------------------------------------------"
         continue-on-error: true
@@ -113,27 +117,7 @@ jobs:
         run: |
           source .github/workflows/scripts/gpu_check.sh
           wait_for_gpu
-
-      # - name: L0_cppunittest
-      #   working-directory: tests/cpp
-      #   run: |
-      #     TE_LIB_PATH=$(pip3 show transformer-engine | grep -E "Location:|Editable project location:" | tail -n 1 | awk '{print $NF}')
-      #     export LD_LIBRARY_PATH=$TE_LIB_PATH:$LD_LIBRARY_PATH
-
-      #     # Set parallelization parameters
-      #     NUM_PHYSICAL_CORES=$(nproc) 
-      #     NUM_PARALLEL_JOBS=4
-
-      #     cmake -GNinja \
-      #       -Bbuild \
-      #       -DTE_LIB="${TE_LIB_FULL_PATH}" \
-      #       .
-      #     cmake --build build --verbose
-      #     export OMP_NUM_THREADS=$((NUM_PHYSICAL_CORES / NUM_PARALLEL_JOBS))
-      #     ctest --test-dir build -j$NUM_PARALLEL_JOBS
-
-      
-
+   
       - name: L0 Pytorch Debug Unittest
         id: L0_pytorch_debug_unittest
         continue-on-error: true
@@ -141,10 +125,11 @@ jobs:
           XML_LOG_DIR: "/logs/pytorch/debug"
           TE_PATH: .
         run: |
-          ignore_files=("test_api_features.py" "test_numerics.py")
+          ignore_files=("tests/pytorch/debug/test_api_features.py" "tests/pytorch/test_numerics.py")
 
           for file in "${ignore_files[@]}"; do
-              sed -i 's/^.*${file}.*$/#&/' ./qa/L0_pytorch_debug_unittest/test.sh
+              escaped_file=$(echo "$file" | sed 's/\//\\\//g')
+              sed -i "s/^.*\($escaped_file\).*$/#&/" ./qa/L0_pytorch_debug_unittest/test.sh
           done
 
           cat ./qa/L0_pytorch_debug_unittest/test.sh
@@ -158,10 +143,13 @@ jobs:
           XML_LOG_DIR: "/logs/pytorch"
           TE_PATH: .
         run: |
-          ignore_files=("test_numerics.py" "test_permutation.py" "test_attention.py" "test_checkpoint.py")
+          ignore_files=("tests/pytorch/test_numerics.py" "tests/pytorch/test_permutation.py" 
+              "tests/pytorch/attention/test_attention.py" "tests/pytorch/test_checkpoint.py"
+          )
 
           for file in "${ignore_files[@]}"; do
-              sed -i 's/^.*${file}.*$/#&/' ./qa/L0_pytorch_unittest/test.sh
+              escaped_file=$(echo "$file" | sed 's/\//\\\//g')              
+              sed -i 's/^.*\($file\).*$/#&/' ./qa/L0_pytorch_unittest/test.sh
           done
 
           cat ./qa/L0_pytorch_unittest/test.sh
