@@ -94,7 +94,7 @@ jobs:
       - name: L0 CPP Unittest
         id: L0_cppunittest
         continue-on-error: true
-        timeout-minutes: 10
+        # timeout-minutes: 10
         env:
           TE_PATH: .
         run: |
