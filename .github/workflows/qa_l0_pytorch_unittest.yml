@@ -75,6 +75,7 @@ jobs:
           free -h
 
       - name: Install dependencies and build transformer_engine
+        timeout-minutes: 30
         run: |
           echo "\n=============== Install transformer_engine ==============="
           pip install --no-build-isolation -vvv . --no-deps
@@ -93,6 +94,7 @@ jobs:
       - name: L0 Pytorch Debug Unittest
         id: L0_pytorch_debug_unittest
         continue-on-error: true
+        timeout-minutes: 10
         env:
           XML_LOG_DIR: "/logs/pytorch/debug"
           TE_PATH: .
@@ -111,6 +113,7 @@ jobs:
       - name: L0 Pytorch Unittest
         id: L0_pytorch_unittest
         continue-on-error: true
+        timeout-minutes: 20
         env:
           XML_LOG_DIR: "/logs/pytorch"
           TE_PATH: .

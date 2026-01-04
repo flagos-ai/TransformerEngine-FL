@@ -75,6 +75,7 @@ jobs:
           free -h
 
       - name: Install dependencies and build transformer_engine
+        timeout-minutes: 30
         run: |
           echo "\n=============== Install transformer_engine ==============="
           pip install --no-build-isolation -vvv . --no-deps
@@ -93,6 +94,7 @@ jobs:
       - name: QA L3 Pytorch FA Versions Test
         id: L3_pytorch_FA_versions_test
         continue-on-error: true
+        timeout-minutes: 30
         env:
           XML_LOG_DIR: "/logs/pytorch/attention"
           TE_PATH: .

@@ -75,6 +75,7 @@ jobs:
           free -h
 
       - name: Install dependencies and build transformer_engine
+        timeout-minutes: 30
         run: |
           echo "\n=============== Install transformer_engine ==============="
           pip install --no-build-isolation -vvv . --no-deps
@@ -113,7 +114,7 @@ jobs:
 
       - name: L1 Pytorch Onnx Unittest
         id: L1_pytorch_onnx_unittest
-        # continue-on-error: true
+        continue-on-error: true
         env:
           XML_LOG_DIR: "/logs/pytorch/onnx"
           TE_PATH: .
