@@ -1,9 +1,9 @@
-name: QA CPP Unittest
+name: QA L1 Pytorch Thunder Integration
 
 on:
   push:
     branches:
-      - main
+      - add_qa_teat251230
   pull_request:
     branches:
       - main
@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  qa-l0-cppunittes:
+  qa-l1-thunder_integration:
     runs-on: self-hosted
     defaults:
       run:
@@ -48,7 +48,7 @@ jobs:
           lfs: false
           submodules: recursive
           set-safe-directory: true
-
+      
       - name: Pre-Check Environment
         timeout-minutes: 5
         run: |
@@ -77,7 +77,13 @@ jobs:
       - name: Install dependencies and build transformer_engine
         timeout-minutes: 30
         run: |
-          echo "\n=============== Install transformer_engine ==============="
+          echo "=============== Install dependencies ==============="
+          pip install optree looseversion opt_einsum lightning_utilities
+
+          echo "=============== Clone lightning-thunder ==============="
+          git clone --recurse-submodules https://github.com/Lightning-AI/lightning-thunder.git
+
+          echo "=============== Install transformer_engine ==============="
           pip install --no-build-isolation -vvv . --no-deps
           cp -rf transformer_engine/plugins/ /usr/local/lib/python3.10/dist-packages/transformer_engine/plugins/
 
@@ -90,22 +96,20 @@ jobs:
         run: |
           source .github/workflows/scripts/gpu_check.sh
           wait_for_gpu
-   
-      - name: L0 CPP Unittest
-        id: L0_cppunittest
-        timeout-minutes: 80
-        env:
-          TE_PATH: .
-        run: |
-          TE_LIB_PATH=$(pip3 show transformer-engine | grep -E "Location:|Editable project location:" | tail -n 1 | awk '{print $NF}')
-          TE_CPP_LIB_PATH="${TE_LIB_PATH}/transformer_engine"
-          export CMAKE_PREFIX_PATH="${TE_CPP_LIB_PATH}:${CMAKE_PREFIX_PATH}"
-          export LD_LIBRARY_PATH="${TE_CPP_LIB_PATH}:${LD_LIBRARY_PATH}"
-          NUM_PHYSICAL_CORES=$(nproc)
-          NUM_PARALLEL_JOBS=4
 
-          cd $TE_PATH/tests/cpp
-          cmake -GNinja -Bbuild . -DTE_LIB_PATH="${TE_CPP_LIB_PATH}"
-          cmake --build build
-          export OMP_NUM_THREADS=$((NUM_PHYSICAL_CORES / NUM_PARALLEL_JOBS))
-          ctest --test-dir build -j$NUM_PARALLEL_JOBS
+      - name: L1 Pytorch Thunder Integration
+        id: L1_pytorch_thunder_integration
+        env:
+          XML_LOG_DIR: "/logs/pytorch/thunder"
+          THUNDER_PATH: "lightning-thunder"
+        run: bash ./qa/L1_pytorch_thunder_integration/test.sh
+
+      - name: Upload Installation Logs
+        if: failure() && steps.L1_pytorch_thunder_integration.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: L0_pytorch-logs-${{ github.run_id }}
+          path: /logs
+          retention-days: 7
+          if-no-files-found: warn
+        continue-on-error: true

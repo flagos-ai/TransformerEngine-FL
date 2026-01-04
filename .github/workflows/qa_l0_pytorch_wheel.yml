@@ -100,4 +100,4 @@ jobs:
         # timeout-minutes: 10
         env:
           TE_PATH: .
-        run: bash ./qa/L0_pytorch_wheel/test.sh
+        run: bash qa/L0_pytorch_wheel/test.sh
