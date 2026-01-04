@@ -100,4 +100,8 @@ jobs:
         # timeout-minutes: 10
         env:
           TE_PATH: .
-        run: bash qa/L0_pytorch_wheel/test.sh
+        run: |
+          sed -i "s/^cd transformer_engine\/pytorch\s*$/pushd transformer_engine/" qa/L0_pytorch_wheel/test.sh
+          sed -i '44 s/^cd \s*\$TE_PATH\s*$/popd/' qa/L0_pytorch_wheel/test.sh
+
+          bash qa/L0_pytorch_wheel/test.sh
