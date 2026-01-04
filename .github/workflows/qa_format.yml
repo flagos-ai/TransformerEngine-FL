@@ -6,7 +6,7 @@ on:
     types: [opened, synchronize, reopened]
   push:
     branches:
-      - add_qa_teat251230
+      - main
 
 jobs:
   qa_format:

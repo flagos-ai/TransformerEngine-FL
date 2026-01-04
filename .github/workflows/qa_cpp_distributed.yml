@@ -1,4 +1,4 @@
-name: QA L0 PYTHORCH Unittest
+name: QA CPP Distributed
 
 on:
   push:
@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  qa-l0-pytorch-unittest:
+  qa-l0-cpp_distributed:
     runs-on: self-hosted
     defaults:
       run:
@@ -77,7 +77,20 @@ jobs:
       - name: Install dependencies and build transformer_engine
         timeout-minutes: 30
         run: |
-          echo "\n=============== Install transformer_engine ==============="
+          # =============== Install MPI ===============
+          apt update
+          apt install -y libopenmpi-dev openmpi-bin openmpi-common
+          apt install -y libmpich-dev mpich
+          # Verify the MPI header file
+          mpicxx -show | awk '{for(i=1;i<=NF;i++) if($i ~ /-I/) print substr($i,3)}'
+
+          # Verify whether the MPI C++ environment is ready
+          # 1.  Verify whether the MPI C++ compiler (mpicxx) exists
+          mpicxx --version
+          # 2.  Verify if the MPI library file exists
+          ls /usr/lib/x86_64-linux-gnu/libmpi_cxx.so
+
+          echo "=============== Install transformer_engine ==============="
           pip install --no-build-isolation -vvv . --no-deps
           cp -rf transformer_engine/plugins/ /usr/local/lib/python3.10/dist-packages/transformer_engine/plugins/
 
@@ -91,52 +104,13 @@ jobs:
           source .github/workflows/scripts/gpu_check.sh
           wait_for_gpu
    
-      - name: L0 Pytorch Debug Unittest
-        id: L0_pytorch_debug_unittest
+      - name: L0 CPP Distributed
+        id: L0_cpp_distributed
         continue-on-error: true
-        timeout-minutes: 10
+        # timeout-minutes: 10
         env:
-          XML_LOG_DIR: "/logs/pytorch/debug"
           TE_PATH: .
         run: |
-          ignore_files=("tests/pytorch/debug/test_api_features.py" "tests/pytorch/test_numerics.py")
+          TE_LIB_PATH=$(pip3 show transformer-engine | grep -E "Location:|Editable project location:" | tail -n 1 | awk '{print $NF}')
+          TE_CPP_LIB_PATH="${TE_LIB_PATH}/transformer_engine"
 
-          for file in "${ignore_files[@]}"; do
-              escaped_file=$(echo "$file" | sed 's/\//\\\//g')
-              sed -i "s/^.*\($escaped_file\).*$/#&/" ./qa/L0_pytorch_debug_unittest/test.sh
-          done
-
-          cat ./qa/L0_pytorch_debug_unittest/test.sh
-
-          bash ./qa/L0_pytorch_debug_unittest/test.sh
-
-      - name: L0 Pytorch Unittest
-        id: L0_pytorch_unittest
-        continue-on-error: true
-        timeout-minutes: 20
-        env:
-          XML_LOG_DIR: "/logs/pytorch"
-          TE_PATH: .
-        run: |
-          ignore_files=("tests/pytorch/test_numerics.py" "tests/pytorch/test_permutation.py" 
-              "tests/pytorch/attention/test_attention.py" "tests/pytorch/test_checkpoint.py"
-          )
-
-          for file in "${ignore_files[@]}"; do
-              escaped_file=$(echo "$file" | sed 's/\//\\\//g')              
-              sed -i "s/^.*\($escaped_file\).*$/#&/" ./qa/L0_pytorch_unittest/test.sh
-          done
-
-          cat ./qa/L0_pytorch_unittest/test.sh
-
-          bash ./qa/L0_pytorch_unittest/test.sh
-
-      - name: Upload Installation Logs
-        if: (failure() && (steps.L0_pytorch_debug_unittest.outcome == 'failure' || steps.L0_pytorch_unittest.outcome == 'failure')) && always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: L0_pytorch-logs-${{ github.run_id }}
-          path: /logs
-          retention-days: 7
-          if-no-files-found: warn
-        continue-on-error: true
