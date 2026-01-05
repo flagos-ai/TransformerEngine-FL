@@ -141,6 +141,8 @@ jobs:
           CMD="${OLD_CMD} ${SKIP_PARAM}"
           sed -i "s|${OLD_CMD}|${CMD}|g" "${TARGET_FILE}"
 
+          cat ./qa/L1_pytorch_onnx_unittest/test.sh
+
           bash ./qa/L1_pytorch_onnx_unittest/test.sh
 
       - name: Upload Installation Logs
