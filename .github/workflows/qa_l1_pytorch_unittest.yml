@@ -74,12 +74,12 @@ jobs:
           echo "===== Available memory ====="
           free -h
 
-      - name: Install dependencies and build transformer_engine
-        timeout-minutes: 30
-        run: |
-          echo "\n=============== Install transformer_engine ==============="
-          pip install --no-build-isolation -vvv . --no-deps
-          cp -rf transformer_engine/plugins/ /usr/local/lib/python3.10/dist-packages/transformer_engine/plugins/
+      # - name: Install dependencies and build transformer_engine
+      #   timeout-minutes: 30
+      #   run: |
+      #     echo "\n=============== Install transformer_engine ==============="
+      #     pip install --no-build-isolation -vvv . --no-deps
+      #     cp -rf transformer_engine/plugins/ /usr/local/lib/python3.10/dist-packages/transformer_engine/plugins/
 
       - name: Verify installation
         shell: bash
