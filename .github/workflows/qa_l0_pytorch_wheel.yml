@@ -101,7 +101,8 @@ jobs:
         env:
           TE_PATH: .
         run: |
-          sed -i "s/^cd transformer_engine\/pytorch\s*$/pushd transformer_engine/" qa/L0_pytorch_wheel/test.sh
+          echo "TE_PATH: ${TE_PATH}"
+          sed -i "s/^cd transformer_engine\/pytorch\s*$/pushd transformer_engine\/pytorch/" qa/L0_pytorch_wheel/test.sh
           sed -i '44 s/^cd \s*\$TE_PATH\s*$/popd/' qa/L0_pytorch_wheel/test.sh
 
           cat qa/L0_pytorch_wheel/test.sh
