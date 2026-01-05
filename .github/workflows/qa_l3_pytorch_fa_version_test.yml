@@ -116,7 +116,7 @@ jobs:
           # NVTE_TORCH_COMPILE=0 python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest.xml $TE_PATH/tests/pytorch/attention/test_attention.py
 
       - name: Upload Installation Logs
-        if: always() && && steps.L3_pytorch_FA_versions_test.outcome == 'failure'
+        if: always() && steps.L3_pytorch_FA_versions_test.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
           name: L0_pytorch-logs-${{ github.run_id }}
