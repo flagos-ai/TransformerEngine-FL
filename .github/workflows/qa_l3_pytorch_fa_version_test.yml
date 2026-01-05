@@ -77,6 +77,9 @@ jobs:
       - name: Install dependencies and build transformer_engine
         timeout-minutes: 30
         run: |
+          apt update
+          apt install -y wget
+
           echo "\n=============== Install transformer_engine ==============="
           pip install --no-build-isolation -vvv . --no-deps
           cp -rf transformer_engine/plugins/ /usr/local/lib/python3.10/dist-packages/transformer_engine/plugins/
@@ -93,7 +96,6 @@ jobs:
 
       - name: QA L3 Pytorch FA Versions Test
         id: L3_pytorch_FA_versions_test
-        continue-on-error: true
         timeout-minutes: 30
         env:
           XML_LOG_DIR: "/logs/pytorch/attention"
@@ -113,11 +115,10 @@ jobs:
           NVTE_TORCH_COMPILE=0 python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest.xml $TE_PATH/tests/pytorch/attention/test_attention.py
 
       - name: Upload Installation Logs
-        if: failure() && steps.L3_pytorch_FA_versions_test.outcome == 'failure'
+        if: always() && && (steps.L3_pytorch_FA_versions_test.outcome == 'failure')
         uses: actions/upload-artifact@v4
         with:
           name: L0_pytorch-logs-${{ github.run_id }}
           path: /logs
           retention-days: 7
           if-no-files-found: warn
-        continue-on-error: true
