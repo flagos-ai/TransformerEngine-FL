@@ -3,7 +3,7 @@ name: QA L1 PYTHORCH Unittest
 on:
   push:
     branches:
-      - add_qa_teat251230
+      - main
   pull_request:
     branches:
       - main
@@ -74,12 +74,12 @@ jobs:
           echo "===== Available memory ====="
           free -h
 
-      # - name: Install dependencies and build transformer_engine
-      #   timeout-minutes: 30
-      #   run: |
-      #     echo "\n=============== Install transformer_engine ==============="
-      #     pip install --no-build-isolation -vvv . --no-deps
-      #     cp -rf transformer_engine/plugins/ /usr/local/lib/python3.10/dist-packages/transformer_engine/plugins/
+      - name: Install dependencies and build transformer_engine
+        timeout-minutes: 30
+        run: |
+          echo "\n=============== Install transformer_engine ==============="
+          pip install --no-build-isolation -vvv . --no-deps
+          cp -rf transformer_engine/plugins/ /usr/local/lib/python3.10/dist-packages/transformer_engine/plugins/
 
       - name: Verify installation
         shell: bash
@@ -118,10 +118,12 @@ jobs:
           XML_LOG_DIR: "/logs/pytorch/onnx"
           TE_PATH: .
         run: |
+          # Test items that need to be skipped
           SKIP_TESTS=( 
             "test_trt_integration[None]"
           )
 
+          # Execution file path
           TARGET_FILE="./qa/L1_pytorch_onnx_unittest/test.sh"
           OLD_CMD="python3 -m pytest --tb=auto --junitxml=\$XML_LOG_DIR/test_onnx_export.xml \$TE_PATH/tests/pytorch/test_onnx_export.py"
 
@@ -141,7 +143,9 @@ jobs:
           CMD="${OLD_CMD} ${SKIP_PARAM}"
           sed -i "s|${OLD_CMD}|${CMD}|g" "${TARGET_FILE}"
 
+          echo ""
           cat ./qa/L1_pytorch_onnx_unittest/test.sh
+          echo ""
 
           bash ./qa/L1_pytorch_onnx_unittest/test.sh
 
