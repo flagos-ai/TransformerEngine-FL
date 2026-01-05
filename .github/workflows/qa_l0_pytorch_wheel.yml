@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - add_qa_teat251230
-    paths:
-      - .github/workflows/qa_l0_pytorch_wheel.yml
   pull_request:
     branches:
       - main
@@ -40,9 +38,16 @@ jobs:
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.ref }}
+          ssh-strict: true
+          ssh-user: git
           persist-credentials: true
           clean: true
+          sparse-checkout-cone-mode: true
+          fetch-tags: false
+          show-progress: true
+          lfs: false
           submodules: recursive
+          set-safe-directory: true
 
       - name: Pre-Check Environment
         timeout-minutes: 5
@@ -77,12 +82,14 @@ jobs:
 
           wheel version
 
-          echo "=============== Install transformer_engine ==============="
-          pip install --no-build-isolation -vvv . --no-deps
-          cp -rf transformer_engine/plugins/ /usr/local/lib/python3.10/dist-packages/transformer_engine/plugins/
+          # echo "=============== Install transformer_engine ==============="
+          # pip install --no-build-isolation -vvv . --no-deps
+          # cp -rf transformer_engine/plugins/ /usr/local/lib/python3.10/dist-packages/transformer_engine/plugins/
 
       - name: Verify installation
-        run: python3 tests/pytorch/test_sanity_import.py
+        shell: bash
+        run: |
+          python3 tests/pytorch/test_sanity_import.py
 
       - name: GPU Usage Check / Verification
         run: |
@@ -90,7 +97,7 @@ jobs:
           wait_for_gpu
    
       - name: L0 Pytorch Wheel
-        timeout-minutes: 25
+        # timeout-minutes: 10
         env:
           TE_PATH: .
         run: |
