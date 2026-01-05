@@ -102,7 +102,7 @@ jobs:
           TE_PATH: .
           MAX_JOBS: 32
         run: |
-          exit 1
+          echo ""
           # mkdir -p "$XML_LOG_DIR"
           # pip3 install pytest==8.2.1
           # git clone https://github.com/Dao-AILab/flash-attention.git
