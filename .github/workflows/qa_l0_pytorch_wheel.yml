@@ -82,9 +82,9 @@ jobs:
 
           wheel version
 
-          echo "=============== Install transformer_engine ==============="
-          pip install --no-build-isolation -vvv . --no-deps
-          cp -rf transformer_engine/plugins/ /usr/local/lib/python3.10/dist-packages/transformer_engine/plugins/
+          # echo "=============== Install transformer_engine ==============="
+          # pip install --no-build-isolation -vvv . --no-deps
+          # cp -rf transformer_engine/plugins/ /usr/local/lib/python3.10/dist-packages/transformer_engine/plugins/
 
       - name: Verify installation
         shell: bash
@@ -103,5 +103,7 @@ jobs:
         run: |
           sed -i "s/^cd transformer_engine\/pytorch\s*$/pushd transformer_engine/" qa/L0_pytorch_wheel/test.sh
           sed -i '44 s/^cd \s*\$TE_PATH\s*$/popd/' qa/L0_pytorch_wheel/test.sh
+
+          cat qa/L0_pytorch_wheel/test.sh
 
           bash qa/L0_pytorch_wheel/test.sh
