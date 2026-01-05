@@ -118,7 +118,7 @@ jobs:
         if: always() && steps.L3_pytorch_FA_versions_test.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
-          name: L0_pytorch-logs-${{ github.run_id }}
+          name: L3_pytorch-logs-${{ github.run_id }}
           path: /logs/pytorch/attention
           retention-days: 7
           if-no-files-found: warn

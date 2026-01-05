@@ -3,7 +3,7 @@ name: QA L1 Pytorch Thunder Integration
 on:
   push:
     branches:
-      - main
+      - add_qa_teat251230
   pull_request:
     branches:
       - main
@@ -108,8 +108,8 @@ jobs:
         if: failure() && steps.L1_pytorch_thunder_integration.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
-          name: L0_pytorch-logs-${{ github.run_id }}
-          path: /logs
+          name: L1_pytorch-logs-${{ github.run_id }}
+          path: /logs/pytorch/thunder
           retention-days: 7
           if-no-files-found: warn
         continue-on-error: true

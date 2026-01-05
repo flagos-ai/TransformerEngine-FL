@@ -3,7 +3,7 @@ name: QA L0 PYTHORCH Unittest
 on:
   push:
     branches:
-      - main
+      - add_qa_teat251230
   pull_request:
     branches:
       - main
@@ -135,6 +135,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: L0_pytorch-logs-${{ github.run_id }}
-          path: /logs
+          path: /logs/pytorch
           retention-days: 7
           if-no-files-found: warn

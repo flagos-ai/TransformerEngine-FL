@@ -3,7 +3,7 @@ name: QA L0 PYTHORCH Lint
 on:
   push:
     branches:
-      - main
+      - add_qa_teat251230
   pull_request:
     branches:
       - main
@@ -105,4 +105,3 @@ jobs:
           echo "-----------------------------------------------------"
           echo "Note: Pylint check ignores errors C0411 (incorrect import position) and W0611 (unused import), which can be achieved by adding the parameter --disable=C0411,W0611"
           echo "-----------------------------------------------------"
-        continue-on-error: true

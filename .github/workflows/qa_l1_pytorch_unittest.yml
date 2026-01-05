@@ -3,7 +3,7 @@ name: QA L1 PYTHORCH Unittest
 on:
   push:
     branches:
-      - main
+      - add_qa_teat251230
   pull_request:
     branches:
       - main
@@ -153,7 +153,7 @@ jobs:
         if: always() && (steps.L1_pytorch_distributed_unittest.outcome == 'failure' || steps.L1_pytorch_onnx_unittest.outcome == 'failure')
         uses: actions/upload-artifact@v4
         with:
-          name: L0_pytorch-logs-${{ github.run_id }}
-          path: /logs
+          name: L1_pytorch-logs-${{ github.run_id }}
+          path: /logs/pytorch
           retention-days: 7
           if-no-files-found: warn
