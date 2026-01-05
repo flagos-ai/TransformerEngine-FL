@@ -3,7 +3,7 @@ name: QA L1 PYTHORCH Unittest
 on:
   push:
     branches:
-      - main
+      - add_qa_teat251230
   pull_request:
     branches:
       - main
@@ -74,12 +74,12 @@ jobs:
           echo "===== Available memory ====="
           free -h
 
-      - name: Install dependencies and build transformer_engine
-        timeout-minutes: 30
-        run: |
-          echo "\n=============== Install transformer_engine ==============="
-          pip install --no-build-isolation -vvv . --no-deps
-          cp -rf transformer_engine/plugins/ /usr/local/lib/python3.10/dist-packages/transformer_engine/plugins/
+      # - name: Install dependencies and build transformer_engine
+      #   timeout-minutes: 30
+      #   run: |
+      #     echo "\n=============== Install transformer_engine ==============="
+      #     pip install --no-build-isolation -vvv . --no-deps
+      #     cp -rf transformer_engine/plugins/ /usr/local/lib/python3.10/dist-packages/transformer_engine/plugins/
 
       - name: Verify installation
         shell: bash
@@ -114,18 +114,16 @@ jobs:
 
       - name: L1 Pytorch Onnx Unittest
         id: L1_pytorch_onnx_unittest
-        continue-on-error: true
         env:
           XML_LOG_DIR: "/logs/pytorch/onnx"
           TE_PATH: .
         run: bash ./qa/L1_pytorch_onnx_unittest/test.sh
 
       - name: Upload Installation Logs
-        if: (failure() && (steps.L1_pytorch_distributed_unittest.outcome == 'failure' || steps.L1_pytorch_onnx_unittest.outcome == 'failure')) && always()
+        if: always() && (steps.L1_pytorch_distributed_unittest.outcome == 'failure' || steps.L1_pytorch_onnx_unittest.outcome == 'failure')
         uses: actions/upload-artifact@v4
         with:
           name: L0_pytorch-logs-${{ github.run_id }}
           path: /logs
           retention-days: 7
           if-no-files-found: warn
-        continue-on-error: true
