@@ -3,7 +3,7 @@ name: QA L0 PYTHORCH Unittest
 on:
   push:
     branches:
-      - main
+      - add_qa_teat251230
   pull_request:
     branches:
       - main
@@ -112,7 +112,6 @@ jobs:
 
       - name: L0 Pytorch Unittest
         id: L0_pytorch_unittest
-        continue-on-error: true
         timeout-minutes: 20
         env:
           XML_LOG_DIR: "/logs/pytorch"
@@ -132,11 +131,10 @@ jobs:
           bash ./qa/L0_pytorch_unittest/test.sh
 
       - name: Upload Installation Logs
-        if: (failure() && (steps.L0_pytorch_debug_unittest.outcome == 'failure' || steps.L0_pytorch_unittest.outcome == 'failure')) && always()
+        if: always() && (steps.L0_pytorch_unittest.outcome == 'failure' || steps.L0_pytorch_debug_unittest.outcome == 'failure')
         uses: actions/upload-artifact@v4
         with:
           name: L0_pytorch-logs-${{ github.run_id }}
           path: /logs
           retention-days: 7
           if-no-files-found: warn
-        continue-on-error: true
