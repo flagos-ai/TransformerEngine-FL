@@ -25,6 +25,26 @@ jobs:
       image: nvcr.io/nvidia/cuda:12.8.1-devel-ubuntu22.04
 
     steps:
+      - name: Initialize Software Environment
+        env:
+          DEBIAN_FRONTEND: noninteractive
+          TZ: Asia/Shanghai
+          PYTHON_VERSION: 3.10
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends software-properties-common git cudnn9-cuda-12
+          add-apt-repository ppa:deadsnakes/ppa
+          apt-get install -y --no-install-recommends \
+              python${PYTHON_VERSION} \
+              python${PYTHON_VERSION}-dev \
+              python${PYTHON_VERSION}-venv \
+              python3-distutils \
+              python3-pip && \
+          update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1 && \
+          update-alternatives --set python3 /usr/bin/python${PYTHON_VERSION} && \
+          ln -sf /usr/bin/python${PYTHON_VERSION}-config /usr/bin/python3-config && \
+          ln -s /usr/bin/python3 /usr/bin/python
+
       - name: Checkout Code
         uses: actions/checkout@v6.0.1
         with:
@@ -64,28 +84,9 @@ jobs:
       - name: Install dependencies and build transformer_engine
         # timeout-minutes: 30
         env:
-          DEBIAN_FRONTEND: noninteractive
-          TZ: Asia/Shanghai
-          PYTHON_VERSION: 3.10
           NVTE_FRAMEWORK: pytorch
         run: |
-          # =============== Install Python ===============
-          apt-get update
-          apt-get install -y --no-install-recommends software-properties-common
-          add-apt-repository ppa:deadsnakes/ppa
-          apt-get install -y --no-install-recommends \
-              python${PYTHON_VERSION} \
-              python${PYTHON_VERSION}-dev \
-              python${PYTHON_VERSION}-venv \
-              python3-distutils \
-              python3-pip && \
-          update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1 && \
-          update-alternatives --set python3 /usr/bin/python${PYTHON_VERSION} && \
-          ln -sf /usr/bin/python${PYTHON_VERSION}-config /usr/bin/python3-config && \
-          ln -s /usr/bin/python3 /usr/bin/python
-
           # =============== Install Dependencies ===============
-          apt-get install -y --no-install-recommends git cudnn9-cuda-12
           pip install cmake torch ninja pydantic packaging pybind11 numpy einops onnxscript 
           pip install nvidia-mathdx==25.1.1 importlib-metadata>=1.0
           pip install transformers expecttest pytest==8.2.1 tensorrt
