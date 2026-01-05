@@ -3,7 +3,7 @@ name: QA L3 Pytorch FA Versions Test
 on:
   push:
     branches:
-      - main
+      - add_qa_teat251230
   pull_request:
     branches:
       - main
