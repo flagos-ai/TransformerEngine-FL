@@ -74,15 +74,15 @@ jobs:
           echo "===== Available memory ====="
           free -h
 
-      # - name: Install dependencies and build transformer_engine
-      #   timeout-minutes: 30
-      #   run: |
-      #     apt update
-      #     apt install -y wget
+      - name: Install dependencies and build transformer_engine
+        timeout-minutes: 30
+        run: |
+          apt update
+          apt install -y wget
 
-      #     echo "\n=============== Install transformer_engine ==============="
-      #     pip install --no-build-isolation -vvv . --no-deps
-      #     cp -rf transformer_engine/plugins/ /usr/local/lib/python3.10/dist-packages/transformer_engine/plugins/
+          echo "\n=============== Install transformer_engine ==============="
+          pip install --no-build-isolation -vvv . --no-deps
+          cp -rf transformer_engine/plugins/ /usr/local/lib/python3.10/dist-packages/transformer_engine/plugins/
 
       - name: Verify installation
         shell: bash
@@ -102,24 +102,23 @@ jobs:
           TE_PATH: .
           MAX_JOBS: 32
         run: |
-          echo ""
-          # mkdir -p "$XML_LOG_DIR"
-          # pip3 install pytest==8.2.1
-          # git clone https://github.com/Dao-AILab/flash-attention.git
-          # cd flash-attention/ && git checkout 27f501d && cd hopper/ && python setup.py install
-          # python_path=`python -c "import site; print(site.getsitepackages()[0])"`
-          # mkdir -p $python_path/flash_attn_3
-          # wget -P $python_path/flash_attn_3 https://raw.githubusercontent.com/Dao-AILab/flash-attention/27f501dbe011f4371bff938fe7e09311ab3002fa/hopper/flash_attn_interface.py
-          # cd ../../
+          mkdir -p "$XML_LOG_DIR"
+          pip3 install pytest==8.2.1
+          git clone https://github.com/Dao-AILab/flash-attention.git
+          cd flash-attention/ && git checkout 27f501d && cd hopper/ && python setup.py install
+          python_path=`python -c "import site; print(site.getsitepackages()[0])"`
+          mkdir -p $python_path/flash_attn_3
+          wget -P $python_path/flash_attn_3 https://raw.githubusercontent.com/Dao-AILab/flash-attention/27f501dbe011f4371bff938fe7e09311ab3002fa/hopper/flash_attn_interface.py
+          cd ../../
 
-          # # Run tests
-          # NVTE_TORCH_COMPILE=0 python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest.xml $TE_PATH/tests/pytorch/attention/test_attention.py
+          # Run tests
+          NVTE_TORCH_COMPILE=0 python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest.xml $TE_PATH/tests/pytorch/attention/test_attention.py
 
       - name: Upload Installation Logs
         if: always() && steps.L3_pytorch_FA_versions_test.outcome == 'failure'
         uses: actions/upload-artifact@v4
         with:
           name: L0_pytorch-logs-${{ github.run_id }}
-          path: /logs
+          path: /logs/pytorch/attention
           retention-days: 7
           if-no-files-found: warn
