@@ -4,12 +4,11 @@ on:
   push:
     branches:
       - add_qa_teat251230
-    paths: 
+    paths:
       - .github/workflows/qa_l0_pytorch_wheel.yml
   pull_request:
     branches:
       - main
-  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.actor }}
@@ -22,29 +21,20 @@ jobs:
       run:
         shell: bash
     container:
-      image: nvcr.io/nvidia/cuda:12.8.1-devel-ubuntu22.04
+      image: localhost:5000/flagscale:cuda12.8.1-cudnn9.10.2-torch2.9.1-py3.10-transformerengine_fl
+      ports:
+        - 80:80
+      options: >-
+        --gpus all 
+        --shm-size=500g 
+        --privileged 
+        --ipc=host 
+        --ulimit memlock=-1 
+        --ulimit stack=67108864 
+        --ulimit nofile=65535:65535 
+        --user root
 
     steps:
-      - name: Initialize Software Environment
-        env:
-          DEBIAN_FRONTEND: noninteractive
-          TZ: Asia/Shanghai
-          PYTHON_VERSION: 3.10
-        run: |
-          apt-get update
-          apt-get install -y --no-install-recommends software-properties-common git cudnn9-cuda-12
-          add-apt-repository ppa:deadsnakes/ppa
-          apt-get install -y --no-install-recommends \
-              python${PYTHON_VERSION} \
-              python${PYTHON_VERSION}-dev \
-              python${PYTHON_VERSION}-venv \
-              python3-distutils \
-              python3-pip && \
-          update-alternatives --install /usr/bin/python3 python3 /usr/bin/python${PYTHON_VERSION} 1 && \
-          update-alternatives --set python3 /usr/bin/python${PYTHON_VERSION} && \
-          ln -sf /usr/bin/python${PYTHON_VERSION}-config /usr/bin/python3-config && \
-          ln -s /usr/bin/python3 /usr/bin/python
-
       - name: Checkout Code
         uses: actions/checkout@v6.0.1
         with:
@@ -53,8 +43,6 @@ jobs:
           persist-credentials: true
           clean: true
           submodules: recursive
-          fetch-tags: false
-          sparse-checkout-cone-mode: true
 
       - name: Pre-Check Environment
         timeout-minutes: 5
@@ -82,23 +70,8 @@ jobs:
           free -h
 
       - name: Install dependencies and build transformer_engine
-        # timeout-minutes: 30
-        env:
-          NVTE_FRAMEWORK: pytorch
+        timeout-minutes: 30
         run: |
-          # =============== Install Dependencies ===============
-          pip install cmake torch ninja pydantic packaging pybind11 numpy einops onnxscript 
-          pip install nvidia-mathdx==25.1.1 importlib-metadata>=1.0
-          pip install transformers expecttest pytest==8.2.1 tensorrt
-
-          # =============== Install MPI ===============
-          apt update
-          apt install -y libopenmpi-dev openmpi-bin openmpi-common
-          apt install -y libmpich-dev mpich
-          mpicxx -show | awk '{for(i=1;i<=NF;i++) if($i ~ /-I/) print substr($i,3)}'
-          mpicxx --version
-          ls /usr/lib/x86_64-linux-gnu/libmpi_cxx.so
-
           # =============== Install Wheel ===============
           pip3 install wheel -U
 
@@ -111,8 +84,13 @@ jobs:
       - name: Verify installation
         run: python3 tests/pytorch/test_sanity_import.py
 
+      - name: GPU Usage Check / Verification
+        run: |
+          source .github/workflows/scripts/gpu_check.sh
+          wait_for_gpu
+   
       - name: L0 Pytorch Wheel
-        # timeout-minutes: 10
+        timeout-minutes: 25
         env:
           TE_PATH: .
         run: |
@@ -120,8 +98,6 @@ jobs:
           sed -i "s/^cd transformer_engine\/pytorch\s*$/pushd transformer_engine\/pytorch/" qa/L0_pytorch_wheel/test.sh
           sed -i '44 s/^cd \s*\$TE_PATH\s*$/popd/' qa/L0_pytorch_wheel/test.sh
 
-          echo -e "\n=== Modified test.sh content ==="
           cat qa/L0_pytorch_wheel/test.sh
 
-          echo -e "\n=== Starting to execute test.sh ==="
           bash qa/L0_pytorch_wheel/test.sh
