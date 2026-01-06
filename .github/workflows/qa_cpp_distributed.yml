@@ -3,7 +3,7 @@ name: QA CPP Distributed
 on:
   push:
     branches:
-      - add_qa_teat251230
+      - main
   pull_request:
     branches:
       - main
@@ -106,7 +106,7 @@ jobs:
         run: |
           source .github/workflows/scripts/gpu_check.sh
           wait_for_gpu
-   
+
       - name: L0 CPP Distributed
         id: L0_cpp_distributed
         # timeout-minutes: 10
