@@ -2,6 +2,7 @@
 #
 # See LICENSE for license information.
 
+import os
 from contextlib import nullcontext
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -286,7 +287,7 @@ class FlashAttentionTorch(FlashAttentionBase):
 
         if attn_mask_type == "causal":
             use_kunlunxin_causal_mask = os.getenv("TE_FL_REFERENCE_BACKEND_USE_KUNLUNXIN_CAUSAL_MASK", "0") == "1"
-            if not use_kunlunxin_causal_mask
+            if not use_kunlunxin_causal_mask:
                 if window_size is None and not use_packed_format:
                     is_causal = True
                 else:
