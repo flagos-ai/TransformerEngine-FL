@@ -315,31 +315,30 @@ class FlashAttentionTorch(FlashAttentionBase):
                         attn_mask = attn_mask + causal_mask.unsqueeze(0)
                 else:
                     attn_mask = causal_mask
-            else:
-                use_kunlunxin_causal_mask = os.getenv("TE_FL_REFERENCE_BACKEND_USE_KUNLUNXIN_CAUSAL_MASK", "0") == "1"
-                if not use_kunlunxin_causal_mask:
-                    if window_size is None and not use_packed_format:
-                        is_causal = True
-                    else:
-                        causal_mask = torch.zeros(
-                            seq_len_q, seq_len_kv,
-                            dtype=query.dtype, device=query.device
-                        )
-                        causal_mask.masked_fill_(
-                            torch.triu(torch.ones(seq_len_q, seq_len_kv, device=query.device, dtype=torch.bool), diagonal=1),
-                            float('-inf')
-                        )
-
-                        if attn_mask is not None:
-                            if attn_mask.dim() == 2:
-                                attn_mask = attn_mask + causal_mask
-                            else:
-                                attn_mask = attn_mask + causal_mask.unsqueeze(0)
-                        else:
-                            attn_mask = causal_mask
-                else:
+            use_kunlunxin_causal_mask = os.getenv("TE_FL_REFERENCE_BACKEND_USE_KUNLUNXIN_CAUSAL_MASK", "0") == "1"
+            if not use_kunlunxin_causal_mask:
+                if window_size is None and not use_packed_format:
                     is_causal = True
-                    attn_mask = None
+                else:
+                    causal_mask = torch.zeros(
+                        seq_len_q, seq_len_kv,
+                        dtype=query.dtype, device=query.device
+                    )
+                    causal_mask.masked_fill_(
+                        torch.triu(torch.ones(seq_len_q, seq_len_kv, device=query.device, dtype=torch.bool), diagonal=1),
+                        float('-inf')
+                    )
+
+                    if attn_mask is not None:
+                        if attn_mask.dim() == 2:
+                            attn_mask = attn_mask + causal_mask
+                        else:
+                            attn_mask = attn_mask + causal_mask.unsqueeze(0)
+                    else:
+                        attn_mask = causal_mask
+            else:
+                is_causal = True
+                attn_mask = None
 
         if window_size is not None and not is_causal:
             if use_cp:
