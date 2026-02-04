@@ -19,7 +19,7 @@ jobs:
       run:
         shell: bash
     container:
-      image: localhost:5000/flagscale:cuda12.8.1-cudnn9.10.2-torch2.9.1-py3.10-transformerengine_fl
+      image: harbor.baai.ac.cn/flagscale/cuda12.8.1-cudnn9.10.2-torch2.9.1-py3.10-transformerengine_fl:20260204
       ports:
         - 80:80
       options: >-
@@ -31,6 +31,7 @@ jobs:
         --ulimit stack=67108864 
         --ulimit nofile=65535:65535 
         --user root
+        --pull always
 
     steps:
       - name: Checkout Code
