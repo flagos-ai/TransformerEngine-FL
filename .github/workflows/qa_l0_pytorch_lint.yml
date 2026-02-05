@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   qa-l0-pytorch-lint:
-    runs-on: self-hosted
+    runs-on: [ self-hosted, Linux, X64, nvida, gpu-8 ]
     defaults:
       run:
         shell: bash

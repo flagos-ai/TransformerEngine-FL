@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   qa-l3-pytorch-FA-versions-test:
-    runs-on: self-hosted
+    runs-on: [ self-hosted, Linux, X64, nvida, gpu-8 ]
     defaults:
       run:
         shell: bash

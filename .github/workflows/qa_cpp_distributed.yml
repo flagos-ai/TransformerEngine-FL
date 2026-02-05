@@ -113,8 +113,7 @@ jobs:
         # timeout-minutes: 10
         env:
           TE_PATH: .
-          XML_LOG_DIR: "/logs/cpp/distributed
-
+          XML_LOG_DIR: "/logs/cpp/distributed"
         run: |
           TE_LIB_PATH=$(pip3 show transformer-engine | grep -E "Location:|Editable project location:" | tail -n 1 | awk '{print $NF}')
           TE_CPP_LIB_PATH="${TE_LIB_PATH}/transformer_engine"
