@@ -1,0 +1,137 @@
+name: QA L3 - Attention Tests 
+
+on:
+  push:
+    branches: main
+    paths:
+      - '.github/workflows/qa_l3_test.yml'
+      - 'tests/pytorch/attention/test_attention.py'
+
+  pull_request:
+    branches: main
+    paths:
+      - '.github/workflows/qa_l3_test.yml'
+      - 'tests/pytorch/attention/test_attention.py'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.actor }}
+  cancel-in-progress: true
+
+jobs:
+  run-qa-l3-attention-tests:
+    runs-on: [ self-hosted, Linux, X64, nvidia, gpu-8 ]
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: harbor.baai.ac.cn/flagscale/cuda12.8.1-torch2.7.1-python3.10-te2.9:20260209
+      ports:
+        - 80:80
+      options: >-
+        --gpus all 
+        --shm-size=500g 
+        --privileged 
+        --ipc=host 
+        --ulimit memlock=-1 
+        --ulimit stack=67108864 
+        --ulimit nofile=65535:65535 
+        --user root
+        --pull always
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6.0.1
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          ssh-strict: true
+          ssh-user: git
+          persist-credentials: true
+          clean: true
+          sparse-checkout-cone-mode: true
+          fetch-tags: false
+          show-progress: true
+          lfs: false
+          submodules: recursive
+          set-safe-directory: true
+      
+      - name: Install Dependencies & Build Transformer Engine
+        # timeout-minutes: 30
+        env:
+          NVTE_FRAMEWORK: pytorch
+          TE_WITH_NCCL: 1
+        run: |
+          # Activate conda environment
+          echo "=== Activating Conda Environment ==="
+          source /opt/miniconda3/etc/profile.d/conda.sh
+          conda activate flagscale-train
+
+          # System dependencies installation with cleanup
+          echo "=== Installing System Dependencies (MPI) ==="
+          apt update
+          apt install -y libopenmpi-dev openmpi-bin openmpi-common
+          apt install -y libmpich-dev mpich
+
+          # Verify MPI installation comprehensively
+          echo "=== Verifying MPI Installation ==="
+          echo "MPI Compiler Path: $(which mpicxx)"
+          mpicxx --version
+          echo "MPI Header Paths:"
+          mpicxx -show | awk '{for(i=1;i<=NF;i++) if($i ~ /-I/) print substr($i,3)}'
+
+          # Verify whether the MPI C++ environment is ready
+          # 1.  Verify whether the MPI C++ compiler (mpicxx) exists
+          mpicxx --version
+          # 2.  Verify if the MPI library file exists
+          ls /usr/lib/x86_64-linux-gnu/libmpi_cxx.so
+
+          # Install dependencies
+          pip install optree looseversion opt_einsum lightning_utilities
+
+          # Clone lightning-thunder
+          git clone --recurse-submodules https://github.com/Lightning-AI/lightning-thunder.git
+
+          echo "Install transformer_engine"
+          pip install --no-build-isolation -vvv . --no-deps
+
+          # Verify installation
+          python3 tests/pytorch/test_sanity_import.py
+
+      - name: Verify GPU Availability & Health
+        run: |
+          # Execute GPU check
+          echo "=== Checking GPU Status ==="
+          source .github/workflows/scripts/gpu_check.sh
+          wait_for_gpu
+
+          # Additional GPU information print
+          nvidia-smi
+          python3 -c "import torch; print('CUDA Available:', torch.cuda.is_available()); print('GPU Count:', torch.cuda.device_count())"
+
+      - name: Run QA L3 PyTorch FlashAttention Versions Test
+        # timeout-minutes: 30
+        env:
+          XML_LOG_DIR: "/logs/pytorch/attention"
+          TE_PATH: .
+          MAX_JOBS: 32
+        run: |
+          # Activate conda environment
+          source /opt/miniconda3/etc/profile.d/conda.sh
+          conda activate flagscale-train
+
+          # Create log directory with proper permissions
+          echo "=== Preparing Test Environment ==="
+          mkdir -p "$XML_LOG_DIR"
+          chmod 777 "$XML_LOG_DIR"
+
+          # Download flash_attn_interface.py
+          pip3 install pytest==8.2.1
+          git clone https://github.com/Dao-AILab/flash-attention.git
+          cd flash-attention/ && git checkout 27f501d && cd hopper/ && python setup.py install
+          python_path=`python -c "import site; print(site.getsitepackages()[0])"`
+          mkdir -p $python_path/flash_attn_3
+          wget -P $python_path/flash_attn_3 https://raw.githubusercontent.com/Dao-AILab/flash-attention/27f501dbe011f4371bff938fe7e09311ab3002fa/hopper/flash_attn_interface.py
+          cd ../../
+
+          # Run pytest with detailed output and error tracking
+          NVTE_TORCH_COMPILE=0 python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest.xml $TE_PATH/tests/pytorch/attention/test_attention.py
+
