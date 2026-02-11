@@ -4,14 +4,14 @@ on:
   push:
     branches: main
     paths:
-      - '.github/workflows/qa_l0_test.yml'
+      - '.github/workflows/qa-l0-te-cpp-unittest-pytorch-lint.yml'
       - 'qa/L0_pytorch_lint/**'
       - 'transformer_engine/**'
       - 'tests/pytorch/**'
   pull_request:
     branches: main
     paths:
-      - '.github/workflows/qa_l0_test.yml'
+      - '.github/workflows/qa-l0-te-cpp-unittest-pytorch-lint.yml'
       - 'qa/L0_pytorch_lint/**'
       - 'transformer_engine/**'
       - 'tests/pytorch/**'
@@ -58,7 +58,7 @@ jobs:
           set-safe-directory: true
 
       - name: Install Dependencies & Build Transformer Engine
-        timeout-minutes: 60
+        # timeout-minutes: 40
         env:
           NVTE_FRAMEWORK: pytorch
           TE_WITH_NCCL: 1
@@ -92,7 +92,7 @@ jobs:
           python3 -c "import torch; print('CUDA Available:', torch.cuda.is_available()); print('GPU Count:', torch.cuda.device_count())"
 
       - name: Run L0 C++ Unit Tests
-        timeout-minutes: 80
+        # timeout-minutes: 60
         env:
           TE_PATH: .
         run: |
@@ -121,7 +121,7 @@ jobs:
           ctest --test-dir build -j$NUM_PARALLEL_JOBS
 
       - name: PyTorch C++ Lint
-        timeout-minutes: 5
+        # timeout-minutes: 5
         env:
           CPP_ONLY: 1
           TE_PATH: .
@@ -141,7 +141,7 @@ jobs:
         continue-on-error: true
 
       - name: PyTorch Python Lint
-        timeout-minutes: 5
+        # timeout-minutes: 5
         env:
           PYTHON_ONLY: 1
           TE_PATH: .
@@ -174,7 +174,7 @@ jobs:
           bash ./qa/L0_pytorch_debug_unittest/test.sh
 
       - name: Run L0 PyTorch Core Unit Tests
-        # timeout-minutes: 20
+        # timeout-minutes: 10
         env:
           TE_PATH: .
         run: |

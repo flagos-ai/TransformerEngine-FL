@@ -5,12 +5,12 @@ on:
     branches: main
     paths:
       - 'qa/L0_pytorch_wheel/**'
-      - '.github/workflows/qa_l0_pytorch_wheel.yml'
+      - '.github/workflows/qa-l0-pytorch-wheel.yml'
   pull_request:
     branches: main
     paths:
       - 'qa/L0_pytorch_wheel/**'
-      - '.github/workflows/qa_l0_pytorch_wheel.yml'
+      - '.github/workflows/qa-l0-pytorch-wheel.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.actor }}

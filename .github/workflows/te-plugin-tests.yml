@@ -5,12 +5,12 @@ on:
     branches: main
     paths:
       - 'transformer_engine/plugin/**'
-      - '.github/workflows/plugin_test.yml'
+      - '.github/workflows/te-plugin-tests.yml'
   pull_request:
     branches: main
     paths:
       - 'transformer_engine/plugin/**'
-      - '.github/workflows/plugin_test.yml'
+      - '.github/workflows/te-plugin-tests.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.actor }}

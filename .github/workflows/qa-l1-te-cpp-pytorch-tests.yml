@@ -4,7 +4,7 @@ on:
   push:
     branches: main
     paths:
-      - '.github/workflows/qa_l1_test.yml'
+      - '.github/workflows/qa-l1-te-cpp-pytorch-tests.yml'
       - 'qa/L1_cpp_distributed/**'
       - 'tests/cpp_distributed/**'
       - 'qa/L1_pytorch_thunder_integration/**'
@@ -17,7 +17,7 @@ on:
   pull_request:
     branches: main
     paths:
-      - '.github/workflows/qa_l1_test.yml'
+      - '.github/workflows/qa-l1-te-cpp-pytorch-tests.yml'
       - 'qa/L1_cpp_distributed/**'
       - 'tests/cpp_distributed/**'
       - 'qa/L1_pytorch_thunder_integration/**'
@@ -128,6 +128,7 @@ jobs:
           # Run thunder integration tests
           echo "=== Running L1 PyTorch Thunder Integration Tests ==="
           bash ./qa/L1_pytorch_thunder_integration/test.sh
+        # timeout-minutes: 5
 
       - name: Run L1 PyTorch Distributed Unit Tests
         continue-on-error: true
@@ -142,6 +143,7 @@ jobs:
           # Run distributed unit tests
           echo "=== Running L1 PyTorch Distributed Unit Tests ==="
           bash ./qa/L1_pytorch_distributed_unittest/test.sh
+        # timeout-minutes: 5
 
       - name: Run L1 PyTorch ONNX Unit Tests
         env:
@@ -155,3 +157,4 @@ jobs:
           # Run ONNX unit tests
           echo "=== Running L1 PyTorch ONNX Unit Tests ==="
           bash ./qa/L1_pytorch_onnx_unittest/test.sh
+        # timeout-minutes: 60
