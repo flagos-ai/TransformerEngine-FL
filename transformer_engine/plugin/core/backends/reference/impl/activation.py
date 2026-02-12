@@ -38,12 +38,12 @@ __all__ = [
 
 
 def gelu_torch(input: torch.Tensor, quantizer: Any) -> torch.Tensor:
-    return F.gelu(input, approximate='tanh')
+    return F.gelu(input, approximate="tanh")
 
 
 def geglu_torch(input: torch.Tensor, quantizer: Any) -> torch.Tensor:
     a, b = input.chunk(2, dim=-1)
-    return F.gelu(a, approximate='tanh') * b
+    return F.gelu(a, approximate="tanh") * b
 
 
 def qgelu_torch(input: torch.Tensor, quantizer: Any) -> torch.Tensor:
@@ -106,7 +106,7 @@ def clamped_swiglu_torch(
 def dgelu_torch(grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> torch.Tensor:
     x = fwd_input.detach().requires_grad_(True)
     with torch.enable_grad():
-        y = F.gelu(x, approximate='tanh')
+        y = F.gelu(x, approximate="tanh")
         y.backward(grad)
     return x.grad
 
@@ -117,7 +117,7 @@ def dgeglu_torch(grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) ->
     b = b.detach().requires_grad_(True)
 
     with torch.enable_grad():
-        y = F.gelu(a, approximate='tanh') * b
+        y = F.gelu(a, approximate="tanh") * b
         y.backward(grad)
 
     return torch.cat([a.grad, b.grad], dim=-1)

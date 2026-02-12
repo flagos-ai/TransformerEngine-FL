@@ -27,7 +27,7 @@ def _convert_dtype(dtype: Union[int, torch.dtype, None]) -> Optional[torch.dtype
         return dtype
     if isinstance(dtype, int):
         return _DTYPE_TO_TORCH.get(dtype, None)
-    if hasattr(dtype, 'value'):
+    if hasattr(dtype, "value"):
         return _DTYPE_TO_TORCH.get(dtype.value, None)
     return None
 
@@ -102,7 +102,7 @@ def general_gemm_torch(
             gelu_input_ret = gelu_in
         else:
             gelu_input_ret = out.clone()
-        out = F.gelu(out, approximate='tanh')
+        out = F.gelu(out, approximate="tanh")
 
     torch_out_dtype = _convert_dtype(output_dtype)
     if torch_out_dtype is not None and out.dtype != torch_out_dtype:

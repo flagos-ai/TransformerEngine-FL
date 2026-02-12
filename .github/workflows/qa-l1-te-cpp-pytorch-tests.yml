@@ -112,10 +112,6 @@ jobs:
           source .github/workflows/scripts/gpu_check.sh
           wait_for_gpu
 
-          # Additional GPU information print
-          nvidia-smi
-          python3 -c "import torch; print('CUDA Available:', torch.cuda.is_available()); print('GPU Count:', torch.cuda.device_count())"
-
       - name: Run L1 PyTorch Thunder Integration Tests
         env:
           XML_LOG_DIR: "/logs/pytorch/thunder"

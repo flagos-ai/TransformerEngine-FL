@@ -34,6 +34,7 @@ class TestSelectionPolicy(unittest.TestCase):
             PREFER_VENDOR,
             PREFER_REFERENCE,
         )
+
         self.SelectionPolicy = SelectionPolicy
         self.PREFER_DEFAULT = PREFER_DEFAULT
         self.PREFER_VENDOR = PREFER_VENDOR
@@ -170,16 +171,24 @@ class TestPolicyManager(unittest.TestCase):
             PolicyManager,
             reset_global_policy,
         )
+
         reset_global_policy()
         self.PolicyManager = PolicyManager
 
     def tearDown(self):
         """Clean up after each test"""
         from transformer_engine.plugin.core.policy import reset_global_policy
+
         reset_global_policy()
         # Clear any test environment variables
-        for key in ["TE_FL_PREFER", "TE_FL_PREFER_VENDOR", "TE_FL_STRICT",
-                    "TE_FL_DENY_VENDORS", "TE_FL_ALLOW_VENDORS", "TE_FL_PER_OP"]:
+        for key in [
+            "TE_FL_PREFER",
+            "TE_FL_PREFER_VENDOR",
+            "TE_FL_STRICT",
+            "TE_FL_DENY_VENDORS",
+            "TE_FL_ALLOW_VENDORS",
+            "TE_FL_PER_OP",
+        ]:
             os.environ.pop(key, None)
 
     def test_singleton_pattern(self):
@@ -247,18 +256,32 @@ class TestEnvironmentVariables(unittest.TestCase):
     def setUp(self):
         """Clear environment and reset policy"""
         from transformer_engine.plugin.core.policy import reset_global_policy
+
         reset_global_policy()
         # Clear all test env vars
-        for key in ["TE_FL_PREFER", "TE_FL_PREFER_VENDOR", "TE_FL_STRICT",
-                    "TE_FL_DENY_VENDORS", "TE_FL_ALLOW_VENDORS", "TE_FL_PER_OP"]:
+        for key in [
+            "TE_FL_PREFER",
+            "TE_FL_PREFER_VENDOR",
+            "TE_FL_STRICT",
+            "TE_FL_DENY_VENDORS",
+            "TE_FL_ALLOW_VENDORS",
+            "TE_FL_PER_OP",
+        ]:
             os.environ.pop(key, None)
 
     def tearDown(self):
         """Clean up environment"""
-        for key in ["TE_FL_PREFER", "TE_FL_PREFER_VENDOR", "TE_FL_STRICT",
-                    "TE_FL_DENY_VENDORS", "TE_FL_ALLOW_VENDORS", "TE_FL_PER_OP"]:
+        for key in [
+            "TE_FL_PREFER",
+            "TE_FL_PREFER_VENDOR",
+            "TE_FL_STRICT",
+            "TE_FL_DENY_VENDORS",
+            "TE_FL_ALLOW_VENDORS",
+            "TE_FL_PER_OP",
+        ]:
             os.environ.pop(key, None)
         from transformer_engine.plugin.core.policy import reset_global_policy
+
         reset_global_policy()
 
     def test_te_fl_prefer_flagos(self):
@@ -266,6 +289,7 @@ class TestEnvironmentVariables(unittest.TestCase):
         os.environ["TE_FL_PREFER"] = "flagos"
 
         from transformer_engine.plugin.core.policy import policy_from_env
+
         policy = policy_from_env()
 
         self.assertEqual(policy.prefer, "flagos")
@@ -276,6 +300,7 @@ class TestEnvironmentVariables(unittest.TestCase):
         os.environ["TE_FL_PREFER"] = "vendor"
 
         from transformer_engine.plugin.core.policy import policy_from_env
+
         policy = policy_from_env()
 
         self.assertEqual(policy.prefer, "vendor")
@@ -286,6 +311,7 @@ class TestEnvironmentVariables(unittest.TestCase):
         os.environ["TE_FL_PREFER"] = "reference"
 
         from transformer_engine.plugin.core.policy import policy_from_env
+
         policy = policy_from_env()
 
         self.assertEqual(policy.prefer, "reference")
@@ -296,6 +322,7 @@ class TestEnvironmentVariables(unittest.TestCase):
         os.environ["TE_FL_PREFER_VENDOR"] = "1"
 
         from transformer_engine.plugin.core.policy import policy_from_env
+
         policy = policy_from_env()
 
         self.assertEqual(policy.prefer, "vendor")
@@ -307,6 +334,7 @@ class TestEnvironmentVariables(unittest.TestCase):
         os.environ["TE_FL_PREFER_VENDOR"] = "1"
 
         from transformer_engine.plugin.core.policy import policy_from_env
+
         policy = policy_from_env()
 
         self.assertEqual(policy.prefer, "reference")  # TE_FL_PREFER wins
@@ -317,6 +345,7 @@ class TestEnvironmentVariables(unittest.TestCase):
         os.environ["TE_FL_STRICT"] = "1"
 
         from transformer_engine.plugin.core.policy import policy_from_env
+
         policy = policy_from_env()
 
         self.assertTrue(policy.strict)
@@ -327,6 +356,7 @@ class TestEnvironmentVariables(unittest.TestCase):
         os.environ["TE_FL_DENY_VENDORS"] = "rocm,dcu,intel"
 
         from transformer_engine.plugin.core.policy import policy_from_env
+
         policy = policy_from_env()
 
         self.assertEqual(policy.deny_vendors, frozenset({"rocm", "dcu", "intel"}))
@@ -337,6 +367,7 @@ class TestEnvironmentVariables(unittest.TestCase):
         os.environ["TE_FL_ALLOW_VENDORS"] = "cuda,rocm"
 
         from transformer_engine.plugin.core.policy import policy_from_env
+
         policy = policy_from_env()
 
         self.assertEqual(policy.allow_vendors, frozenset({"cuda", "rocm"}))
@@ -347,6 +378,7 @@ class TestEnvironmentVariables(unittest.TestCase):
         os.environ["TE_FL_PER_OP"] = "layernorm_fwd=vendor|flagos;rmsnorm_fwd=flagos|reference"
 
         from transformer_engine.plugin.core.policy import policy_from_env
+
         policy = policy_from_env()
 
         self.assertEqual(policy.get_per_op_order("layernorm_fwd"), ["vendor", "flagos"])
@@ -360,11 +392,13 @@ class TestContextManagers(unittest.TestCase):
     def setUp(self):
         """Reset policy before each test"""
         from transformer_engine.plugin.core.policy import reset_global_policy
+
         reset_global_policy()
 
     def tearDown(self):
         """Clean up after test"""
         from transformer_engine.plugin.core.policy import reset_global_policy
+
         reset_global_policy()
 
     def test_policy_context(self):

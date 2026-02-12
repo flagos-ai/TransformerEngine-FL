@@ -9,6 +9,7 @@ import torch
 
 from ....ops import *
 
+
 def _load_iluvatar_libs():
     import ctypes
     import os
@@ -49,7 +50,7 @@ def _load_iluvatar_libs():
 
         try:
             result = subprocess.check_output(f"ldconfig -p | grep 'lib{name}{ext}'", shell=True)
-            for line in result.decode().split('\n'):
+            for line in result.decode().split("\n"):
                 if f"lib{name}" in line and "=>" in line:
                     so_path = line.split(">")[1].strip()
                     if so_path:
@@ -79,7 +80,9 @@ def _load_iluvatar_libs():
         print(f"[ILUVATAR] Failed to load ILUVATAR libs: {e}")
         return False
 
+
 _iluvatar_libs_loaded = False
+
 
 def _ensure_iluvatar_libs():
     global _iluvatar_libs_loaded
@@ -87,22 +90,28 @@ def _ensure_iluvatar_libs():
         _iluvatar_libs_loaded = _load_iluvatar_libs()
     return _iluvatar_libs_loaded
 
+
 def _check_iluvatar_available() -> bool:
     if not torch.cuda.is_available():
         return False
     import os
+
     try:
         if not _ensure_iluvatar_libs():
-           return False
+            return False
         import transformer_engine_iluvatar
+
         return True
     except (ImportError, OSError) as e:
         print(f"[ILUVATAR] Import failed: {e}")
         return False
 
+
 def _get_tex():
     import transformer_engine_iluvatar.pytorch.ixte_torch
+
     return transformer_engine_iluvatar.pytorch.ixte_torch
+
 
 class IluvatarBackend(TEFLBackendBase):
     @staticmethod
@@ -123,6 +132,7 @@ class IluvatarBackend(TEFLBackendBase):
     def get_attention_backend(self, attention_params=None):
         from packaging.version import Version as PkgVersion
         from ....logger_manager import get_logger
+
         logger = get_logger()
 
         # Read environment variables to determine which backends to enable
@@ -152,7 +162,7 @@ class IluvatarBackend(TEFLBackendBase):
             available_backends,
         )
 
-##### transformer_engine/pytorch/csrc/extensions/pybind.cpp #####
+    ##### transformer_engine/pytorch/csrc/extensions/pybind.cpp #####
     def quantize(
         self,
         tensor: torch.Tensor,
@@ -206,49 +216,78 @@ class IluvatarBackend(TEFLBackendBase):
         beta: Optional[float] = None,
     ) -> List[Any]:
         tex = self._get_tex()
-        
+
         bias_type = tex.DType(int(bias_type)) if bias_type is not None else None
         comm_type = tex.CommOverlapType(int(comm_type)) if comm_type is not None else None
         output_dtype = tex.DType(int(output_dtype)) if output_dtype is not None else None
         return tex.generic_gemm(
-            A, transA, B, transB, D, quantizer, output_dtype,
-            bias, bias_type, gelu, gelu_in, grad, workspace, workspace_size,
-            accumulate, use_split_accumulator, comm_overlap, comm_type,
-            extra_output, bulk_overlap, alpha, beta
+            A,
+            transA,
+            B,
+            transB,
+            D,
+            quantizer,
+            output_dtype,
+            bias,
+            bias_type,
+            gelu,
+            gelu_in,
+            grad,
+            workspace,
+            workspace_size,
+            accumulate,
+            use_split_accumulator,
+            comm_overlap,
+            comm_type,
+            extra_output,
+            bulk_overlap,
+            alpha,
+            beta,
         )
+
     # GELU and variants #
     def gelu(self, input: torch.Tensor, quantizer: Any) -> Any:
         tex = self._get_tex()
         return tex.gelu(input, quantizer)
+
     def geglu(self, input: torch.Tensor, quantizer: Any) -> Any:
         tex = self._get_tex()
         return tex.geglu(input, quantizer)
+
     def qgelu(self, input: torch.Tensor, quantizer: Any) -> Any:
         tex = self._get_tex()
         return tex.qgelu(input, quantizer)
+
     def qgeglu(self, input: torch.Tensor, quantizer: Any) -> Any:
         tex = self._get_tex()
         return tex.qgeglu(input, quantizer)
+
     # ReLU and variants #
     def relu(self, input: torch.Tensor, quantizer: Any) -> Any:
         tex = self._get_tex()
         return tex.relu(input, quantizer)
+
     def reglu(self, input: torch.Tensor, quantizer: Any) -> Any:
         tex = self._get_tex()
         return tex.reglu(input, quantizer)
+
     def srelu(self, input: torch.Tensor, quantizer: Any) -> Any:
         tex = self._get_tex()
         return tex.srelu(input, quantizer)
+
     def sreglu(self, input: torch.Tensor, quantizer: Any) -> Any:
         tex = self._get_tex()
         return tex.sreglu(input, quantizer)
+
     # SwiGLU and variants #
     def silu(self, input: torch.Tensor, quantizer: Any) -> Any:
         tex = self._get_tex()
         return tex.silu(input, quantizer)
+
     def swiglu(self, input: torch.Tensor, quantizer: Any) -> Any:
         tex = self._get_tex()
         return tex.swiglu(input, quantizer)
+
     def clamped_swiglu(
         self,
         input: torch.Tensor,
@@ -258,39 +297,50 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> Any:
         tex = self._get_tex()
         return tex.clamped_swiglu(input, quantizer, limit, alpha)
+
     # Backward of GELU and variants #
     def dgelu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> Any:
         tex = self._get_tex()
         return tex.dgelu(grad, fwd_input, quantizer)
+
     def dgeglu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> Any:
         tex = self._get_tex()
         return tex.dgeglu(grad, fwd_input, quantizer)
+
     def dqgelu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> Any:
         tex = self._get_tex()
         return tex.dqgelu(grad, fwd_input, quantizer)
+
     def dqgeglu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> Any:
         tex = self._get_tex()
         return tex.dqgeglu(grad, fwd_input, quantizer)
+
     # Backward of ReLU and variants #
     def drelu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> Any:
         tex = self._get_tex()
         return tex.drelu(grad, fwd_input, quantizer)
+
     def dreglu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> Any:
         tex = self._get_tex()
         return tex.dreglu(grad, fwd_input, quantizer)
+
     def dsrelu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> Any:
         tex = self._get_tex()
         return tex.dsrelu(grad, fwd_input, quantizer)
+
     def dsreglu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> Any:
         tex = self._get_tex()
         return tex.dsreglu(grad, fwd_input, quantizer)
+
     # Backward of SiLU and variants #
     def dsilu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> Any:
         tex = self._get_tex()
         return tex.dsilu(grad, fwd_input, quantizer)
+
     def dswiglu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> Any:
         tex = self._get_tex()
         return tex.dswiglu(grad, fwd_input, quantizer)
+
     def clamped_dswiglu(
         self,
         grad: torch.Tensor,
@@ -301,23 +351,33 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> Any:
         tex = self._get_tex()
         return tex.clamped_dswiglu(grad, fwd_input, quantizer, limit, alpha)
+
     # DBias + DAct fusions #
     def dbias_dgelu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> List[Any]:
         tex = self._get_tex()
         return tex.dbias_dgelu(grad, fwd_input, quantizer)
+
     def dbias_dsilu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> List[Any]:
         tex = self._get_tex()
         return tex.dbias_dsilu(grad, fwd_input, quantizer)
+
     def dbias_drelu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> List[Any]:
         tex = self._get_tex()
         return tex.dbias_drelu(grad, fwd_input, quantizer)
-    def dbias_dqgelu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> List[Any]:
+
+    def dbias_dqgelu(
+        self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any
+    ) -> List[Any]:
         tex = self._get_tex()
         return tex.dbias_dqgelu(grad, fwd_input, quantizer)
-    def dbias_dsrelu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> List[Any]:
+
+    def dbias_dsrelu(
+        self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any
+    ) -> List[Any]:
         tex = self._get_tex()
         return tex.dbias_dsrelu(grad, fwd_input, quantizer)
-    # Permutation functions                                                                                                                                                                                                                                                                                             
+
+    # Permutation functions
     def moe_permute_fwd(
         self,
         input: torch.Tensor,
@@ -329,7 +389,10 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> Tuple[torch.Tensor, torch.Tensor, List[torch.Tensor]]:
         tex = self._get_tex()
         dtype = tex.DType(int(dtype)) if dtype is not None else None
-        return tex.moe_permute_fwd(input, dtype,indices,num_out_tokens,workspace,max_expanded_token_num)
+        return tex.moe_permute_fwd(
+            input, dtype, indices, num_out_tokens, workspace, max_expanded_token_num
+        )
+
     def moe_permute_bwd(
         self,
         input: torch.Tensor,
@@ -341,7 +404,8 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> torch.Tensor:
         tex = self._get_tex()
         dtype = tex.DType(int(dtype)) if dtype is not None else None
-        return tex.moe_permute_bwd(input,dtype,row_id_map,prob,num_tokens,topK)
+        return tex.moe_permute_bwd(input, dtype, row_id_map, prob, num_tokens, topK)
+
     def moe_unpermute_fwd(
         self,
         input: torch.Tensor,
@@ -353,7 +417,8 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> torch.Tensor:
         tex = self._get_tex()
         dtype = tex.DType(int(dtype)) if dtype is not None else None
-        return tex.moe_unpermute_fwd(input,dtype,row_id_map,prob,num_tokens,topK)
+        return tex.moe_unpermute_fwd(input, dtype, row_id_map, prob, num_tokens, topK)
+
     def moe_unpermute_bwd(
         self,
         input_bwd: torch.Tensor,
@@ -364,7 +429,8 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         tex = self._get_tex()
         dtype = tex.DType(int(dtype)) if dtype is not None else None
-        return tex.moe_unpermute_bwd(input_bwd,input_fwd,dtype,row_id_map,prob)
+        return tex.moe_unpermute_bwd(input_bwd, input_fwd, dtype, row_id_map, prob)
+
     # Softmax functions
     def scaled_softmax_forward(
         self,
@@ -373,6 +439,7 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> torch.Tensor:
         tex = self._get_tex()
         return tex.scaled_softmax_forward(input, scale)
+
     def scaled_softmax_backward(
         self,
         output_grad_: torch.Tensor,
@@ -381,6 +448,7 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> torch.Tensor:
         tex = self._get_tex()
         return tex.scaled_softmax_backward(output_grad_, softmax_results_, scale_factor)
+
     def scaled_masked_softmax_forward(
         self,
         input: torch.Tensor,
@@ -389,6 +457,7 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> torch.Tensor:
         tex = self._get_tex()
         return tex.scaled_masked_softmax_forward(input, mask, scale_factor)
+
     def scaled_masked_softmax_backward(
         self,
         output_grad_: torch.Tensor,
@@ -397,6 +466,7 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> torch.Tensor:
         tex = self._get_tex()
         return tex.scaled_masked_softmax_backward(output_grad_, softmax_results_, scale_factor)
+
     def scaled_upper_triang_masked_softmax_forward(
         self,
         input: torch.Tensor,
@@ -404,6 +474,7 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> torch.Tensor:
         tex = self._get_tex()
         return tex.scaled_upper_triang_masked_softmax_forward(input, scale_factor)
+
     def scaled_upper_triang_masked_softmax_backward(
         self,
         output_grads_: torch.Tensor,
@@ -414,6 +485,7 @@ class IluvatarBackend(TEFLBackendBase):
         return tex.scaled_upper_triang_masked_softmax_backward(
             output_grads_, softmax_results_, scale_factor
         )
+
     def scaled_aligned_causal_masked_softmax_forward(
         self,
         input: torch.Tensor,
@@ -421,6 +493,7 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> torch.Tensor:
         tex = self._get_tex()
         return tex.scaled_aligned_causal_masked_softmax_forward(input, scale_factor)
+
     def scaled_aligned_causal_masked_softmax_backward(
         self,
         output_grad_: torch.Tensor,
@@ -431,6 +504,7 @@ class IluvatarBackend(TEFLBackendBase):
         return tex.scaled_aligned_causal_masked_softmax_backward(
             output_grad_, softmax_results_, scale_factor
         )
+
     # Other granular functions
     def layernorm_fwd(
         self,
@@ -449,6 +523,7 @@ class IluvatarBackend(TEFLBackendBase):
         return tex.layernorm_fwd(
             input, weight, bias, eps, ln_out, quantizer, otype, sm_margin, zero_centered_gamma
         )
+
     def layernorm_bwd(
         self,
         dz: torch.Tensor,
@@ -460,9 +535,8 @@ class IluvatarBackend(TEFLBackendBase):
         zero_centered_gamma: bool,
     ) -> List[Any]:
         tex = self._get_tex()
-        return tex.layernorm_bwd(
-            dz, x, mu, rsigma, gamma, sm_margin, zero_centered_gamma
-        )
+        return tex.layernorm_bwd(dz, x, mu, rsigma, gamma, sm_margin, zero_centered_gamma)
+
     def rmsnorm_fwd(
         self,
         input: Any,
@@ -479,6 +553,7 @@ class IluvatarBackend(TEFLBackendBase):
         return tex.rmsnorm_fwd(
             input, weight, eps, ln_out, quantizer, otype, sm_margin, zero_centered_gamma
         )
+
     def rmsnorm_bwd(
         self,
         dz: torch.Tensor,
@@ -490,6 +565,7 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> List[Any]:
         tex = self._get_tex()
         return tex.rmsnorm_bwd(dz, x, rsigma, gamma, sm_margin, zero_centered_gamma)
+
     def rmsnorm_bwd_add(
         self,
         dz: torch.Tensor,
@@ -510,6 +586,7 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> List[Any]:
         tex = self._get_tex()
         return tex.multi_tensor_quantize(tensor_list, quantizer_list)
+
     def split_quantize(
         self,
         tensor: torch.Tensor,
@@ -518,6 +595,7 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> List[Any]:
         tex = self._get_tex()
         return tex.split_quantize(tensor, split_sections, quantizer_list)
+
     def te_general_grouped_gemm(
         self,
         A: List[Any],
@@ -542,10 +620,25 @@ class IluvatarBackend(TEFLBackendBase):
         D_type = tex.DType(int(D_type)) if D_type is not None else None
         bias_type = tex.DType(int(bias_type)) if bias_type is not None else None
         return tex.te_general_grouped_gemm(
-            A, transa, B, transb, D, D_type, m_splits, bias, bias_type,
-            single_output, pre_gelu_out, grad, workspace, workspaceSizes,
-            accumulate, use_split_accumulator, math_sm_count
+            A,
+            transa,
+            B,
+            transb,
+            D,
+            D_type,
+            m_splits,
+            bias,
+            bias_type,
+            single_output,
+            pre_gelu_out,
+            grad,
+            workspace,
+            workspaceSizes,
+            accumulate,
+            use_split_accumulator,
+            math_sm_count,
         )
+
     def fp8_transpose(
         self,
         input: torch.Tensor,
@@ -555,6 +648,7 @@ class IluvatarBackend(TEFLBackendBase):
         tex = self._get_tex()
         dtype = tex.DType(int(dtype)) if dtype is not None else None
         return tex.fp8_transpose(input, dtype, out)
+
     def swap_first_dims(
         self,
         tensor: torch.Tensor,
@@ -562,6 +656,7 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> torch.Tensor:
         tex = self._get_tex()
         return tex.swap_first_dims(tensor, out)
+
     def get_fused_attn_backend(
         self,
         is_training: bool,
@@ -588,14 +683,31 @@ class IluvatarBackend(TEFLBackendBase):
         kv_dtype = tex.DType(int(kv_dtype)) if kv_dtype is not None else None
         qkv_layout = tex.NVTE_QKV_Layout(int(qkv_layout)) if qkv_layout is not None else None
         bias_type = tex.NVTE_Bias_Type(int(bias_type)) if bias_type is not None else None
-        attn_mask_type = tex.NVTE_Mask_Type(int(attn_mask_type)) if attn_mask_type is not None else None
-        softmax_type = tex.NVTE_Softmax_Type(int(softmax_type)) if softmax_type is not None else None
+        attn_mask_type = (
+            tex.NVTE_Mask_Type(int(attn_mask_type)) if attn_mask_type is not None else None
+        )
+        softmax_type = (
+            tex.NVTE_Softmax_Type(int(softmax_type)) if softmax_type is not None else None
+        )
 
         result = tex.get_fused_attn_backend(
-            is_training, q_dtype, kv_dtype, qkv_layout, bias_type,
-            attn_mask_type, softmax_type, p_dropout, num_attn_heads,
-            num_gqa_groups, max_seqlen_q, max_seqlen_kv, head_dim_qk,
-            head_dim_v, window_size_left, window_size_right, return_max_logit
+            is_training,
+            q_dtype,
+            kv_dtype,
+            qkv_layout,
+            bias_type,
+            attn_mask_type,
+            softmax_type,
+            p_dropout,
+            num_attn_heads,
+            num_gqa_groups,
+            max_seqlen_q,
+            max_seqlen_kv,
+            head_dim_qk,
+            head_dim_v,
+            window_size_left,
+            window_size_right,
+            return_max_logit,
         )
         return NVTE_Fused_Attn_Backend(result)
 
@@ -606,6 +718,7 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> None:
         tex = self._get_tex()
         return tex.compute_amax(input, amax)
+
     def fused_amax_and_scale_update_after_reduction(
         self,
         amax_reduction_buffer: torch.Tensor,
@@ -618,9 +731,9 @@ class IluvatarBackend(TEFLBackendBase):
         tex = self._get_tex()
         fp8_dtype = tex.DType(int(fp8_dtype)) if fp8_dtype is not None else None
         return tex.fused_amax_and_scale_update_after_reduction(
-            amax_reduction_buffer, amax_histories, scales,
-            amax_compute_algo, fp8_dtype, margin
+            amax_reduction_buffer, amax_histories, scales, amax_compute_algo, fp8_dtype, margin
         )
+
     def fp8_block_scaling_compute_partial_amax(
         self,
         tensor: torch.Tensor,
@@ -634,6 +747,7 @@ class IluvatarBackend(TEFLBackendBase):
         return tex.fp8_block_scaling_compute_partial_amax(
             tensor, amax, h, w, start_offset, block_len
         )
+
     def fp8_block_scaling_partial_cast(
         self,
         inp: torch.Tensor,
@@ -650,6 +764,7 @@ class IluvatarBackend(TEFLBackendBase):
         return tex.fp8_block_scaling_partial_cast(
             inp, out, scale, h, w, start_offset, block_len, out_dtype
         )
+
     def fused_multi_row_padding(
         self,
         input: torch.Tensor,
@@ -658,9 +773,8 @@ class IluvatarBackend(TEFLBackendBase):
         padded_input_row_list: List[int],
     ) -> None:
         tex = self._get_tex()
-        return tex.fused_multi_row_padding(
-            input, output, input_row_list, padded_input_row_list
-        )
+        return tex.fused_multi_row_padding(input, output, input_row_list, padded_input_row_list)
+
     def fused_multi_row_unpadding(
         self,
         input: torch.Tensor,
@@ -669,9 +783,7 @@ class IluvatarBackend(TEFLBackendBase):
         unpadded_input_row_list: List[int],
     ) -> None:
         tex = self._get_tex()
-        return tex.fused_multi_row_unpadding(
-            input, output, input_row_list, unpadded_input_row_list
-        )
+        return tex.fused_multi_row_unpadding(input, output, input_row_list, unpadded_input_row_list)
 
     # attention kernels
     def fa_prepare_fwd(
@@ -680,6 +792,7 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> torch.Tensor:
         tex = self._get_tex()
         return tex.fa_prepare_fwd(qkvi)
+
     def fa_prepare_bwd(
         self,
         q: torch.Tensor,
@@ -688,6 +801,7 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> torch.Tensor:
         tex = self._get_tex()
         return tex.fa_prepare_bwd(q, k, v)
+
     def fused_attn_fwd(
         self,
         max_seqlen_q: int,
@@ -723,8 +837,12 @@ class IluvatarBackend(TEFLBackendBase):
 
         qkv_layout = tex.NVTE_QKV_Layout(int(qkv_layout)) if qkv_layout is not None else None
         bias_type = tex.NVTE_Bias_Type(int(bias_type)) if bias_type is not None else None
-        attn_mask_type = tex.NVTE_Mask_Type(int(attn_mask_type)) if attn_mask_type is not None else None
-        softmax_type = tex.NVTE_Softmax_Type(int(softmax_type)) if softmax_type is not None else None
+        attn_mask_type = (
+            tex.NVTE_Mask_Type(int(attn_mask_type)) if attn_mask_type is not None else None
+        )
+        softmax_type = (
+            tex.NVTE_Softmax_Type(int(softmax_type)) if softmax_type is not None else None
+        )
 
         return tex.fused_attn_fwd(
             max_seqlen_q,
@@ -754,8 +872,9 @@ class IluvatarBackend(TEFLBackendBase):
             SoftmaxOffset,
             rng_gen,
             rng_elts_per_thread,
-            return_max_logit
+            return_max_logit,
         )
+
     def fused_attn_bwd(
         self,
         max_seqlen_q: int,
@@ -789,8 +908,12 @@ class IluvatarBackend(TEFLBackendBase):
 
         qkv_layout = tex.NVTE_QKV_Layout(int(qkv_layout)) if qkv_layout is not None else None
         bias_type = tex.NVTE_Bias_Type(int(bias_type)) if bias_type is not None else None
-        attn_mask_type = tex.NVTE_Mask_Type(int(attn_mask_type)) if attn_mask_type is not None else None
-        softmax_type = tex.NVTE_Softmax_Type(int(softmax_type)) if softmax_type is not None else None
+        attn_mask_type = (
+            tex.NVTE_Mask_Type(int(attn_mask_type)) if attn_mask_type is not None else None
+        )
+        softmax_type = (
+            tex.NVTE_Softmax_Type(int(softmax_type)) if softmax_type is not None else None
+        )
         dqkv_type = tex.DType(int(dqkv_type)) if dqkv_type is not None else None
 
         return tex.fused_attn_bwd(
@@ -819,8 +942,9 @@ class IluvatarBackend(TEFLBackendBase):
             cu_seqlens_kv_padded,
             s_quantizer,
             dp_quantizer,
-            dqkv_quantizer
+            dqkv_quantizer,
         )
+
     def copy_to_kv_cache(
         self,
         new_k: torch.Tensor,
@@ -852,8 +976,9 @@ class IluvatarBackend(TEFLBackendBase):
             max_ctx_len,
             max_seq_len,
             max_pages_per_seq,
-            is_non_paged
+            is_non_paged,
         )
+
     def convert_thd_to_bshd(
         self,
         tensor: torch.Tensor,
@@ -863,6 +988,7 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> torch.Tensor:
         tex = self._get_tex()
         return tex.convert_thd_to_bshd(tensor, cu_seqlens, b, max_seq_len)
+
     def convert_bshd_to_thd(
         self,
         tensor: torch.Tensor,
@@ -887,9 +1013,9 @@ class IluvatarBackend(TEFLBackendBase):
         tex = self._get_tex()
         qkv_format = tex.NVTE_QKV_Format(int(qkv_format)) if qkv_format is not None else None
         return tex.fused_rope_forward(
-            input, freqs, start_positions, qkv_format,
-            interleaved, cu_seqlens, cp_size, cp_rank
+            input, freqs, start_positions, qkv_format, interleaved, cu_seqlens, cp_size, cp_rank
         )
+
     def fused_rope_backward(
         self,
         output_grads: torch.Tensor,
@@ -903,9 +1029,9 @@ class IluvatarBackend(TEFLBackendBase):
         tex = self._get_tex()
         qkv_format = tex.NVTE_QKV_Format(int(qkv_format)) if qkv_format is not None else None
         return tex.fused_rope_backward(
-            output_grads, freqs, qkv_format,
-            interleaved, cu_seqlens, cp_size, cp_rank
+            output_grads, freqs, qkv_format, interleaved, cu_seqlens, cp_size, cp_rank
         )
+
     def fused_qkv_rope_forward(
         self,
         qkv_input: torch.Tensor,
@@ -921,10 +1047,17 @@ class IluvatarBackend(TEFLBackendBase):
         tex = self._get_tex()
         qkv_format = tex.NVTE_QKV_Format(int(qkv_format)) if qkv_format is not None else None
         return tex.fused_qkv_rope_forward(
-            qkv_input, q_freqs, k_freqs, start_positions,
-            qkv_split_arg_list, qkv_format, interleaved,
-            cp_size, cp_rank
+            qkv_input,
+            q_freqs,
+            k_freqs,
+            start_positions,
+            qkv_split_arg_list,
+            qkv_format,
+            interleaved,
+            cp_size,
+            cp_rank,
         )
+
     def fused_qkv_rope_backward(
         self,
         q_grad_out: torch.Tensor,
@@ -941,9 +1074,16 @@ class IluvatarBackend(TEFLBackendBase):
         tex = self._get_tex()
         qkv_format = tex.NVTE_QKV_Format(int(qkv_format)) if qkv_format is not None else None
         return tex.fused_qkv_rope_backward(
-            q_grad_out, k_grad_out, v_grad_out,
-            q_freqs, k_freqs, qkv_split_arg_list,
-            qkv_format, interleaved, cp_size, cp_rank
+            q_grad_out,
+            k_grad_out,
+            v_grad_out,
+            q_freqs,
+            k_freqs,
+            qkv_split_arg_list,
+            qkv_format,
+            interleaved,
+            cp_size,
+            cp_rank,
         )
 
     # fused router
@@ -969,6 +1109,7 @@ class IluvatarBackend(TEFLBackendBase):
             score_function,
             expert_bias,
         )
+
     def fused_topk_with_score_function_bwd(
         self,
         num_tokens: int,
@@ -993,6 +1134,7 @@ class IluvatarBackend(TEFLBackendBase):
             scaling_factor,
             score_function,
         )
+
     def fused_score_for_moe_aux_loss_fwd(
         self,
         logits: torch.Tensor,
@@ -1005,6 +1147,7 @@ class IluvatarBackend(TEFLBackendBase):
             topk,
             score_function,
         )
+
     def fused_score_for_moe_aux_loss_bwd(
         self,
         num_tokens: int,
@@ -1023,6 +1166,7 @@ class IluvatarBackend(TEFLBackendBase):
             topk,
             score_function,
         )
+
     def fused_moe_aux_loss_fwd(
         self,
         probs: torch.Tensor,
@@ -1045,6 +1189,7 @@ class IluvatarBackend(TEFLBackendBase):
             topk,
             coeff,
         )
+
     def fused_moe_aux_loss_bwd(
         self,
         Const_buf: torch.Tensor,
@@ -1054,7 +1199,9 @@ class IluvatarBackend(TEFLBackendBase):
         grad_aux_loss: torch.Tensor,
     ) -> torch.Tensor:
         tex = self._get_tex()
-        return tex.fused_moe_aux_loss_bwd(Const_buf, tokens_per_expert, num_rows, num_cols, grad_aux_loss)
+        return tex.fused_moe_aux_loss_bwd(
+            Const_buf, tokens_per_expert, num_rows, num_cols, grad_aux_loss
+        )
 
     # Dropout
     def dropout_fwd(
@@ -1065,6 +1212,7 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         tex = self._get_tex()
         return tex.dropout_fwd(input, dropout_probability, out)
+
     def dropout_bwd(
         self,
         grad_output: torch.Tensor,
@@ -1079,9 +1227,11 @@ class IluvatarBackend(TEFLBackendBase):
     def get_cublasLt_version(self) -> int:
         tex = self._get_tex()
         return tex.get_cublasLt_version()
+
     def get_cudnn_version(self) -> int:
         tex = self._get_tex()
         return tex.get_cudnn_version()
+
     def get_num_cublas_streams(self) -> int:
         tex = self._get_tex()
         return tex.get_num_cublas_streams()
@@ -1095,6 +1245,7 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> torch.Tensor:
         tex = self._get_tex()
         return tex.thd_read_half_tensor(tensor, cu_seqlens, half_idx)
+
     def thd_second_half_lse_correction(
         self,
         lse: torch.Tensor,
@@ -1103,9 +1254,8 @@ class IluvatarBackend(TEFLBackendBase):
         lse_packed: bool,
     ) -> None:
         tex = self._get_tex()
-        return tex.thd_second_half_lse_correction(
-            lse, lse_per_step, cu_seqlens, lse_packed
-        )
+        return tex.thd_second_half_lse_correction(lse, lse_per_step, cu_seqlens, lse_packed)
+
     def thd_read_second_half_lse(
         self,
         lse: torch.Tensor,
@@ -1114,9 +1264,8 @@ class IluvatarBackend(TEFLBackendBase):
         second_half_lse_seqlen: int,
     ) -> torch.Tensor:
         tex = self._get_tex()
-        return tex.thd_read_second_half_lse(
-            lse, cu_seqlens, lse_packed, second_half_lse_seqlen
-        )
+        return tex.thd_read_second_half_lse(lse, cu_seqlens, lse_packed, second_half_lse_seqlen)
+
     def thd_out_correction(
         self,
         out: torch.Tensor,
@@ -1129,9 +1278,9 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> None:
         tex = self._get_tex()
         return tex.thd_out_correction(
-            out, out_per_step, lse, lse_per_step,
-            cu_seqlens, only_second_half, lse_packed
+            out, out_per_step, lse, lse_per_step, cu_seqlens, only_second_half, lse_packed
         )
+
     def thd_grad_correction(
         self,
         grad: torch.Tensor,
@@ -1141,10 +1290,8 @@ class IluvatarBackend(TEFLBackendBase):
         second_half: str,
     ) -> None:
         tex = self._get_tex()
-        return tex.thd_grad_correction(
-            grad, grad_per_step, cu_seqlens,
-            first_half, second_half
-        )
+        return tex.thd_grad_correction(grad, grad_per_step, cu_seqlens, first_half, second_half)
+
     def thd_get_partitioned_indices(
         self,
         cu_seqlens: torch.Tensor,
@@ -1153,9 +1300,7 @@ class IluvatarBackend(TEFLBackendBase):
         rank: int,
     ) -> torch.Tensor:
         tex = self._get_tex()
-        return tex.thd_get_partitioned_indices(
-            cu_seqlens, total_tokens, world_size, rank
-        )
+        return tex.thd_get_partitioned_indices(cu_seqlens, total_tokens, world_size, rank)
 
     # nvshmem functions
     def init_nvshmem_backend(
@@ -1164,6 +1309,7 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> None:
         tex = self._get_tex()
         return tex.init_nvshmem_backend(process_group)
+
     def create_nvshmem_tensor(
         self,
         shape: List[int],
@@ -1171,6 +1317,7 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> torch.Tensor:
         tex = self._get_tex()
         return tex.create_nvshmem_tensor(shape, dtype)
+
     def nvshmem_send_on_current_stream(
         self,
         src: torch.Tensor,
@@ -1180,6 +1327,7 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> None:
         tex = self._get_tex()
         return tex.nvshmem_send_on_current_stream(src, dst, peer, signal)
+
     def nvshmem_wait_on_current_stream(
         self,
         signal: torch.Tensor,
@@ -1187,6 +1335,7 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> None:
         tex = self._get_tex()
         return tex.nvshmem_wait_on_current_stream(signal, wait_kind)
+
     def nvshmem_finalize(self) -> None:
         tex = self._get_tex()
         return tex.nvshmem_finalize()
@@ -1201,6 +1350,7 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> None:
         tex = self._get_tex()
         return tex.multi_tensor_scale(chunk_size, noop_flag, tensor_lists, scale)
+
     def multi_tensor_l2norm(
         self,
         chunk_size: int,
@@ -1210,6 +1360,7 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         tex = self._get_tex()
         return tex.multi_tensor_l2norm(chunk_size, noop_flag, tensor_lists, per_tensor)
+
     def multi_tensor_unscale_l2norm(
         self,
         chunk_size: int,
@@ -1222,6 +1373,7 @@ class IluvatarBackend(TEFLBackendBase):
         return tex.multi_tensor_unscale_l2norm(
             chunk_size, noop_flag, tensor_lists, inv_scale, per_tensor
         )
+
     def multi_tensor_adam(
         self,
         chunk_size: int,
@@ -1238,10 +1390,19 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> None:
         tex = self._get_tex()
         return tex.multi_tensor_adam(
-            chunk_size, noop_flag, tensor_lists,
-            lr, beta1, beta2, epsilon,
-            step, mode, bias_correction, weight_decay
+            chunk_size,
+            noop_flag,
+            tensor_lists,
+            lr,
+            beta1,
+            beta2,
+            epsilon,
+            step,
+            mode,
+            bias_correction,
+            weight_decay,
         )
+
     def multi_tensor_adam_param_remainder(
         self,
         chunk_size: int,
@@ -1258,10 +1419,19 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> None:
         tex = self._get_tex()
         return tex.multi_tensor_adam_param_remainder(
-            chunk_size, noop_flag, tensor_lists,
-            lr, beta1, beta2, epsilon,
-            step, mode, bias_correction, weight_decay
+            chunk_size,
+            noop_flag,
+            tensor_lists,
+            lr,
+            beta1,
+            beta2,
+            epsilon,
+            step,
+            mode,
+            bias_correction,
+            weight_decay,
         )
+
     def multi_tensor_adam_fp8(
         self,
         chunk_size: int,
@@ -1280,11 +1450,20 @@ class IluvatarBackend(TEFLBackendBase):
         tex = self._get_tex()
         fp8_dtype = tex.DType(int(fp8_dtype)) if fp8_dtype is not None else None
         return tex.multi_tensor_adam_fp8(
-            chunk_size, noop_flag, tensor_lists,
-            lr, beta1, beta2, epsilon,
-            step, mode, bias_correction, weight_decay,
-            fp8_dtype
+            chunk_size,
+            noop_flag,
+            tensor_lists,
+            lr,
+            beta1,
+            beta2,
+            epsilon,
+            step,
+            mode,
+            bias_correction,
+            weight_decay,
+            fp8_dtype,
         )
+
     def multi_tensor_adam_capturable(
         self,
         chunk_size: int,
@@ -1302,11 +1481,20 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> None:
         tex = self._get_tex()
         return tex.multi_tensor_adam_capturable(
-            chunk_size, noop_flag, tensor_lists,
-            lr, beta1, beta2, epsilon,
-            step, mode, bias_correction, weight_decay,
-            inv_scale
+            chunk_size,
+            noop_flag,
+            tensor_lists,
+            lr,
+            beta1,
+            beta2,
+            epsilon,
+            step,
+            mode,
+            bias_correction,
+            weight_decay,
+            inv_scale,
         )
+
     def multi_tensor_adam_capturable_master(
         self,
         chunk_size: int,
@@ -1324,11 +1512,20 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> None:
         tex = self._get_tex()
         return tex.multi_tensor_adam_capturable_master(
-            chunk_size, noop_flag, tensor_lists,
-            lr, beta1, beta2, epsilon,
-            step, mode, bias_correction, weight_decay,
-            inv_scale
+            chunk_size,
+            noop_flag,
+            tensor_lists,
+            lr,
+            beta1,
+            beta2,
+            epsilon,
+            step,
+            mode,
+            bias_correction,
+            weight_decay,
+            inv_scale,
         )
+
     def multi_tensor_sgd(
         self,
         chunk_size: int,
@@ -1345,11 +1542,19 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> None:
         tex = self._get_tex()
         return tex.multi_tensor_sgd(
-            chunk_size, noop_flag, tensor_lists,
-            wd, momentum, dampening,
-            lr, nesterov, first_run,
-            wd_after_momentum, scale
+            chunk_size,
+            noop_flag,
+            tensor_lists,
+            wd,
+            momentum,
+            dampening,
+            lr,
+            nesterov,
+            first_run,
+            wd_after_momentum,
+            scale,
         )
+
     def multi_tensor_compute_scale_and_scale_inv(
         self,
         chunk_size: int,
@@ -1361,8 +1566,7 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> None:
         tex = self._get_tex()
         return tex.multi_tensor_compute_scale_and_scale_inv(
-            chunk_size, noop_flag, tensor_lists,
-            max_fp8, force_pow_2_scales, epsilon
+            chunk_size, noop_flag, tensor_lists, max_fp8, force_pow_2_scales, epsilon
         )
 
     # Comm+GEMM Overlap
@@ -1373,14 +1577,18 @@ class IluvatarBackend(TEFLBackendBase):
         recv_stream: Any,
     ) -> Any:
         tex = self._get_tex()
-        return tex.bulk_overlap_ag_with_external_gemm(allgather_communicator, send_stream, recv_stream)
+        return tex.bulk_overlap_ag_with_external_gemm(
+            allgather_communicator, send_stream, recv_stream
+        )
 
-############## class func #################################
+    ############## class func #################################
     def get_flash_attention_class(self):
         raise NotImplementedError("get_flash_attention_class - not implemented in iluvatar backend")
+
     def create_fp8_tensor_meta(self) -> FP8TensorMeta:
         tex = self._get_tex()
         return tex.FP8TensorMeta()
+
     def create_comm_overlap_helper(
         self,
         world_group: Optional[Any] = None,
@@ -1388,6 +1596,7 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> "CommOverlapHelper":
         tex = self._get_tex()
         return tex.CommOverlapHelper(world_group, intra_node_group)
+
     def create_comm_overlap(
         self,
         buffer_shape: List[int],
@@ -1406,11 +1615,21 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> "CommOverlap":
         tex = self._get_tex()
         return tex.CommOverlap(
-            buffer_shape, buffer_dtype, helper, tp_size,
-            num_splits, num_max_streams, comm_cga_size,
-            gemm_priority, comm_priority, num_comm_sm,
-            set_sm_margin, atomic_gemm, rs_overlap_first_gemm
+            buffer_shape,
+            buffer_dtype,
+            helper,
+            tp_size,
+            num_splits,
+            num_max_streams,
+            comm_cga_size,
+            gemm_priority,
+            comm_priority,
+            num_comm_sm,
+            set_sm_margin,
+            atomic_gemm,
+            rs_overlap_first_gemm,
         )
+
     def create_comm_overlap_p2p(
         self,
         buffer_shape: List[int],
@@ -1430,7 +1649,18 @@ class IluvatarBackend(TEFLBackendBase):
     ) -> "CommOverlapP2P":
         tex = self._get_tex()
         return tex.CommOverlapP2P(
-            buffer_shape, buffer_dtype, helper, tp_size, comm_type,
-            num_max_streams, comm_cga_size, gemm_priority, comm_priority,
-            num_comm_sm, set_sm_margin, atomic_gemm, use_ce, aggregate
+            buffer_shape,
+            buffer_dtype,
+            helper,
+            tp_size,
+            comm_type,
+            num_max_streams,
+            comm_cga_size,
+            gemm_priority,
+            comm_priority,
+            num_comm_sm,
+            set_sm_margin,
+            atomic_gemm,
+            use_ce,
+            aggregate,
         )

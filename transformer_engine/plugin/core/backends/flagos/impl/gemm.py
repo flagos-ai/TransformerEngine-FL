@@ -22,12 +22,14 @@ _DTYPE_TO_TORCH = {
     8: torch.float8_e5m2,
 }
 
+
 def validate_gemm_scale(scale: Optional[float], required: bool) -> float:
     if required:
         return scale if scale is not None else 1.0
     if scale not in (0.0, None):
         raise ValueError("scale must be zero")
     return 0.0
+
 
 def _convert_dtype(dtype: Union[int, torch.dtype, None]) -> Optional[torch.dtype]:
     if dtype is None:
@@ -36,9 +38,10 @@ def _convert_dtype(dtype: Union[int, torch.dtype, None]) -> Optional[torch.dtype
         return dtype
     if isinstance(dtype, int):
         return _DTYPE_TO_TORCH.get(dtype, None)
-    if hasattr(dtype, 'value'):
+    if hasattr(dtype, "value"):
         return _DTYPE_TO_TORCH.get(dtype.value, None)
     return None
+
 
 def generic_gemm_fl(
     A: torch.Tensor,

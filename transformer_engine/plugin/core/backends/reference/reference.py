@@ -9,25 +9,51 @@ from ...ops import *
 
 from .impl import (
     general_gemm_torch,
-    rmsnorm_fwd_torch, rmsnorm_bwd_torch,
-    layernorm_fwd_torch, layernorm_bwd_torch,
-    gelu_torch, geglu_torch, qgelu_torch, qgeglu_torch,
-    relu_torch, reglu_torch, srelu_torch, sreglu_torch,
-    silu_torch, swiglu_torch, clamped_swiglu_torch,
-    dgelu_torch, dgeglu_torch, dqgelu_torch, dqgeglu_torch,
-    drelu_torch, dreglu_torch, dsrelu_torch, dsreglu_torch,
-    dsilu_torch, dswiglu_torch, clamped_dswiglu_torch,
-    dbias_dgelu_torch, dbias_dsilu_torch, dbias_drelu_torch,
-    dbias_dqgelu_torch, dbias_dsrelu_torch,
-    scaled_softmax_forward_torch, scaled_softmax_backward_torch,
-    scaled_masked_softmax_forward_torch, scaled_masked_softmax_backward_torch,
+    rmsnorm_fwd_torch,
+    rmsnorm_bwd_torch,
+    layernorm_fwd_torch,
+    layernorm_bwd_torch,
+    gelu_torch,
+    geglu_torch,
+    qgelu_torch,
+    qgeglu_torch,
+    relu_torch,
+    reglu_torch,
+    srelu_torch,
+    sreglu_torch,
+    silu_torch,
+    swiglu_torch,
+    clamped_swiglu_torch,
+    dgelu_torch,
+    dgeglu_torch,
+    dqgelu_torch,
+    dqgeglu_torch,
+    drelu_torch,
+    dreglu_torch,
+    dsrelu_torch,
+    dsreglu_torch,
+    dsilu_torch,
+    dswiglu_torch,
+    clamped_dswiglu_torch,
+    dbias_dgelu_torch,
+    dbias_dsilu_torch,
+    dbias_drelu_torch,
+    dbias_dqgelu_torch,
+    dbias_dsrelu_torch,
+    scaled_softmax_forward_torch,
+    scaled_softmax_backward_torch,
+    scaled_masked_softmax_forward_torch,
+    scaled_masked_softmax_backward_torch,
     scaled_upper_triang_masked_softmax_forward_torch,
     scaled_upper_triang_masked_softmax_backward_torch,
     scaled_aligned_causal_masked_softmax_forward_torch,
     scaled_aligned_causal_masked_softmax_backward_torch,
-    dropout_fwd_torch, dropout_bwd_torch,
-    multi_tensor_scale_torch, multi_tensor_l2norm_torch,
-    multi_tensor_adam_torch, multi_tensor_adam_param_remainder_torch,
+    dropout_fwd_torch,
+    dropout_bwd_torch,
+    multi_tensor_scale_torch,
+    multi_tensor_l2norm_torch,
+    multi_tensor_adam_torch,
+    multi_tensor_adam_param_remainder_torch,
     multi_tensor_sgd_torch,
 )
 
@@ -43,6 +69,7 @@ class ReferenceBackend(TEFLBackendBase):
     def get_attention_backend(self, _attention_params=None):
         from packaging.version import Version as PkgVersion
         from ...logger_manager import get_logger
+
         logger = get_logger()
 
         # Read environment variables to determine which backends to enable
@@ -98,10 +125,28 @@ class ReferenceBackend(TEFLBackendBase):
         beta: Optional[float] = None,
     ) -> List[Any]:
         return general_gemm_torch(
-            A, transA, B, transB, D, quantizer, output_dtype,
-            bias, bias_type, gelu, gelu_in, grad, workspace, workspace_size,
-            accumulate, use_split_accumulator, comm_overlap, comm_type,
-            extra_output, bulk_overlap, alpha, beta
+            A,
+            transA,
+            B,
+            transB,
+            D,
+            quantizer,
+            output_dtype,
+            bias,
+            bias_type,
+            gelu,
+            gelu_in,
+            grad,
+            workspace,
+            workspace_size,
+            accumulate,
+            use_split_accumulator,
+            comm_overlap,
+            comm_type,
+            extra_output,
+            bulk_overlap,
+            alpha,
+            beta,
         )
 
     # GELU and variants
@@ -361,7 +406,9 @@ class ReferenceBackend(TEFLBackendBase):
         softmax_results_: torch.Tensor,
         scale_factor: float,
     ) -> torch.Tensor:
-        return scaled_upper_triang_masked_softmax_backward_torch(output_grads_, softmax_results_, scale_factor)
+        return scaled_upper_triang_masked_softmax_backward_torch(
+            output_grads_, softmax_results_, scale_factor
+        )
 
     def scaled_aligned_causal_masked_softmax_forward(
         self,
@@ -376,7 +423,9 @@ class ReferenceBackend(TEFLBackendBase):
         softmax_results_: torch.Tensor,
         scale_factor: float,
     ) -> torch.Tensor:
-        return scaled_aligned_causal_masked_softmax_backward_torch(output_grad_, softmax_results_, scale_factor)
+        return scaled_aligned_causal_masked_softmax_backward_torch(
+            output_grad_, softmax_results_, scale_factor
+        )
 
     # Fused attention backend
     def get_fused_attn_backend(
@@ -457,7 +506,7 @@ class ReferenceBackend(TEFLBackendBase):
         per_tensor: Optional[bool] = False,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         if noop_flag.item() != 0:
-            device = tensor_lists[0][0].device if tensor_lists and tensor_lists[0] else 'cpu'
+            device = tensor_lists[0][0].device if tensor_lists and tensor_lists[0] else "cpu"
             return torch.tensor(0.0, device=device), torch.tensor(0.0, device=device)
 
         # Multiply by inv_scale
@@ -482,8 +531,17 @@ class ReferenceBackend(TEFLBackendBase):
         weight_decay: float,
     ) -> None:
         return multi_tensor_adam_torch(
-            chunk_size, noop_flag, tensor_lists,
-            lr, beta1, beta2, epsilon, step, mode, bias_correction, weight_decay
+            chunk_size,
+            noop_flag,
+            tensor_lists,
+            lr,
+            beta1,
+            beta2,
+            epsilon,
+            step,
+            mode,
+            bias_correction,
+            weight_decay,
         )
 
     def multi_tensor_adam_param_remainder(
@@ -501,8 +559,17 @@ class ReferenceBackend(TEFLBackendBase):
         weight_decay: float,
     ) -> None:
         return multi_tensor_adam_param_remainder_torch(
-            chunk_size, noop_flag, tensor_lists,
-            lr, beta1, beta2, epsilon, step, mode, bias_correction, weight_decay
+            chunk_size,
+            noop_flag,
+            tensor_lists,
+            lr,
+            beta1,
+            beta2,
+            epsilon,
+            step,
+            mode,
+            bias_correction,
+            weight_decay,
         )
 
     def multi_tensor_sgd(
@@ -520,10 +587,20 @@ class ReferenceBackend(TEFLBackendBase):
         scale: float,
     ) -> None:
         return multi_tensor_sgd_torch(
-            chunk_size, noop_flag, tensor_lists,
-            wd, momentum, dampening, lr, nesterov, first_run, wd_after_momentum, scale
+            chunk_size,
+            noop_flag,
+            tensor_lists,
+            wd,
+            momentum,
+            dampening,
+            lr,
+            nesterov,
+            first_run,
+            wd_after_momentum,
+            scale,
         )
 
     def get_flash_attention_class(self):
         from .flash_attention import FlashAttentionTorch
+
         return FlashAttentionTorch

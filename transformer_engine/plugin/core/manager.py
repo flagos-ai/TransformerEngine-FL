@@ -21,6 +21,7 @@ logger = get_logger()
 @dataclass
 class _OpManagerState:
     """Internal state for OpManager"""
+
     init_pid: int = -1
     initialized: bool = False
     policy_epoch: int = 0
@@ -103,6 +104,7 @@ class OpManager:
 
             # Register built-in operators
             from . import builtin_ops
+
             builtin_ops.register_builtins(self._registry)
 
             # Discover and register plugin
@@ -117,21 +119,39 @@ class OpManager:
             total_ops = len(snap.impls_by_op)
             total_impls = sum(len(impls) for impls in snap.impls_by_op.values())
 
-            logger.info(f"OpManager initialized: {total_ops} ops with {total_impls} implementations")
+            logger.info(
+                f"OpManager initialized: {total_ops} ops with {total_impls} implementations"
+            )
 
             # Group implementations by kind for summary
-            vendor_count = sum(1 for impls in snap.impls_by_op.values()
-                             for impl in impls if impl.kind == BackendImplKind.VENDOR)
-            reference_count = sum(1 for impls in snap.impls_by_op.values()
-                                for impl in impls if impl.kind == BackendImplKind.REFERENCE)
-            default_count = sum(1 for impls in snap.impls_by_op.values()
-                              for impl in impls if impl.kind == BackendImplKind.DEFAULT)
+            vendor_count = sum(
+                1
+                for impls in snap.impls_by_op.values()
+                for impl in impls
+                if impl.kind == BackendImplKind.VENDOR
+            )
+            reference_count = sum(
+                1
+                for impls in snap.impls_by_op.values()
+                for impl in impls
+                if impl.kind == BackendImplKind.REFERENCE
+            )
+            default_count = sum(
+                1
+                for impls in snap.impls_by_op.values()
+                for impl in impls
+                if impl.kind == BackendImplKind.DEFAULT
+            )
 
-            logger.debug(f"  Vendor: {vendor_count}, Default: {default_count}, Reference: {reference_count}")
+            logger.debug(
+                f"  Vendor: {vendor_count}, Default: {default_count}, Reference: {reference_count}"
+            )
 
             # List all registered impl_ids
             if logger.logger.isEnabledFor(logger.logger.level):
-                impl_ids = sorted(set(impl.impl_id for impls in snap.impls_by_op.values() for impl in impls))
+                impl_ids = sorted(
+                    set(impl.impl_id for impls in snap.impls_by_op.values() for impl in impls)
+                )
                 logger.info(f"Registered impl_ids: {impl_ids}")
 
     def _matches_vendor_filters(self, impl: OpImpl, policy: SelectionPolicy) -> bool:
@@ -374,7 +394,8 @@ class OpManager:
             except Exception as e:
                 if enable_fallback:
                     logger.warning_once(
-                        f"Cached implementation '{cached_impl.impl_id}' failed for op '{op_name}': {e}"
+                        f"Cached implementation '{cached_impl.impl_id}' failed for op"
+                        f" '{op_name}': {e}"
                     )
                     self._invalidate_cache(op_name)
                 else:
@@ -397,8 +418,9 @@ class OpManager:
                         )
                     elif last_impl_id != candidate.impl_id:
                         logger.info_once(
-                            f"Op '{op_name}' switched from '{last_impl_id}' to '{candidate.impl_id}' "
-                            f"(kind={candidate.kind.value}, vendor={candidate.vendor})"
+                            f"Op '{op_name}' switched from '{last_impl_id}' to"
+                            f" '{candidate.impl_id}' (kind={candidate.kind.value},"
+                            f" vendor={candidate.vendor})"
                         )
                     break
 
@@ -477,7 +499,8 @@ class OpManager:
             except Exception as e:
                 if enable_fallback:
                     logger.warning_once(
-                        f"Cached implementation '{cached_impl.impl_id}' failed for op '{op_name}': {e}"
+                        f"Cached implementation '{cached_impl.impl_id}' failed for op"
+                        f" '{op_name}': {e}"
                     )
                     self._invalidate_cache(op_name)
                 else:
@@ -502,8 +525,8 @@ class OpManager:
                             )
                         elif last_impl_id != impl.impl_id:
                             logger.info_once(
-                                f"Op '{op_name}' switched from '{last_impl_id}' to '{impl.impl_id}' "
-                                f"(kind={impl.kind.value}, vendor={impl.vendor})"
+                                f"Op '{op_name}' switched from '{last_impl_id}' to '{impl.impl_id}'"
+                                f" (kind={impl.kind.value}, vendor={impl.vendor})"
                             )
                         return result
                 except Exception:

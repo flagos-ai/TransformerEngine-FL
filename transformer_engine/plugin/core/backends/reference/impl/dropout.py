@@ -22,9 +22,7 @@ def dropout_fwd_torch(
         mask = torch.ones_like(input, dtype=torch.uint8)
         return output, mask
 
-    mask = torch.bernoulli(
-        torch.full_like(input, 1.0 - dropout_probability)
-    ).to(torch.uint8)
+    mask = torch.bernoulli(torch.full_like(input, 1.0 - dropout_probability)).to(torch.uint8)
 
     scale = 1.0 / (1.0 - dropout_probability)
     output = input * mask.to(input.dtype) * scale

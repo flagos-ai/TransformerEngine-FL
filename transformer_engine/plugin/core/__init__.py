@@ -51,6 +51,7 @@ from .discovery import (
 
 # Setup module aliases BEFORE importing backends to support relative imports
 from ._module_setup import setup_module_aliases, register_as_transformer_engine_torch
+
 setup_module_aliases()
 
 # Import backends - this loads all available backends (flagos, reference, vendor/cuda, etc.)

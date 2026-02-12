@@ -9,10 +9,12 @@ from .core import (
     get_registry,
 )
 
+
 def __getattr__(name):
     if name == "tefl":
         return _get_tefl_module()
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = [
     "TEFLBackendBase",

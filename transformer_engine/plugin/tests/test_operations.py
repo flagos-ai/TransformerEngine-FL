@@ -20,7 +20,7 @@ class OperationsTests(TestCase):
     def __init__(self, device="cpu"):
         super().__init__(
             "Operations (GEMM, Softmax, Dropout)",
-            "Test correctness of GEMM, Softmax, and Dropout operations"
+            "Test correctness of GEMM, Softmax, and Dropout operations",
         )
         self.backends = get_available_backends()
         self.device = device
@@ -39,15 +39,30 @@ class OperationsTests(TestCase):
                 workspace = torch.empty(1024, dtype=torch.uint8, device=self.device)
 
                 output, _, _, _ = backend.generic_gemm(
-                    A, False, B, False, D,
-                    None, DType.kFloat32, None, DType.kFloat32,
-                    False, None, False,
-                    workspace, 1024, False, False
+                    A,
+                    False,
+                    B,
+                    False,
+                    D,
+                    None,
+                    DType.kFloat32,
+                    None,
+                    DType.kFloat32,
+                    False,
+                    None,
+                    False,
+                    workspace,
+                    1024,
+                    False,
+                    False,
                 )
 
                 self.assert_close(
-                    output, reference, rtol=5e-2, atol=1e-2,
-                    msg=f"GEMM output mismatch for {backend_name}"
+                    output,
+                    reference,
+                    rtol=5e-2,
+                    atol=1e-2,
+                    msg=f"GEMM output mismatch for {backend_name}",
                 )
                 print(f"    ✓ {backend_name}")
             except NotImplementedError:
@@ -71,15 +86,30 @@ class OperationsTests(TestCase):
                 workspace = torch.empty(1024, dtype=torch.uint8, device=self.device)
 
                 output, _, _, _ = backend.generic_gemm(
-                    A, True, B, False, D,
-                    None, DType.kFloat32, None, DType.kFloat32,
-                    False, None, False,
-                    workspace, 1024, False, False
+                    A,
+                    True,
+                    B,
+                    False,
+                    D,
+                    None,
+                    DType.kFloat32,
+                    None,
+                    DType.kFloat32,
+                    False,
+                    None,
+                    False,
+                    workspace,
+                    1024,
+                    False,
+                    False,
                 )
 
                 self.assert_close(
-                    output, reference, rtol=5e-2, atol=1e-2,
-                    msg=f"GEMM transpose A mismatch for {backend_name}"
+                    output,
+                    reference,
+                    rtol=5e-2,
+                    atol=1e-2,
+                    msg=f"GEMM transpose A mismatch for {backend_name}",
                 )
                 print(f"    ✓ {backend_name}")
             except NotImplementedError:
@@ -103,15 +133,30 @@ class OperationsTests(TestCase):
                 workspace = torch.empty(1024, dtype=torch.uint8, device=self.device)
 
                 output, _, _, _ = backend.generic_gemm(
-                    B_mat, False, A, False, D,
-                    None, DType.kFloat32, None, DType.kFloat32,
-                    False, None, False,
-                    workspace, 1024, False, False
+                    B_mat,
+                    False,
+                    A,
+                    False,
+                    D,
+                    None,
+                    DType.kFloat32,
+                    None,
+                    DType.kFloat32,
+                    False,
+                    None,
+                    False,
+                    workspace,
+                    1024,
+                    False,
+                    False,
                 )
 
                 self.assert_close(
-                    output, reference, rtol=5e-2, atol=1e-2,
-                    msg=f"3D GEMM mismatch for {backend_name}"
+                    output,
+                    reference,
+                    rtol=5e-2,
+                    atol=1e-2,
+                    msg=f"3D GEMM mismatch for {backend_name}",
                 )
                 print(f"    ✓ {backend_name}")
             except NotImplementedError:
@@ -133,8 +178,11 @@ class OperationsTests(TestCase):
             try:
                 output = backend.scaled_softmax_forward(x, scale)
                 self.assert_close(
-                    output, reference, rtol=1e-2, atol=1e-3,
-                    msg=f"Scaled softmax mismatch for {backend_name}"
+                    output,
+                    reference,
+                    rtol=1e-2,
+                    atol=1e-3,
+                    msg=f"Scaled softmax mismatch for {backend_name}",
                 )
                 print(f"    ✓ {backend_name}")
             except NotImplementedError:
@@ -152,8 +200,8 @@ class OperationsTests(TestCase):
         seq_len = shape[-1]
 
         causal_mask = torch.triu(
-            torch.full((seq_len, seq_len), float('-inf'), dtype=x.dtype, device=self.device),
-            diagonal=1
+            torch.full((seq_len, seq_len), float("-inf"), dtype=x.dtype, device=self.device),
+            diagonal=1,
         )
         reference = F.softmax(x.float() * scale + causal_mask.float(), dim=-1).to(x.dtype)
 
@@ -162,8 +210,11 @@ class OperationsTests(TestCase):
             try:
                 output = backend.scaled_upper_triang_masked_softmax_forward(x, scale)
                 self.assert_close(
-                    output, reference, rtol=1e-2, atol=1e-3,
-                    msg=f"Causal masked softmax mismatch for {backend_name}"
+                    output,
+                    reference,
+                    rtol=1e-2,
+                    atol=1e-3,
+                    msg=f"Causal masked softmax mismatch for {backend_name}",
                 )
                 print(f"    ✓ {backend_name}")
             except NotImplementedError:
@@ -189,11 +240,14 @@ class OperationsTests(TestCase):
                 nonzero_ratio = num_nonzero / total_elements
                 expected_ratio = 1.0 - dropout_prob
 
-                assert abs(nonzero_ratio - expected_ratio) < 0.2, \
-                    f"Dropout ratio mismatch for {backend_name}: {nonzero_ratio:.3f} vs {expected_ratio:.3f}"
+                assert abs(nonzero_ratio - expected_ratio) < 0.2, (
+                    f"Dropout ratio mismatch for {backend_name}: {nonzero_ratio:.3f} vs"
+                    f" {expected_ratio:.3f}"
+                )
 
-                assert torch.all(output[output == 0] == 0), \
-                    f"Dropped elements should be zero for {backend_name}"
+                assert torch.all(
+                    output[output == 0] == 0
+                ), f"Dropped elements should be zero for {backend_name}"
 
                 expected_scale = 1.0 / (1.0 - dropout_prob)
                 non_zero_output = output[output != 0]
@@ -201,18 +255,23 @@ class OperationsTests(TestCase):
 
                 if len(non_zero_output) > 0:
                     self.assert_close(
-                        non_zero_output, non_zero_input * expected_scale,
-                        rtol=1e-2, atol=1e-3,
-                        msg=f"Dropout scaling mismatch for {backend_name}"
+                        non_zero_output,
+                        non_zero_input * expected_scale,
+                        rtol=1e-2,
+                        atol=1e-3,
+                        msg=f"Dropout scaling mismatch for {backend_name}",
                     )
 
-                grad_output = generate_random_tensor(shape, dtype=torch.bfloat16, device=self.device)
+                grad_output = generate_random_tensor(
+                    shape, dtype=torch.bfloat16, device=self.device
+                )
                 grad_input = backend.dropout_bwd(grad_output, mask, dropout_prob, None)
 
-                grad_nonzero_mask = (grad_input != 0)
-                output_nonzero_mask = (output != 0)
-                assert torch.all(grad_nonzero_mask == output_nonzero_mask), \
-                    f"Dropout backward sparsity mismatch for {backend_name}"
+                grad_nonzero_mask = grad_input != 0
+                output_nonzero_mask = output != 0
+                assert torch.all(
+                    grad_nonzero_mask == output_nonzero_mask
+                ), f"Dropout backward sparsity mismatch for {backend_name}"
 
                 print(f"    ✓ {backend_name}")
             except NotImplementedError:
@@ -223,9 +282,9 @@ class OperationsTests(TestCase):
                 print(f"    ✗ {backend_name}: {e}")
 
     def run_all_tests(self):
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("Testing Operations (GEMM, Softmax, Dropout)")
-        print("="*60)
+        print("=" * 60)
         print(f"Available backends: {', '.join(self.backends)}")
 
         self.test_gemm_basic(M=32, N=64, K=48)

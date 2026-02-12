@@ -84,8 +84,8 @@ def scaled_upper_triang_masked_softmax_forward_torch(
     seq_len = input.size(-1)
 
     causal_mask = torch.triu(
-        torch.full((seq_len, seq_len), float('-inf'), device=input.device, dtype=input.dtype),
-        diagonal=1
+        torch.full((seq_len, seq_len), float("-inf"), device=input.device, dtype=input.dtype),
+        diagonal=1,
     )
 
     scaled_input = input * scale + causal_mask

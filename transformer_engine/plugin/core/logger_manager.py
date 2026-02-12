@@ -7,6 +7,7 @@ import sys
 import os
 import threading
 
+
 class Logger:
     def __init__(self, name, level=logging.INFO):
         self.logger = logging.getLogger(name)
@@ -60,12 +61,13 @@ class Logger:
             self._printed_once.add(message)
             self.logger.debug(message, stacklevel=2)
 
+
 class LoggerManager:
     _instance = None
     _lock = threading.Lock()
 
     def __init__(self):
-        if hasattr(self, '_global_logger'):
+        if hasattr(self, "_global_logger"):
             return
 
         self._global_logger = None
@@ -114,11 +116,14 @@ class LoggerManager:
                 self._global_logger = None
                 self._global_printed_once.clear()
 
+
 def get_logger():
     return LoggerManager.get_instance().get_logger()
 
+
 def print_once(message):
     LoggerManager.get_instance().print_once(message)
+
 
 def debug_print_once(func_name: str, backend_name: str = "Backend", *args, **kwargs):
     LoggerManager.get_instance().debug_print_once(func_name, backend_name, *args, **kwargs)

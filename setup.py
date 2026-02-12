@@ -47,16 +47,14 @@ archs = cuda_archs()
 def generate_build_config(skip_cuda_build):
     """Generate build-time configuration file."""
     config_template_path = (
-        current_file_path / "transformer_engine" / "plugin" /
-        "core" / "_build_config.py.template"
+        current_file_path / "transformer_engine" / "plugin" / "core" / "_build_config.py.template"
     )
     config_output_path = (
-        current_file_path / "transformer_engine" / "plugin" /
-        "core" / "_build_config.py"
+        current_file_path / "transformer_engine" / "plugin" / "core" / "_build_config.py"
     )
 
     if config_template_path.exists():
-        with open(config_template_path, 'r') as f:
+        with open(config_template_path, "r") as f:
             template = f.read()
 
         config_content = template.format(
@@ -65,7 +63,7 @@ def generate_build_config(skip_cuda_build):
             platform=platform.platform(),
         )
 
-        with open(config_output_path, 'w') as f:
+        with open(config_output_path, "w") as f:
             f.write(config_content)
 
         print(f"Generated build config: {config_output_path}")
@@ -77,7 +75,7 @@ SKIP_CUDA_BUILD = {skip_cuda_build}
 BUILD_TIME = "{datetime.now().isoformat()}"
 BUILD_PLATFORM = "{platform.platform()}"
 """
-        with open(config_output_path, 'w') as f:
+        with open(config_output_path, "w") as f:
             f.write(config_content)
         print(f"Generated minimal build config: {config_output_path}")
 
@@ -86,7 +84,7 @@ class CustomInstall(InstallCommand):
     """Custom install command to generate build config."""
 
     user_options = InstallCommand.user_options + [
-        ('skip-cuda-build', None, 'Skip CUDA build'),
+        ("skip-cuda-build", None, "Skip CUDA build"),
     ]
 
     def initialize_options(self):

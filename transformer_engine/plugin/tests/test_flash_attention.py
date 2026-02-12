@@ -17,8 +17,7 @@ from transformer_engine.plugin.test_utils import (
 class FlashAttentionTests(TestCase):
     def __init__(self, device="cpu"):
         super().__init__(
-            "Flash Attention",
-            "Test correctness of Flash Attention implementation across backends"
+            "Flash Attention", "Test correctness of Flash Attention implementation across backends"
         )
         self.backends = get_available_backends()
         self.device = device
@@ -51,8 +50,7 @@ class FlashAttentionTests(TestCase):
 
         if is_causal:
             causal_mask = torch.triu(
-                torch.full((L, S), float('-inf'), dtype=q.dtype, device=q.device),
-                diagonal=1
+                torch.full((L, S), float("-inf"), dtype=q.dtype, device=q.device), diagonal=1
             )
             attn_weight = attn_weight + causal_mask
 
@@ -68,30 +66,31 @@ class FlashAttentionTests(TestCase):
         # Convert bhsd back to sbhd
         return out.permute(2, 0, 1, 3)  # [seq, batch, heads, dim]
 
-    def test_flash_attention_forward_basic(self, seq_len=16, batch_size=2, num_heads=4, head_dim=32):
+    def test_flash_attention_forward_basic(
+        self, seq_len=16, batch_size=2, num_heads=4, head_dim=32
+    ):
         """Test basic flash attention forward pass with sbhd layout and bf16"""
-        print(f"\n  Testing Flash Attention forward sbhd bf16 (seq={seq_len}, batch={batch_size}, heads={num_heads}, dim={head_dim})")
+        print(
+            f"\n  Testing Flash Attention forward sbhd bf16 (seq={seq_len}, batch={batch_size},"
+            f" heads={num_heads}, dim={head_dim})"
+        )
 
         # Shape: (seq_len, batch, num_heads, head_dim) - sbhd layout
         query = generate_random_tensor(
-            (seq_len, batch_size, num_heads, head_dim),
-            dtype=torch.bfloat16, device=self.device
+            (seq_len, batch_size, num_heads, head_dim), dtype=torch.bfloat16, device=self.device
         )
         key = generate_random_tensor(
-            (seq_len, batch_size, num_heads, head_dim),
-            dtype=torch.bfloat16, device=self.device
+            (seq_len, batch_size, num_heads, head_dim), dtype=torch.bfloat16, device=self.device
         )
         value = generate_random_tensor(
-            (seq_len, batch_size, num_heads, head_dim),
-            dtype=torch.bfloat16, device=self.device
+            (seq_len, batch_size, num_heads, head_dim), dtype=torch.bfloat16, device=self.device
         )
 
         scale = 1.0 / math.sqrt(head_dim)
 
         # Reference attention (compute in float32 for accuracy)
         reference = self._reference_attention(
-            query.float(), key.float(), value.float(),
-            scale=scale, is_causal=False
+            query.float(), key.float(), value.float(), scale=scale, is_causal=False
         ).to(torch.bfloat16)
 
         for backend_name in self.backends:
@@ -122,14 +121,20 @@ class FlashAttentionTests(TestCase):
                     # Try to reshape reference for comparison
                     reference_flat = reference.contiguous().reshape(seq_len, batch_size, -1)
                     self.assert_close(
-                        output.float(), reference_flat.float(), rtol=1e-2, atol=1e-2,
-                        msg=f"Flash Attention forward mismatch for {backend_name}"
+                        output.float(),
+                        reference_flat.float(),
+                        rtol=1e-2,
+                        atol=1e-2,
+                        msg=f"Flash Attention forward mismatch for {backend_name}",
                     )
                 else:
                     reference_flat = reference.contiguous().reshape(seq_len, batch_size, -1)
                     self.assert_close(
-                        output.float(), reference_flat.float(), rtol=1e-2, atol=1e-2,
-                        msg=f"Flash Attention forward mismatch for {backend_name}"
+                        output.float(),
+                        reference_flat.float(),
+                        rtol=1e-2,
+                        atol=1e-2,
+                        msg=f"Flash Attention forward mismatch for {backend_name}",
                     )
                 print(f"    ✓ {backend_name}")
             except NotImplementedError:
@@ -139,31 +144,33 @@ class FlashAttentionTests(TestCase):
                 self.failed += 1
                 print(f"    ✗ {backend_name}: {e}")
                 import traceback
+
                 traceback.print_exc()
 
-    def test_flash_attention_forward_causal(self, seq_len=16, batch_size=2, num_heads=4, head_dim=32):
+    def test_flash_attention_forward_causal(
+        self, seq_len=16, batch_size=2, num_heads=4, head_dim=32
+    ):
         """Test flash attention forward pass with causal mask"""
-        print(f"\n  Testing Flash Attention forward causal sbhd bf16 (seq={seq_len}, batch={batch_size}, heads={num_heads}, dim={head_dim})")
+        print(
+            f"\n  Testing Flash Attention forward causal sbhd bf16 (seq={seq_len},"
+            f" batch={batch_size}, heads={num_heads}, dim={head_dim})"
+        )
 
         query = generate_random_tensor(
-            (seq_len, batch_size, num_heads, head_dim),
-            dtype=torch.bfloat16, device=self.device
+            (seq_len, batch_size, num_heads, head_dim), dtype=torch.bfloat16, device=self.device
         )
         key = generate_random_tensor(
-            (seq_len, batch_size, num_heads, head_dim),
-            dtype=torch.bfloat16, device=self.device
+            (seq_len, batch_size, num_heads, head_dim), dtype=torch.bfloat16, device=self.device
         )
         value = generate_random_tensor(
-            (seq_len, batch_size, num_heads, head_dim),
-            dtype=torch.bfloat16, device=self.device
+            (seq_len, batch_size, num_heads, head_dim), dtype=torch.bfloat16, device=self.device
         )
 
         scale = 1.0 / math.sqrt(head_dim)
 
         # Reference attention with causal mask
         reference = self._reference_attention(
-            query.float(), key.float(), value.float(),
-            scale=scale, is_causal=True
+            query.float(), key.float(), value.float(), scale=scale, is_causal=True
         ).to(torch.bfloat16)
 
         for backend_name in self.backends:
@@ -189,8 +196,11 @@ class FlashAttentionTests(TestCase):
 
                 reference_flat = reference.contiguous().reshape(seq_len, batch_size, -1)
                 self.assert_close(
-                    output.float(), reference_flat.float(), rtol=1e-2, atol=1e-2,
-                    msg=f"Flash Attention forward causal mismatch for {backend_name}"
+                    output.float(),
+                    reference_flat.float(),
+                    rtol=1e-2,
+                    atol=1e-2,
+                    msg=f"Flash Attention forward causal mismatch for {backend_name}",
                 )
                 print(f"    ✓ {backend_name}")
             except NotImplementedError:
@@ -200,6 +210,7 @@ class FlashAttentionTests(TestCase):
                 self.failed += 1
                 print(f"    ✗ {backend_name}: {e}")
                 import traceback
+
                 traceback.print_exc()
 
     def test_flash_attention_backward(self, seq_len=16, batch_size=2, num_heads=4, head_dim=32):
@@ -207,24 +218,32 @@ class FlashAttentionTests(TestCase):
 
         Note: FlagGems backward currently only supports causal attention.
         """
-        print(f"\n  Testing Flash Attention backward causal sbhd bf16 (seq={seq_len}, batch={batch_size}, heads={num_heads}, dim={head_dim})")
+        print(
+            f"\n  Testing Flash Attention backward causal sbhd bf16 (seq={seq_len},"
+            f" batch={batch_size}, heads={num_heads}, dim={head_dim})"
+        )
 
         query = generate_random_tensor(
             (seq_len, batch_size, num_heads, head_dim),
-            dtype=torch.bfloat16, device=self.device, requires_grad=True
+            dtype=torch.bfloat16,
+            device=self.device,
+            requires_grad=True,
         )
         key = generate_random_tensor(
             (seq_len, batch_size, num_heads, head_dim),
-            dtype=torch.bfloat16, device=self.device, requires_grad=True
+            dtype=torch.bfloat16,
+            device=self.device,
+            requires_grad=True,
         )
         value = generate_random_tensor(
             (seq_len, batch_size, num_heads, head_dim),
-            dtype=torch.bfloat16, device=self.device, requires_grad=True
+            dtype=torch.bfloat16,
+            device=self.device,
+            requires_grad=True,
         )
         # grad_output shape matches output: sb(h*d)
         grad_output = generate_random_tensor(
-            (seq_len, batch_size, num_heads * head_dim),
-            dtype=torch.bfloat16, device=self.device
+            (seq_len, batch_size, num_heads * head_dim), dtype=torch.bfloat16, device=self.device
         )
 
         scale = 1.0 / math.sqrt(head_dim)
@@ -235,7 +254,9 @@ class FlashAttentionTests(TestCase):
         key_f32 = key.float().detach().requires_grad_(True)
         value_f32 = value.float().detach().requires_grad_(True)
 
-        ref_output = self._reference_attention(query_f32, key_f32, value_f32, scale=scale, is_causal=True)
+        ref_output = self._reference_attention(
+            query_f32, key_f32, value_f32, scale=scale, is_causal=True
+        )
         ref_output_flat = ref_output.contiguous().reshape(seq_len, batch_size, -1)
         ref_output_flat.backward(grad_output.float())
         ref_grad_q = query_f32.grad.clone().to(torch.bfloat16)
@@ -273,16 +294,25 @@ class FlashAttentionTests(TestCase):
 
                 # bf16 backward has higher numerical error due to accumulated precision loss
                 self.assert_close(
-                    q_copy.grad.float(), ref_grad_q.float(), rtol=2e-2, atol=2e-2,
-                    msg=f"Flash Attention backward grad_q mismatch for {backend_name}"
+                    q_copy.grad.float(),
+                    ref_grad_q.float(),
+                    rtol=2e-2,
+                    atol=2e-2,
+                    msg=f"Flash Attention backward grad_q mismatch for {backend_name}",
                 )
                 self.assert_close(
-                    k_copy.grad.float(), ref_grad_k.float(), rtol=2e-2, atol=2e-2,
-                    msg=f"Flash Attention backward grad_k mismatch for {backend_name}"
+                    k_copy.grad.float(),
+                    ref_grad_k.float(),
+                    rtol=2e-2,
+                    atol=2e-2,
+                    msg=f"Flash Attention backward grad_k mismatch for {backend_name}",
                 )
                 self.assert_close(
-                    v_copy.grad.float(), ref_grad_v.float(), rtol=2e-2, atol=2e-2,
-                    msg=f"Flash Attention backward grad_v mismatch for {backend_name}"
+                    v_copy.grad.float(),
+                    ref_grad_v.float(),
+                    rtol=2e-2,
+                    atol=2e-2,
+                    msg=f"Flash Attention backward grad_v mismatch for {backend_name}",
                 )
                 print(f"    ✓ {backend_name}")
             except NotImplementedError:
@@ -292,12 +322,13 @@ class FlashAttentionTests(TestCase):
                 self.failed += 1
                 print(f"    ✗ {backend_name}: {e}")
                 import traceback
+
                 traceback.print_exc()
 
     def run_all_tests(self):
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("Testing Flash Attention")
-        print("="*60)
+        print("=" * 60)
         print(f"Available backends: {', '.join(self.backends)}")
 
         # Basic forward tests with sbhd layout and bf16

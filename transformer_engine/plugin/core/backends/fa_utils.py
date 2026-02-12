@@ -80,8 +80,11 @@ def reduce_scatter_along_seq(
     chunk_size = seq_len // world_size
 
     output = torch.empty(
-        *tensor.shape[:seq_dim], chunk_size, *tensor.shape[seq_dim + 1:],
-        dtype=tensor.dtype, device=tensor.device
+        *tensor.shape[:seq_dim],
+        chunk_size,
+        *tensor.shape[seq_dim + 1 :],
+        dtype=tensor.dtype,
+        device=tensor.device
     )
 
     dist.reduce_scatter_tensor(output, tensor, group=cp_group)
@@ -114,12 +117,14 @@ def create_cp_causal_mask(
     q_start = cp_rank * local_seq_len_q
 
     # Create position indices
-    q_indices = torch.arange(local_seq_len_q, device=device, dtype=torch.long).unsqueeze(1) + q_start
+    q_indices = (
+        torch.arange(local_seq_len_q, device=device, dtype=torch.long).unsqueeze(1) + q_start
+    )
     kv_indices = torch.arange(full_seq_len_kv, device=device, dtype=torch.long).unsqueeze(0)
 
     # Create causal mask: mask out positions where kv_idx > q_idx
     causal_mask = torch.zeros(local_seq_len_q, full_seq_len_kv, dtype=dtype, device=device)
-    causal_mask.masked_fill_(kv_indices > q_indices, float('-inf'))
+    causal_mask.masked_fill_(kv_indices > q_indices, float("-inf"))
 
     return causal_mask
 
@@ -151,16 +156,18 @@ def create_cp_window_mask(
     q_start = cp_rank * local_seq_len_q
 
     # Create position indices
-    q_indices = torch.arange(local_seq_len_q, device=device, dtype=torch.long).unsqueeze(1) + q_start
+    q_indices = (
+        torch.arange(local_seq_len_q, device=device, dtype=torch.long).unsqueeze(1) + q_start
+    )
     kv_indices = torch.arange(full_seq_len_kv, device=device, dtype=torch.long).unsqueeze(0)
 
     # Create window mask
     window_mask = torch.zeros(local_seq_len_q, full_seq_len_kv, dtype=dtype, device=device)
 
     if left_window >= 0:
-        window_mask.masked_fill_(kv_indices < q_indices - left_window, float('-inf'))
+        window_mask.masked_fill_(kv_indices < q_indices - left_window, float("-inf"))
     if right_window >= 0:
-        window_mask.masked_fill_(kv_indices > q_indices + right_window, float('-inf'))
+        window_mask.masked_fill_(kv_indices > q_indices + right_window, float("-inf"))
 
     return window_mask
 

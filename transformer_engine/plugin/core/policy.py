@@ -36,6 +36,7 @@ class SelectionPolicy:
         deny_vendors: Set of vendor names to deny
         allow_vendors: Set of vendor names to allow (whitelist)
     """
+
     prefer: str = PREFER_DEFAULT
     strict: bool = False
     per_op_order: Tuple[Tuple[str, Tuple[str, ...]], ...] = field(default_factory=tuple)
@@ -61,9 +62,7 @@ class SelectionPolicy:
     ) -> "SelectionPolicy":
         per_op_tuple = tuple()
         if per_op_order:
-            per_op_tuple = tuple(
-                (k, tuple(v)) for k, v in sorted(per_op_order.items())
-            )
+            per_op_tuple = tuple((k, tuple(v)) for k, v in sorted(per_op_order.items()))
 
         return cls(
             prefer=prefer.lower(),
@@ -114,21 +113,21 @@ class SelectionPolicy:
             parts.append(f"deny={','.join(sorted(self.deny_vendors))}")
 
         if self.per_op_order:
-            per_op_str = ";".join(
-                f"{k}={'|'.join(v)}" for k, v in self.per_op_order
-            )
+            per_op_str = ";".join(f"{k}={'|'.join(v)}" for k, v in self.per_op_order)
             parts.append(f"per={per_op_str}")
 
         return ";".join(parts)
 
     def __hash__(self) -> int:
-        return hash((
-            self.prefer,
-            self.strict,
-            self.per_op_order,
-            self.deny_vendors,
-            self.allow_vendors,
-        ))
+        return hash(
+            (
+                self.prefer,
+                self.strict,
+                self.per_op_order,
+                self.deny_vendors,
+                self.allow_vendors,
+            )
+        )
 
 
 class PolicyManager:
@@ -136,7 +135,7 @@ class PolicyManager:
     _lock = threading.Lock()
 
     def __init__(self):
-        if hasattr(self, '_policy_epoch'):
+        if hasattr(self, "_policy_epoch"):
             return
 
         self._policy_epoch = 0
@@ -234,8 +233,10 @@ class PolicyManager:
             if te_fl_prefer in VALID_PREFER_VALUES:
                 prefer_str = te_fl_prefer
             else:
-                print(f"[WARNING] Invalid TE_FL_PREFER value: '{te_fl_prefer}'. "
-                      f"Valid values: {', '.join(sorted(VALID_PREFER_VALUES))}")
+                print(
+                    f"[WARNING] Invalid TE_FL_PREFER value: '{te_fl_prefer}'. "
+                    f"Valid values: {', '.join(sorted(VALID_PREFER_VALUES))}"
+                )
 
         # 2. Fall back to TE_FL_PREFER_VENDOR (legacy)
         if prefer_str is None:

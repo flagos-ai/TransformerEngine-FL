@@ -115,7 +115,7 @@ class FlashAttentionTorch(FlashAttentionBase):
             mask_bool = mask_bool | (kv_idx > q_idx + right_window)
 
         mask = torch.zeros(seq_len_q, seq_len_kv, dtype=dtype, device=device)
-        mask.masked_fill_(mask_bool, float('-inf'))
+        mask.masked_fill_(mask_bool, float("-inf"))
 
         return mask
 
@@ -136,7 +136,7 @@ class FlashAttentionTorch(FlashAttentionBase):
             else:
                 raise ValueError(
                     f"Unexpected 4D tensor shape {original_shape}. "
-                    f"Expected [total_tokens, 1, num_heads, head_dim]"
+                    "Expected [total_tokens, 1, num_heads, head_dim]"
                 )
 
         if tensor.dim() != 3:
@@ -153,8 +153,7 @@ class FlashAttentionTorch(FlashAttentionBase):
             )
 
         padded_tensor = torch.zeros(
-            batch_size, num_heads, max_seqlen, head_dim,
-            dtype=tensor.dtype, device=device
+            batch_size, num_heads, max_seqlen, head_dim, dtype=tensor.dtype, device=device
         )
 
         padding_mask = torch.ones(batch_size, max_seqlen, dtype=torch.bool, device=device)
@@ -185,8 +184,7 @@ class FlashAttentionTorch(FlashAttentionBase):
         device = tensor.device
 
         packed_tensor = torch.zeros(
-            total_tokens, num_heads, head_dim,
-            dtype=tensor.dtype, device=device
+            total_tokens, num_heads, head_dim, dtype=tensor.dtype, device=device
         )
 
         # Vectorized packing - avoid repeated .item() calls
@@ -255,12 +253,16 @@ class FlashAttentionTorch(FlashAttentionBase):
 
             if use_packed_format:
                 if cu_seqlens_q is not None:
-                    query, padding_mask_q = self._unpack_tensor(query_layer, cu_seqlens_q, max_seqlen_q)
+                    query, padding_mask_q = self._unpack_tensor(
+                        query_layer, cu_seqlens_q, max_seqlen_q
+                    )
                 else:
                     query = self._convert_layout_to_bhsd(query_layer, qkv_layout)
 
                 if cu_seqlens_kv is not None:
-                    key, padding_mask_kv = self._unpack_tensor(key_layer, cu_seqlens_kv, max_seqlen_kv)
+                    key, padding_mask_kv = self._unpack_tensor(
+                        key_layer, cu_seqlens_kv, max_seqlen_kv
+                    )
                     value, _ = self._unpack_tensor(value_layer, cu_seqlens_kv, max_seqlen_kv)
                 else:
                     key = self._convert_layout_to_bhsd(key_layer, qkv_layout)
@@ -285,7 +287,8 @@ class FlashAttentionTorch(FlashAttentionBase):
             num_groups = num_heads_q // num_heads_kv
             if num_heads_q % num_heads_kv != 0:
                 raise ValueError(
-                    f"num_heads_q ({num_heads_q}) must be divisible by num_heads_kv ({num_heads_kv})"
+                    f"num_heads_q ({num_heads_q}) must be divisible by num_heads_kv"
+                    f" ({num_heads_kv})"
                 )
             key = key.repeat_interleave(num_groups, dim=1)
             value = value.repeat_interleave(num_groups, dim=1)
@@ -295,11 +298,10 @@ class FlashAttentionTorch(FlashAttentionBase):
 
         if use_packed_format and padding_mask_kv is not None:
             attn_mask = torch.zeros(
-                batch_size, seq_len_q, seq_len_kv,
-                dtype=query.dtype, device=query.device
+                batch_size, seq_len_q, seq_len_kv, dtype=query.dtype, device=query.device
             )
             padding_broadcast = padding_mask_kv.unsqueeze(1)
-            attn_mask.masked_fill_(padding_broadcast, float('-inf'))
+            attn_mask.masked_fill_(padding_broadcast, float("-inf"))
 
         if attn_mask_type == "causal":
             if use_cp:
@@ -318,12 +320,14 @@ class FlashAttentionTorch(FlashAttentionBase):
                 is_causal = True
             else:
                 causal_mask = torch.zeros(
-                    seq_len_q, seq_len_kv,
-                    dtype=query.dtype, device=query.device
+                    seq_len_q, seq_len_kv, dtype=query.dtype, device=query.device
                 )
                 causal_mask.masked_fill_(
-                    torch.triu(torch.ones(seq_len_q, seq_len_kv, device=query.device, dtype=torch.bool), diagonal=1),
-                    float('-inf')
+                    torch.triu(
+                        torch.ones(seq_len_q, seq_len_kv, device=query.device, dtype=torch.bool),
+                        diagonal=1,
+                    ),
+                    float("-inf"),
                 )
 
                 if attn_mask is not None:
@@ -350,7 +354,11 @@ class FlashAttentionTorch(FlashAttentionBase):
                 )
 
             if attn_mask is not None:
-                attn_mask = attn_mask + window_mask.unsqueeze(0) if window_mask.dim() == 2 else attn_mask + window_mask
+                attn_mask = (
+                    attn_mask + window_mask.unsqueeze(0)
+                    if window_mask.dim() == 2
+                    else attn_mask + window_mask
+                )
             else:
                 attn_mask = window_mask
 
@@ -362,7 +370,7 @@ class FlashAttentionTorch(FlashAttentionBase):
 
             if explicit_mask.dtype == torch.bool:
                 float_mask = torch.zeros_like(explicit_mask, dtype=query.dtype)
-                float_mask.masked_fill_(~explicit_mask, float('-inf'))
+                float_mask.masked_fill_(~explicit_mask, float("-inf"))
                 explicit_mask = float_mask
 
             if explicit_mask.dim() == 2:

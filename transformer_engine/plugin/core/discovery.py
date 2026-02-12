@@ -19,17 +19,22 @@ logger = get_logger()
 
 _discovered_plugin: List[Tuple[str, str, bool]] = []
 
+
 def _log_debug(msg: str) -> None:
     logger.debug(msg)
+
 
 def _log_info(msg: str) -> None:
     logger.info(msg)
 
+
 def _log_warning(msg: str) -> None:
     logger.warning(msg)
 
+
 def _log_error(msg: str) -> None:
     logger.error(msg)
+
 
 def _get_entry_points():
     try:
@@ -59,6 +64,7 @@ def _get_entry_points():
         _log_warning(f"Error accessing entry points: {e}")
         return []
 
+
 def _call_register_function(
     obj: Any,
     registry_module: Any,
@@ -87,6 +93,7 @@ def _call_register_function(
     _log_debug(f"No register function found in {source_name}")
     return False
 
+
 def discover_from_entry_points(registry_module: Any) -> int:
     loaded = 0
     entry_points_list = _get_entry_points()
@@ -114,6 +121,7 @@ def discover_from_entry_points(registry_module: Any) -> int:
             _discovered_plugin.append((ep_name, "entry_point", False))
 
     return loaded
+
 
 def discover_from_env_modules(registry_module: Any) -> int:
     modules_str = os.environ.get(PLUGIN_MODULES_ENV, "").strip()
@@ -146,6 +154,7 @@ def discover_from_env_modules(registry_module: Any) -> int:
 
     return loaded
 
+
 def discover_plugin(registry_module: Any) -> int:
     """
     Main plugin discovery function.
@@ -176,15 +185,16 @@ def discover_plugin(registry_module: Any) -> int:
 
     return total
 
+
 # Alias for compatibility with different naming conventions
 discover_op_plugin = discover_plugin
+
 
 def get_discovered_plugin() -> List[Tuple[str, str, bool]]:
     """Get list of discovered plugin (name, source, success)"""
     return _discovered_plugin.copy()
 
+
 def clear_discovered_plugin() -> None:
     """Clear the discovered plugin list (for testing)"""
     _discovered_plugin.clear()
-
-

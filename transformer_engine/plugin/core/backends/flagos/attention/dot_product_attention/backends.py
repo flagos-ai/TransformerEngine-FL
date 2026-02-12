@@ -70,8 +70,7 @@ class AttnFuncFL(torch.autograd.Function):
 
         max_logit = None
 
-        is_causal = attn_mask_type == 'causal'
-
+        is_causal = attn_mask_type == "causal"
 
         q_permuted = q.permute(1, 2, 0, 3).contiguous()
         k_permuted = k.permute(1, 2, 0, 3).contiguous()
@@ -160,11 +159,12 @@ class AttnFuncFL(torch.autograd.Function):
 
             dqkv_te_dtype = TE_DType[d_out.dtype]
 
-
             q_permuted = q_permuted.contiguous() if not q_permuted.is_contiguous() else q_permuted
             k_permuted = k_permuted.contiguous() if not k_permuted.is_contiguous() else k_permuted
             v_permuted = v_permuted.contiguous() if not v_permuted.is_contiguous() else v_permuted
-            out_permuted = out_permuted.contiguous() if not out_permuted.is_contiguous() else out_permuted
+            out_permuted = (
+                out_permuted.contiguous() if not out_permuted.is_contiguous() else out_permuted
+            )
             m = m.contiguous() if not m.is_contiguous() else m
 
             # d_out is (seq, batch, heads, dim) from autograd, permute to (batch, heads, seq, dim)
@@ -285,9 +285,7 @@ class FlashAttentionFL(FlashAttentionBase):
         assert (
             query_layer.is_cuda and key_layer.is_cuda and value_layer.is_cuda
         ), "FLAttention only supports CUDA tensors."
-        assert (
-            qkv_layout in QKVLayouts
-        ), f"FLAttention does not support qkv_layout = {qkv_layout}!"
+        assert qkv_layout in QKVLayouts, f"FLAttention does not support qkv_layout = {qkv_layout}!"
 
         cp_size = 1
         if isinstance(cp_group, dist_group_type):

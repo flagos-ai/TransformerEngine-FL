@@ -9,7 +9,9 @@ from contextlib import nullcontext
 import torch
 
 from .logger_manager import get_logger
+
 logger = get_logger()
+
 
 ################### Enums ###################
 class DType(IntEnum):
@@ -26,9 +28,11 @@ class DType(IntEnum):
     kFloat4E2M1 = 10
     kNumTypes = 11
 
+
 class Float8BlockScaleTensorFormat(IntEnum):
     GEMM_READY = 0
     COMPACT = 1
+
 
 class NVTE_Activation_Type(IntEnum):
     GELU = 0
@@ -43,14 +47,17 @@ class NVTE_Activation_Type(IntEnum):
     SREGLU = 9
     CLAMPED_SWIGLU = 10
 
+
 class NVTE_Softmax_Type(IntEnum):
     NVTE_VANILLA_SOFTMAX = 0
     NVTE_OFF_BY_ONE_SOFTMAX = 1
     NVTE_LEARNABLE_SOFTMAX = 2
 
+
 class CommGemmOverlapRole(IntEnum):
     INPUT = 0
     OUTPUT = 1
+
 
 class FP8FwdTensors(IntEnum):
     GEMM1_INPUT = 0
@@ -63,6 +70,7 @@ class FP8FwdTensors(IntEnum):
     GEMM3_WEIGHT = 7
     GEMM3_OUTPUT = 8
 
+
 class FP8BwdTensors(IntEnum):
     GRAD_OUTPUT1 = 0
     GRAD_INPUT1 = 1
@@ -71,11 +79,13 @@ class FP8BwdTensors(IntEnum):
     GRAD_OUTPUT3 = 4
     GRAD_INPUT3 = 5
 
+
 class NVTE_Bias_Type(IntEnum):
     NVTE_NO_BIAS = 0
     NVTE_PRE_SCALE_BIAS = 1
     NVTE_POST_SCALE_BIAS = 2
     NVTE_ALIBI = 3
+
 
 class NVTE_Mask_Type(IntEnum):
     NVTE_NO_MASK = 0
@@ -85,11 +95,13 @@ class NVTE_Mask_Type(IntEnum):
     NVTE_CAUSAL_BOTTOM_RIGHT_MASK = 4
     NVTE_PADDING_CAUSAL_BOTTOM_RIGHT_MASK = 5
 
+
 class NVTE_Fused_Attn_Backend(IntEnum):
     NVTE_No_Backend = -1
     NVTE_F16_max512_seqlen = 0
     NVTE_F16_arbitrary_seqlen = 1
     NVTE_FP8 = 2
+
 
 class NVTE_QKV_Format(IntEnum):
     NVTE_SBHD = 0
@@ -99,6 +111,7 @@ class NVTE_QKV_Format(IntEnum):
     NVTE_SBHD_2BSHD = 4
     NVTE_THD_2BSHD = 5
     NVTE_THD_2SBHD = 6
+
 
 class NVTE_QKV_Layout(IntEnum):
     NVTE_SB3HD = 0
@@ -127,9 +140,11 @@ class NVTE_QKV_Layout(IntEnum):
     NVTE_Paged_KV_THD_BSHD_BSHD = 23
     NVTE_Paged_KV_THD_SBHD_SBHD = 24
 
+
 class CommOverlapType(IntEnum):
     RS = 0
     AG = 1
+
 
 class CommOverlapAlgo(IntEnum):
     BULK_OVERLAP_AG = 0
@@ -142,39 +157,53 @@ class CommOverlapAlgo(IntEnum):
     ATOMIC_GEMM_RS_P2P = 7
     EXTERNAL_BULK_OVERLAP_AG = 8
 
+
 ############ Class #################
+
 
 class FP8TensorMeta:
     """
     FP8TensorMeta wrapper that routes to the appropriate backend implementation.
     """
+
     def __new__(cls, *args, **kwargs):
         from .manager import get_default_manager
+
         return get_default_manager().call("create_fp8_tensor_meta", *args, **kwargs)
+
 
 class CommOverlapHelper:
     """
     CommOverlapHelper wrapper that routes to the appropriate backend implementation.
     """
+
     def __new__(cls, *args, **kwargs):
         from .manager import get_default_manager
+
         return get_default_manager().call("create_comm_overlap_helper", *args, **kwargs)
+
 
 class CommOverlap:
     """
     CommOverlap wrapper that routes to the appropriate backend implementation.
     """
+
     def __new__(cls, *args, **kwargs):
         from .manager import get_default_manager
+
         return get_default_manager().call("create_comm_overlap", *args, **kwargs)
+
 
 class CommOverlapP2P:
     """
     CommOverlapP2P wrapper that routes to the appropriate backend implementation.
     """
+
     def __new__(cls, *args, **kwargs):
         from .manager import get_default_manager
+
         return get_default_manager().call("create_comm_overlap_p2p", *args, **kwargs)
+
 
 class FlashAttentionBase(torch.nn.Module, ABC):
     def __init__(
@@ -352,6 +381,7 @@ class FlashAttentionBase(torch.nn.Module, ABC):
     def backend_name(self) -> str:
         return self.__class__.__name__
 
+
 ############ Base  ###################
 class TEFLBackendBase(ABC):
     @abstractmethod
@@ -361,7 +391,7 @@ class TEFLBackendBase(ABC):
     def get_attention_backend(self, attention_params=None):
         raise NotImplementedError
 
-##### transformer_engine/pytorch/csrc/extensions/pybind.cpp #####
+    ##### transformer_engine/pytorch/csrc/extensions/pybind.cpp #####
     def quantize(
         self,
         tensor: torch.Tensor,
@@ -419,24 +449,28 @@ class TEFLBackendBase(ABC):
         quantizer: Any,
     ) -> Any:
         raise NotImplementedError
+
     def geglu(
         self,
         input: torch.Tensor,
         quantizer: Any,
     ) -> Any:
         raise NotImplementedError
+
     def qgelu(
         self,
         input: torch.Tensor,
         quantizer: Any,
     ) -> Any:
         raise NotImplementedError
+
     def qgeglu(
         self,
         input: torch.Tensor,
         quantizer: Any,
     ) -> Any:
         raise NotImplementedError
+
     # ReLU and variants #
     def relu(
         self,
@@ -444,24 +478,28 @@ class TEFLBackendBase(ABC):
         quantizer: Any,
     ) -> Any:
         raise NotImplementedError
+
     def reglu(
         self,
         input: torch.Tensor,
         quantizer: Any,
     ) -> Any:
         raise NotImplementedError
+
     def srelu(
         self,
         input: torch.Tensor,
         quantizer: Any,
     ) -> Any:
         raise NotImplementedError
+
     def sreglu(
         self,
         input: torch.Tensor,
         quantizer: Any,
     ) -> Any:
         raise NotImplementedError
+
     # SwiGLU and variants #
     def silu(
         self,
@@ -469,12 +507,14 @@ class TEFLBackendBase(ABC):
         quantizer: Any,
     ) -> Any:
         raise NotImplementedError
+
     def swiglu(
         self,
         input: torch.Tensor,
         quantizer: Any,
     ) -> Any:
         raise NotImplementedError
+
     def clamped_swiglu(
         self,
         input: torch.Tensor,
@@ -483,6 +523,7 @@ class TEFLBackendBase(ABC):
         alpha: float = 1.702,
     ) -> Any:
         raise NotImplementedError
+
     # Backward of GELU and variants #
     def dgelu(
         self,
@@ -491,6 +532,7 @@ class TEFLBackendBase(ABC):
         quantizer: Any,
     ) -> Any:
         raise NotImplementedError
+
     def dgeglu(
         self,
         grad: torch.Tensor,
@@ -498,6 +540,7 @@ class TEFLBackendBase(ABC):
         quantizer: Any,
     ) -> Any:
         raise NotImplementedError
+
     def dqgelu(
         self,
         grad: torch.Tensor,
@@ -505,6 +548,7 @@ class TEFLBackendBase(ABC):
         quantizer: Any,
     ) -> Any:
         raise NotImplementedError
+
     def dqgeglu(
         self,
         grad: torch.Tensor,
@@ -512,6 +556,7 @@ class TEFLBackendBase(ABC):
         quantizer: Any,
     ) -> Any:
         raise NotImplementedError
+
     # Backward of ReLU and variants #
     def drelu(
         self,
@@ -520,6 +565,7 @@ class TEFLBackendBase(ABC):
         quantizer: Any,
     ) -> Any:
         raise NotImplementedError
+
     def dreglu(
         self,
         grad: torch.Tensor,
@@ -527,6 +573,7 @@ class TEFLBackendBase(ABC):
         quantizer: Any,
     ) -> Any:
         raise NotImplementedError
+
     def dsrelu(
         self,
         grad: torch.Tensor,
@@ -534,6 +581,7 @@ class TEFLBackendBase(ABC):
         quantizer: Any,
     ) -> Any:
         raise NotImplementedError
+
     def dsreglu(
         self,
         grad: torch.Tensor,
@@ -541,6 +589,7 @@ class TEFLBackendBase(ABC):
         quantizer: Any,
     ) -> Any:
         raise NotImplementedError
+
     # Backward of SiLU and variants #
     def dsilu(
         self,
@@ -549,6 +598,7 @@ class TEFLBackendBase(ABC):
         quantizer: Any,
     ) -> Any:
         raise NotImplementedError
+
     def dswiglu(
         self,
         grad: torch.Tensor,
@@ -556,6 +606,7 @@ class TEFLBackendBase(ABC):
         quantizer: Any,
     ) -> Any:
         raise NotImplementedError
+
     def clamped_dswiglu(
         self,
         grad: torch.Tensor,
@@ -565,6 +616,7 @@ class TEFLBackendBase(ABC):
         alpha: float = 1.702,
     ) -> Any:
         raise NotImplementedError
+
     # DBias + DAct fusions #
     def dbias_dgelu(
         self,
@@ -573,6 +625,7 @@ class TEFLBackendBase(ABC):
         quantizer: Any,
     ) -> List[Any]:
         raise NotImplementedError
+
     def dbias_dsilu(
         self,
         grad: torch.Tensor,
@@ -580,6 +633,7 @@ class TEFLBackendBase(ABC):
         quantizer: Any,
     ) -> List[Any]:
         raise NotImplementedError
+
     def dbias_drelu(
         self,
         grad: torch.Tensor,
@@ -587,6 +641,7 @@ class TEFLBackendBase(ABC):
         quantizer: Any,
     ) -> List[Any]:
         raise NotImplementedError
+
     def dbias_dqgelu(
         self,
         grad: torch.Tensor,
@@ -594,6 +649,7 @@ class TEFLBackendBase(ABC):
         quantizer: Any,
     ) -> List[Any]:
         raise NotImplementedError
+
     def dbias_dsrelu(
         self,
         grad: torch.Tensor,
@@ -601,7 +657,8 @@ class TEFLBackendBase(ABC):
         quantizer: Any,
     ) -> List[Any]:
         raise NotImplementedError
-    # Permutation functions                                                                                                                                                                                                                                                                                             
+
+    # Permutation functions
     def moe_permute_fwd(
         self,
         input: torch.Tensor,
@@ -612,6 +669,7 @@ class TEFLBackendBase(ABC):
         max_expanded_token_num: int,
     ) -> Tuple[torch.Tensor, torch.Tensor, List[torch.Tensor]]:
         raise NotImplementedError
+
     def moe_permute_bwd(
         self,
         input: torch.Tensor,
@@ -622,6 +680,7 @@ class TEFLBackendBase(ABC):
         topK: int,
     ) -> torch.Tensor:
         raise NotImplementedError
+
     def moe_unpermute_fwd(
         self,
         input: torch.Tensor,
@@ -632,6 +691,7 @@ class TEFLBackendBase(ABC):
         topK: int,
     ) -> torch.Tensor:
         raise NotImplementedError
+
     def moe_unpermute_bwd(
         self,
         input_bwd: torch.Tensor,
@@ -641,6 +701,7 @@ class TEFLBackendBase(ABC):
         prob: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         raise NotImplementedError
+
     # Softmax functions
     def scaled_softmax_forward(
         self,
@@ -648,6 +709,7 @@ class TEFLBackendBase(ABC):
         scale: float,
     ) -> torch.Tensor:
         raise NotImplementedError
+
     def scaled_softmax_backward(
         self,
         output_grad_: torch.Tensor,
@@ -655,6 +717,7 @@ class TEFLBackendBase(ABC):
         scale_factor: float,
     ) -> torch.Tensor:
         raise NotImplementedError
+
     def scaled_masked_softmax_forward(
         self,
         input: torch.Tensor,
@@ -662,6 +725,7 @@ class TEFLBackendBase(ABC):
         scale_factor: float,
     ) -> torch.Tensor:
         raise NotImplementedError
+
     def scaled_masked_softmax_backward(
         self,
         output_grad_: torch.Tensor,
@@ -669,12 +733,14 @@ class TEFLBackendBase(ABC):
         scale_factor: float,
     ) -> torch.Tensor:
         raise NotImplementedError
+
     def scaled_upper_triang_masked_softmax_forward(
         self,
         input: torch.Tensor,
         scale_factor: float,
     ) -> torch.Tensor:
         raise NotImplementedError
+
     def scaled_upper_triang_masked_softmax_backward(
         self,
         output_grads_: torch.Tensor,
@@ -682,12 +748,14 @@ class TEFLBackendBase(ABC):
         scale_factor: float,
     ) -> torch.Tensor:
         raise NotImplementedError
+
     def scaled_aligned_causal_masked_softmax_forward(
         self,
         input: torch.Tensor,
         scale_factor: float,
     ) -> torch.Tensor:
         raise NotImplementedError
+
     def scaled_aligned_causal_masked_softmax_backward(
         self,
         output_grad_: torch.Tensor,
@@ -695,6 +763,7 @@ class TEFLBackendBase(ABC):
         scale_factor: float,
     ) -> torch.Tensor:
         raise NotImplementedError
+
     # Other granular functions
     def layernorm_fwd(
         self,
@@ -709,6 +778,7 @@ class TEFLBackendBase(ABC):
         zero_centered_gamma: bool,
     ) -> List[Any]:
         raise NotImplementedError
+
     def layernorm_bwd(
         self,
         dz: torch.Tensor,
@@ -720,6 +790,7 @@ class TEFLBackendBase(ABC):
         zero_centered_gamma: bool,
     ) -> List[Any]:
         raise NotImplementedError
+
     def rmsnorm_fwd(
         self,
         input: Any,
@@ -732,6 +803,7 @@ class TEFLBackendBase(ABC):
         zero_centered_gamma: bool,
     ) -> List[Any]:
         raise NotImplementedError
+
     def rmsnorm_bwd(
         self,
         dz: torch.Tensor,
@@ -742,6 +814,7 @@ class TEFLBackendBase(ABC):
         zero_centered_gamma: bool,
     ) -> List[Any]:
         raise NotImplementedError
+
     def rmsnorm_bwd_add(
         self,
         dz: torch.Tensor,
@@ -760,6 +833,7 @@ class TEFLBackendBase(ABC):
         quantizer_list: List[Any],
     ) -> List[Any]:
         raise NotImplementedError
+
     def split_quantize(
         self,
         tensor: torch.Tensor,
@@ -767,6 +841,7 @@ class TEFLBackendBase(ABC):
         quantizer_list: List[Any],
     ) -> List[Any]:
         raise NotImplementedError
+
     def te_general_grouped_gemm(
         self,
         A: List[Any],
@@ -788,6 +863,7 @@ class TEFLBackendBase(ABC):
         math_sm_count: int,
     ) -> Optional[List[torch.Tensor]]:
         raise NotImplementedError
+
     def fp8_transpose(
         self,
         input: torch.Tensor,
@@ -795,12 +871,14 @@ class TEFLBackendBase(ABC):
         out: Optional[torch.Tensor],
     ) -> torch.Tensor:
         raise NotImplementedError
+
     def swap_first_dims(
         self,
         tensor: torch.Tensor,
         out: Optional[torch.Tensor],
     ) -> torch.Tensor:
         raise NotImplementedError
+
     def get_fused_attn_backend(
         self,
         is_training: bool,
@@ -829,6 +907,7 @@ class TEFLBackendBase(ABC):
         amax: torch.Tensor,
     ) -> None:
         raise NotImplementedError
+
     def fused_amax_and_scale_update_after_reduction(
         self,
         amax_reduction_buffer: torch.Tensor,
@@ -839,6 +918,7 @@ class TEFLBackendBase(ABC):
         margin: float,
     ) -> None:
         raise NotImplementedError
+
     def fp8_block_scaling_compute_partial_amax(
         self,
         tensor: torch.Tensor,
@@ -849,6 +929,7 @@ class TEFLBackendBase(ABC):
         block_len: int,
     ) -> None:
         raise NotImplementedError
+
     def fp8_block_scaling_partial_cast(
         self,
         inp: torch.Tensor,
@@ -861,6 +942,7 @@ class TEFLBackendBase(ABC):
         out_dtype: DType,
     ) -> None:
         raise NotImplementedError
+
     def fused_multi_row_padding(
         self,
         input: torch.Tensor,
@@ -869,6 +951,7 @@ class TEFLBackendBase(ABC):
         padded_input_row_list: List[int],
     ) -> None:
         raise NotImplementedError
+
     def fused_multi_row_unpadding(
         self,
         input: torch.Tensor,
@@ -884,6 +967,7 @@ class TEFLBackendBase(ABC):
         qkvi: torch.Tensor,
     ) -> torch.Tensor:
         raise NotImplementedError
+
     def fa_prepare_bwd(
         self,
         q: torch.Tensor,
@@ -891,6 +975,7 @@ class TEFLBackendBase(ABC):
         v: torch.Tensor,
     ) -> torch.Tensor:
         raise NotImplementedError
+
     def fused_attn_fwd(
         self,
         max_seqlen_q: int,
@@ -923,6 +1008,7 @@ class TEFLBackendBase(ABC):
         return_max_logit: bool,
     ) -> List[Any]:
         raise NotImplementedError
+
     def fused_attn_bwd(
         self,
         max_seqlen_q: int,
@@ -953,6 +1039,7 @@ class TEFLBackendBase(ABC):
         dqkv_quantizer: Any,
     ) -> List[Any]:
         raise NotImplementedError
+
     def copy_to_kv_cache(
         self,
         new_k: torch.Tensor,
@@ -970,6 +1057,7 @@ class TEFLBackendBase(ABC):
         is_non_paged: bool,
     ) -> None:
         raise NotImplementedError
+
     def convert_thd_to_bshd(
         self,
         tensor: torch.Tensor,
@@ -978,6 +1066,7 @@ class TEFLBackendBase(ABC):
         max_seq_len: int,
     ) -> torch.Tensor:
         raise NotImplementedError
+
     def convert_bshd_to_thd(
         self,
         tensor: torch.Tensor,
@@ -999,6 +1088,7 @@ class TEFLBackendBase(ABC):
         cp_rank: int,
     ) -> torch.Tensor:
         raise NotImplementedError
+
     def fused_rope_backward(
         self,
         output_grads: torch.Tensor,
@@ -1010,6 +1100,7 @@ class TEFLBackendBase(ABC):
         cp_rank: int,
     ) -> torch.Tensor:
         raise NotImplementedError
+
     def fused_qkv_rope_forward(
         self,
         qkv_input: torch.Tensor,
@@ -1023,6 +1114,7 @@ class TEFLBackendBase(ABC):
         cp_rank: int,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         raise NotImplementedError
+
     def fused_qkv_rope_backward(
         self,
         q_grad_out: torch.Tensor,
@@ -1051,6 +1143,7 @@ class TEFLBackendBase(ABC):
         expert_bias: Optional[torch.Tensor],
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         raise NotImplementedError
+
     def fused_topk_with_score_function_bwd(
         self,
         num_tokens: int,
@@ -1064,6 +1157,7 @@ class TEFLBackendBase(ABC):
         score_function: str,
     ) -> torch.Tensor:
         raise NotImplementedError
+
     def fused_score_for_moe_aux_loss_fwd(
         self,
         logits: torch.Tensor,
@@ -1071,6 +1165,7 @@ class TEFLBackendBase(ABC):
         score_function: str,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         raise NotImplementedError
+
     def fused_score_for_moe_aux_loss_bwd(
         self,
         num_tokens: int,
@@ -1081,6 +1176,7 @@ class TEFLBackendBase(ABC):
         score_function: str,
     ) -> torch.Tensor:
         raise NotImplementedError
+
     def fused_moe_aux_loss_fwd(
         self,
         probs: torch.Tensor,
@@ -1093,6 +1189,7 @@ class TEFLBackendBase(ABC):
         coeff: float,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         raise NotImplementedError
+
     def fused_moe_aux_loss_bwd(
         self,
         Const_buf: torch.Tensor,
@@ -1111,6 +1208,7 @@ class TEFLBackendBase(ABC):
         out: Optional[torch.Tensor],
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         raise NotImplementedError
+
     def dropout_bwd(
         self,
         grad_output: torch.Tensor,
@@ -1123,8 +1221,10 @@ class TEFLBackendBase(ABC):
     # Misc
     def get_cublasLt_version(self) -> int:
         raise NotImplementedError
+
     def get_cudnn_version(self) -> int:
         raise NotImplementedError
+
     def get_num_cublas_streams(self) -> int:
         raise NotImplementedError
 
@@ -1136,6 +1236,7 @@ class TEFLBackendBase(ABC):
         half_idx: int,
     ) -> torch.Tensor:
         raise NotImplementedError
+
     def thd_second_half_lse_correction(
         self,
         lse: torch.Tensor,
@@ -1144,6 +1245,7 @@ class TEFLBackendBase(ABC):
         lse_packed: bool,
     ) -> None:
         raise NotImplementedError
+
     def thd_read_second_half_lse(
         self,
         lse: torch.Tensor,
@@ -1152,6 +1254,7 @@ class TEFLBackendBase(ABC):
         second_half_lse_seqlen: int,
     ) -> torch.Tensor:
         raise NotImplementedError
+
     def thd_out_correction(
         self,
         out: torch.Tensor,
@@ -1163,6 +1266,7 @@ class TEFLBackendBase(ABC):
         lse_packed: bool,
     ) -> None:
         raise NotImplementedError
+
     def thd_grad_correction(
         self,
         grad: torch.Tensor,
@@ -1172,6 +1276,7 @@ class TEFLBackendBase(ABC):
         second_half: str,
     ) -> None:
         raise NotImplementedError
+
     def thd_get_partitioned_indices(
         self,
         cu_seqlens: torch.Tensor,
@@ -1187,12 +1292,14 @@ class TEFLBackendBase(ABC):
         process_group: Any,
     ) -> None:
         raise NotImplementedError
+
     def create_nvshmem_tensor(
         self,
         shape: List[int],
         dtype: torch.dtype,
     ) -> torch.Tensor:
         raise NotImplementedError
+
     def nvshmem_send_on_current_stream(
         self,
         src: torch.Tensor,
@@ -1201,12 +1308,14 @@ class TEFLBackendBase(ABC):
         signal: torch.Tensor,
     ) -> None:
         raise NotImplementedError
+
     def nvshmem_wait_on_current_stream(
         self,
         signal: torch.Tensor,
         wait_kind: str,
     ) -> None:
         raise NotImplementedError
+
     def nvshmem_finalize(self) -> None:
         raise NotImplementedError
 
@@ -1219,6 +1328,7 @@ class TEFLBackendBase(ABC):
         scale: float,
     ) -> None:
         raise NotImplementedError
+
     def multi_tensor_l2norm(
         self,
         chunk_size: int,
@@ -1227,6 +1337,7 @@ class TEFLBackendBase(ABC):
         per_tensor: Optional[bool] = False,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         raise NotImplementedError
+
     def multi_tensor_unscale_l2norm(
         self,
         chunk_size: int,
@@ -1236,6 +1347,7 @@ class TEFLBackendBase(ABC):
         per_tensor: Optional[bool] = False,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         raise NotImplementedError
+
     def multi_tensor_adam(
         self,
         chunk_size: int,
@@ -1251,6 +1363,7 @@ class TEFLBackendBase(ABC):
         weight_decay: float,
     ) -> None:
         raise NotImplementedError
+
     def multi_tensor_adam_param_remainder(
         self,
         chunk_size: int,
@@ -1266,6 +1379,7 @@ class TEFLBackendBase(ABC):
         weight_decay: float,
     ) -> None:
         raise NotImplementedError
+
     def multi_tensor_adam_fp8(
         self,
         chunk_size: int,
@@ -1282,6 +1396,7 @@ class TEFLBackendBase(ABC):
         fp8_dtype: DType,
     ) -> None:
         raise NotImplementedError
+
     def multi_tensor_adam_capturable(
         self,
         chunk_size: int,
@@ -1298,6 +1413,7 @@ class TEFLBackendBase(ABC):
         inv_scale: torch.Tensor,
     ) -> None:
         raise NotImplementedError
+
     def multi_tensor_adam_capturable_master(
         self,
         chunk_size: int,
@@ -1314,6 +1430,7 @@ class TEFLBackendBase(ABC):
         inv_scale: torch.Tensor,
     ) -> None:
         raise NotImplementedError
+
     def multi_tensor_sgd(
         self,
         chunk_size: int,
@@ -1329,6 +1446,7 @@ class TEFLBackendBase(ABC):
         scale: float,
     ) -> None:
         raise NotImplementedError
+
     def multi_tensor_compute_scale_and_scale_inv(
         self,
         chunk_size: int,
@@ -1349,10 +1467,11 @@ class TEFLBackendBase(ABC):
     ) -> Any:
         raise NotImplementedError
 
-############## class func #################################
+    ############## class func #################################
     def create_fp8_tensor_meta(self) -> FP8TensorMeta:
         """Create FP8TensorMeta instance."""
         raise NotImplementedError
+
     def create_comm_overlap_helper(
         self,
         world_group: Optional[Any] = None,
@@ -1363,6 +1482,7 @@ class TEFLBackendBase(ABC):
         Users should use CommOverlapHelper(...) directly.
         """
         raise NotImplementedError
+
     def create_comm_overlap(
         self,
         buffer_shape: List[int],
@@ -1384,6 +1504,7 @@ class TEFLBackendBase(ABC):
         Users should use CommOverlap(...) directly.
         """
         raise NotImplementedError
+
     def create_comm_overlap_p2p(
         self,
         buffer_shape: List[int],
@@ -1406,8 +1527,10 @@ class TEFLBackendBase(ABC):
         Users should use CommOverlapP2P(...) directly.
         """
         raise NotImplementedError
+
     def get_flash_attention_class(self) -> Type["FlashAttentionBase"]:
         raise NotImplementedError
+
 
 ############ Wapper  #################
 class TEFLModule:
@@ -1421,6 +1544,7 @@ class TEFLModule:
         """
         # Import here to avoid circular dependency
         from .manager import get_default_manager
+
         self._manager = manager if manager is not None else get_default_manager()
         # emum
         self.DType = DType
@@ -1447,7 +1571,7 @@ class TEFLModule:
         """
         Dynamically resolve operators through OpManager.
         """
-        if name.startswith('_'):
+        if name.startswith("_"):
             raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
         # Verify the operator exists before returning the bound call method
@@ -1456,26 +1580,37 @@ class TEFLModule:
             available_ops = self._manager.registry.list_operators()
             if name not in available_ops:
                 raise AttributeError(
-                    f"Operator '{name}' not found. "
-                    f"Available operators: {available_ops}"
+                    f"Operator '{name}' not found. Available operators: {available_ops}"
                 )
         except RuntimeError as e:
             # Re-raise as AttributeError for better error messages
-            raise AttributeError(
-                f"Error accessing operator '{name}': {e}"
-            ) from e
+            raise AttributeError(f"Error accessing operator '{name}': {e}") from e
 
         # Return a bound call method for this operator
         import functools
+
         return functools.partial(self._manager.call, name)
 
     def __dir__(self):
         module_attrs = [
-            'DType', 'Float8BlockScaleTensorFormat', 'FP8FwdTensors', 'FP8BwdTensors',
-            'FP8TensorMeta', 'NVTE_Activation_Type', 'NVTE_Bias_Type', 'NVTE_Mask_Type',
-            'NVTE_Softmax_Type', 'NVTE_Fused_Attn_Backend', 'NVTE_QKV_Format', 'NVTE_QKV_Layout',
-            'CommOverlapType', 'CommOverlapAlgo', 'CommGemmOverlapRole',
-            'CommOverlapHelper', 'CommOverlap', 'CommOverlapP2P', 
+            "DType",
+            "Float8BlockScaleTensorFormat",
+            "FP8FwdTensors",
+            "FP8BwdTensors",
+            "FP8TensorMeta",
+            "NVTE_Activation_Type",
+            "NVTE_Bias_Type",
+            "NVTE_Mask_Type",
+            "NVTE_Softmax_Type",
+            "NVTE_Fused_Attn_Backend",
+            "NVTE_QKV_Format",
+            "NVTE_QKV_Layout",
+            "CommOverlapType",
+            "CommOverlapAlgo",
+            "CommGemmOverlapRole",
+            "CommOverlapHelper",
+            "CommOverlap",
+            "CommOverlapP2P",
         ]
 
         # Add operator names from OpManager's registry
@@ -1508,12 +1643,12 @@ class TEFLModule:
 
         # Prepare initialization parameters
         init_params = {
-            'softmax_scale': softmax_scale,
-            'attention_dropout': attention_dropout,
-            'attention_dropout_ctx': attention_dropout_ctx,
-            'attention_type': attention_type,
-            'layer_number': layer_number,
-            'deterministic': deterministic,
+            "softmax_scale": softmax_scale,
+            "attention_dropout": attention_dropout,
+            "attention_dropout_ctx": attention_dropout_ctx,
+            "attention_type": attention_type,
+            "layer_number": layer_number,
+            "deterministic": deterministic,
         }
 
         # Instantiate the FlashAttention
@@ -1529,9 +1664,11 @@ class TEFLModule:
         op_count = len(self._manager.registry.list_operators())
         return f"TEFLModule(operators={op_count}, manager={self._manager.__class__.__name__})"
 
+
 # Global singleton instance
 _global_tefl_module: Optional[TEFLModule] = None
 _tefl_module_lock = None
+
 
 def get_tefl_module() -> TEFLModule:
     """
@@ -1565,6 +1702,7 @@ def get_tefl_module() -> TEFLModule:
 
     return _global_tefl_module
 
+
 def reset_tefl_module() -> None:
     """
     Reset the global TEFLModule instance.
@@ -1580,10 +1718,12 @@ def reset_tefl_module() -> None:
 
     if _tefl_module_lock is None:
         import threading
+
         _tefl_module_lock = threading.RLock()
 
     with _tefl_module_lock:
         _global_tefl_module = None
+
 
 # Backward compatibility functions
 def get_registry():
@@ -1604,7 +1744,9 @@ def get_registry():
         >>> ops = registry.list_operators()
     """
     from .manager import get_default_manager
+
     return get_default_manager().registry
+
 
 def get_manager():
     """
@@ -1621,7 +1763,9 @@ def get_manager():
         >>> impl_fn = manager.resolve("rmsnorm_fwd")
     """
     from .manager import get_default_manager
+
     return get_default_manager()
+
 
 def reset_registry() -> None:
     """
@@ -1632,6 +1776,7 @@ def reset_registry() -> None:
     This function is kept for backward compatibility.
     """
     from .manager import reset_default_manager
+
     reset_default_manager()
     # Also reset the TEFLModule singleton since it depends on OpManager
     reset_tefl_module()

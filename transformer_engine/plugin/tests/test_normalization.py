@@ -19,8 +19,7 @@ from transformer_engine.plugin.core.ops import DType
 class NormalizationTests(TestCase):
     def __init__(self, device="cpu"):
         super().__init__(
-            "Normalization Functions",
-            "Test correctness of LayerNorm and RMSNorm across backends"
+            "Normalization Functions", "Test correctness of LayerNorm and RMSNorm across backends"
         )
         self.backends = get_available_backends()
         self.eps = 1e-5
@@ -35,7 +34,7 @@ class NormalizationTests(TestCase):
         return output, mean.squeeze(-1), rsigma.squeeze(-1)
 
     def _reference_rmsnorm_forward(self, x, weight, eps):
-        var = (x ** 2).mean(dim=-1, keepdim=True)
+        var = (x**2).mean(dim=-1, keepdim=True)
         rsigma = torch.rsqrt(var + eps)
         normalized = x * rsigma
         output = normalized * weight
@@ -57,20 +56,28 @@ class NormalizationTests(TestCase):
             backend = get_backend(backend_name)
             try:
                 output, mean, rsigma = backend.layernorm_fwd(
-                    x, weight, bias, self.eps,
-                    None, None, DType.kFloat32, 0, False
+                    x, weight, bias, self.eps, None, None, DType.kFloat32, 0, False
                 )
                 self.assert_close(
-                    output, ref_output, rtol=1e-5, atol=1e-7,
-                    msg=f"LayerNorm forward output mismatch for {backend_name}"
+                    output,
+                    ref_output,
+                    rtol=1e-5,
+                    atol=1e-7,
+                    msg=f"LayerNorm forward output mismatch for {backend_name}",
                 )
                 self.assert_close(
-                    mean, ref_mean, rtol=1e-5, atol=1e-7,
-                    msg=f"LayerNorm forward mean mismatch for {backend_name}"
+                    mean,
+                    ref_mean,
+                    rtol=1e-5,
+                    atol=1e-7,
+                    msg=f"LayerNorm forward mean mismatch for {backend_name}",
                 )
                 self.assert_close(
-                    rsigma, ref_rsigma, rtol=1e-4, atol=1e-6,
-                    msg=f"LayerNorm forward rsigma mismatch for {backend_name}"
+                    rsigma,
+                    ref_rsigma,
+                    rtol=1e-4,
+                    atol=1e-6,
+                    msg=f"LayerNorm forward rsigma mismatch for {backend_name}",
                 )
                 print(f"    ✓ {backend_name}")
             except NotImplementedError:
@@ -84,8 +91,12 @@ class NormalizationTests(TestCase):
         print(f"\n  Testing LayerNorm backward with shape {shape}")
 
         hidden_size = shape[-1]
-        x = generate_random_tensor(shape, dtype=torch.float32, device=self.device, requires_grad=True)
-        weight = torch.ones(hidden_size, dtype=torch.float32, device=self.device, requires_grad=True)
+        x = generate_random_tensor(
+            shape, dtype=torch.float32, device=self.device, requires_grad=True
+        )
+        weight = torch.ones(
+            hidden_size, dtype=torch.float32, device=self.device, requires_grad=True
+        )
         bias = torch.zeros(hidden_size, dtype=torch.float32, device=self.device, requires_grad=True)
         grad_output = generate_random_tensor(shape, dtype=torch.float32, device=self.device)
 
@@ -106,21 +117,29 @@ class NormalizationTests(TestCase):
                 weight_copy = weight.detach()
 
                 grad_x, grad_weight, grad_bias = backend.layernorm_bwd(
-                    grad_output, x_copy, mean.detach(), rsigma.detach(),
-                    weight_copy, 0, False
+                    grad_output, x_copy, mean.detach(), rsigma.detach(), weight_copy, 0, False
                 )
 
                 self.assert_close(
-                    grad_x, ref_grad_x, rtol=1e-4, atol=1e-6,
-                    msg=f"LayerNorm backward grad_x mismatch for {backend_name}"
+                    grad_x,
+                    ref_grad_x,
+                    rtol=1e-4,
+                    atol=1e-6,
+                    msg=f"LayerNorm backward grad_x mismatch for {backend_name}",
                 )
                 self.assert_close(
-                    grad_weight, ref_grad_weight, rtol=1e-4, atol=1e-6,
-                    msg=f"LayerNorm backward grad_weight mismatch for {backend_name}"
+                    grad_weight,
+                    ref_grad_weight,
+                    rtol=1e-4,
+                    atol=1e-6,
+                    msg=f"LayerNorm backward grad_weight mismatch for {backend_name}",
                 )
                 self.assert_close(
-                    grad_bias, ref_grad_bias, rtol=1e-4, atol=1e-5,
-                    msg=f"LayerNorm backward grad_bias mismatch for {backend_name}"
+                    grad_bias,
+                    ref_grad_bias,
+                    rtol=1e-4,
+                    atol=1e-5,
+                    msg=f"LayerNorm backward grad_bias mismatch for {backend_name}",
                 )
                 print(f"    ✓ {backend_name}")
             except NotImplementedError:
@@ -143,16 +162,21 @@ class NormalizationTests(TestCase):
             backend = get_backend(backend_name)
             try:
                 output, _, rsigma = backend.rmsnorm_fwd(
-                    x, weight, self.eps,
-                    None, None, DType.kFloat32, 0, False
+                    x, weight, self.eps, None, None, DType.kFloat32, 0, False
                 )
                 self.assert_close(
-                    output, ref_output, rtol=1e-5, atol=1e-7,
-                    msg=f"RMSNorm forward output mismatch for {backend_name}"
+                    output,
+                    ref_output,
+                    rtol=1e-5,
+                    atol=1e-7,
+                    msg=f"RMSNorm forward output mismatch for {backend_name}",
                 )
                 self.assert_close(
-                    rsigma, ref_rsigma, rtol=1e-4, atol=1e-6,
-                    msg=f"RMSNorm forward rsigma mismatch for {backend_name}"
+                    rsigma,
+                    ref_rsigma,
+                    rtol=1e-4,
+                    atol=1e-6,
+                    msg=f"RMSNorm forward rsigma mismatch for {backend_name}",
                 )
                 print(f"    ✓ {backend_name}")
             except NotImplementedError:
@@ -166,8 +190,12 @@ class NormalizationTests(TestCase):
         print(f"\n  Testing RMSNorm backward with shape {shape}")
 
         hidden_size = shape[-1]
-        x = generate_random_tensor(shape, dtype=torch.float32, device=self.device, requires_grad=True)
-        weight = torch.ones(hidden_size, dtype=torch.float32, device=self.device, requires_grad=True)
+        x = generate_random_tensor(
+            shape, dtype=torch.float32, device=self.device, requires_grad=True
+        )
+        weight = torch.ones(
+            hidden_size, dtype=torch.float32, device=self.device, requires_grad=True
+        )
         grad_output = generate_random_tensor(shape, dtype=torch.float32, device=self.device)
 
         output, _, rsigma = self._reference_rmsnorm_forward(x, weight, self.eps)
@@ -185,17 +213,22 @@ class NormalizationTests(TestCase):
                 weight_copy = weight.detach()
 
                 grad_x, grad_weight = backend.rmsnorm_bwd(
-                    grad_output, x_copy, rsigma.detach(),
-                    weight_copy, 0, False
+                    grad_output, x_copy, rsigma.detach(), weight_copy, 0, False
                 )
 
                 self.assert_close(
-                    grad_x, ref_grad_x, rtol=1e-4, atol=1e-6,
-                    msg=f"RMSNorm backward grad_x mismatch for {backend_name}"
+                    grad_x,
+                    ref_grad_x,
+                    rtol=1e-4,
+                    atol=1e-6,
+                    msg=f"RMSNorm backward grad_x mismatch for {backend_name}",
                 )
                 self.assert_close(
-                    grad_weight, ref_grad_weight, rtol=1e-4, atol=1e-6,
-                    msg=f"RMSNorm backward grad_weight mismatch for {backend_name}"
+                    grad_weight,
+                    ref_grad_weight,
+                    rtol=1e-4,
+                    atol=1e-6,
+                    msg=f"RMSNorm backward grad_weight mismatch for {backend_name}",
                 )
                 print(f"    ✓ {backend_name}")
             except NotImplementedError:
@@ -206,9 +239,9 @@ class NormalizationTests(TestCase):
                 print(f"    ✗ {backend_name}: {e}")
 
     def run_all_tests(self):
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("Testing Normalization Functions")
-        print("="*60)
+        print("=" * 60)
         print(f"Available backends: {', '.join(self.backends)}")
 
         shapes = [

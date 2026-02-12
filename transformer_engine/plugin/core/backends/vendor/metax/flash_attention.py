@@ -31,12 +31,12 @@ class FlashAttentionMETAX(FlashAttentionBase):
 
         # Store initialization parameters for lazy loading
         self._init_params = {
-            'softmax_scale': softmax_scale,
-            'attention_dropout': attention_dropout,
-            'attention_dropout_ctx': attention_dropout_ctx or nullcontext,
-            'attention_type': attention_type,
-            'layer_number': layer_number,
-            'deterministic': deterministic,
+            "softmax_scale": softmax_scale,
+            "attention_dropout": attention_dropout,
+            "attention_dropout_ctx": attention_dropout_ctx or nullcontext,
+            "attention_type": attention_type,
+            "layer_number": layer_number,
+            "deterministic": deterministic,
         }
         self._metax_flash_attn = None
 
@@ -53,7 +53,9 @@ class FlashAttentionMETAX(FlashAttentionBase):
             )
 
             if FlashAttentionMetax is None:
-                raise RuntimeError("FlashAttention class is None - flash-attn may not be installed correctly")
+                raise RuntimeError(
+                    "FlashAttention class is None - flash-attn may not be installed correctly"
+                )
 
             self._metax_flash_attn = FlashAttentionMetax(**self._init_params)
 
@@ -64,8 +66,7 @@ class FlashAttentionMETAX(FlashAttentionBase):
             )
         except Exception as e:
             raise RuntimeError(
-                f"Failed to initialize metax FlashAttention: {e}. "
-                f"Init params: {self._init_params}"
+                f"Failed to initialize metax FlashAttention: {e}. Init params: {self._init_params}"
             )
 
     @property
@@ -124,4 +125,3 @@ class FlashAttentionMETAX(FlashAttentionBase):
             flash_attention_backend=flash_attention_backend,
             fp8_output=fp8_output,
         )
-

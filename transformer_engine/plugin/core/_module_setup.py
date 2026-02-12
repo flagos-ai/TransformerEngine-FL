@@ -60,6 +60,7 @@ def setup_module_aliases():
     # Register parent plugin package if needed
     if "transformer_engine.plugin" not in sys.modules:
         import types
+
         plugin_dir = Path(__file__).parent.parent
         plugin_pkg = types.ModuleType("transformer_engine.plugin")
         plugin_pkg.__path__ = [str(plugin_dir)]
@@ -79,16 +80,19 @@ def register_as_transformer_engine_torch():
 
     try:
         from .ops import get_tefl_module
+
         tefl_module = get_tefl_module()
         sys.modules["transformer_engine_torch"] = tefl_module
     except Exception as e:
         import traceback
+
         print(f"[TEFL Setup] Warning: Could not register transformer_engine_torch: {e}")
         traceback.print_exc()
 
         # Create a minimal placeholder module to avoid import errors
         # This allows the system to at least import without crashing
         import types
+
         placeholder = types.ModuleType("transformer_engine_torch")
         placeholder.__doc__ = "Placeholder module - TEFL backend not available"
         sys.modules["transformer_engine_torch"] = placeholder

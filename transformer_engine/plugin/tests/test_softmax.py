@@ -16,8 +16,7 @@ from transformer_engine.plugin.test_utils import (
 class SoftmaxTests(TestCase):
     def __init__(self, device="cpu"):
         super().__init__(
-            "Softmax Operations",
-            "Test correctness of all softmax operations across backends"
+            "Softmax Operations", "Test correctness of all softmax operations across backends"
         )
         self.backends = get_available_backends()
         self.device = device
@@ -34,8 +33,11 @@ class SoftmaxTests(TestCase):
             try:
                 output = backend.scaled_softmax_forward(x, scale)
                 self.assert_close(
-                    output, reference, rtol=1e-2, atol=1e-3,
-                    msg=f"Scaled softmax forward mismatch for {backend_name}"
+                    output,
+                    reference,
+                    rtol=1e-2,
+                    atol=1e-3,
+                    msg=f"Scaled softmax forward mismatch for {backend_name}",
                 )
                 print(f"    ✓ {backend_name}")
             except NotImplementedError:
@@ -49,7 +51,9 @@ class SoftmaxTests(TestCase):
         print(f"\n  Testing scaled softmax backward with shape {shape}")
 
         # Use bf16 for all computation to match backend precision
-        x = generate_random_tensor(shape, dtype=torch.bfloat16, device=self.device, requires_grad=True)
+        x = generate_random_tensor(
+            shape, dtype=torch.bfloat16, device=self.device, requires_grad=True
+        )
         scale = 0.125
         grad_output = generate_random_tensor(shape, dtype=torch.bfloat16, device=self.device)
 
@@ -71,8 +75,11 @@ class SoftmaxTests(TestCase):
                     grad_output.clone(), softmax_out_test.clone(), scale
                 )
                 self.assert_close(
-                    grad_input.float(), reference_grad, rtol=1e-2, atol=1e-2,
-                    msg=f"Scaled softmax backward mismatch for {backend_name}"
+                    grad_input.float(),
+                    reference_grad,
+                    rtol=1e-2,
+                    atol=1e-2,
+                    msg=f"Scaled softmax backward mismatch for {backend_name}",
                 )
                 print(f"    ✓ {backend_name}")
             except NotImplementedError:
@@ -98,7 +105,7 @@ class SoftmaxTests(TestCase):
 
         # Additive mask for reference computation
         additive_mask = torch.zeros((batch, 1, seq_q, seq_k), dtype=x.dtype, device=self.device)
-        additive_mask = additive_mask.masked_fill(bool_mask, float('-inf'))
+        additive_mask = additive_mask.masked_fill(bool_mask, float("-inf"))
         additive_mask_expanded = additive_mask.expand(shape)
 
         # Reference: F.softmax(x * scale + additive_mask, dim=-1)
@@ -112,8 +119,11 @@ class SoftmaxTests(TestCase):
             try:
                 output = backend.scaled_masked_softmax_forward(x_test, uint8_mask, scale)
                 self.assert_close(
-                    output.float(), reference.float(), rtol=1e-2, atol=1e-3,
-                    msg=f"Scaled masked softmax forward mismatch for {backend_name}"
+                    output.float(),
+                    reference.float(),
+                    rtol=1e-2,
+                    atol=1e-3,
+                    msg=f"Scaled masked softmax forward mismatch for {backend_name}",
                 )
                 print(f"    ✓ {backend_name}")
             except NotImplementedError:
@@ -127,7 +137,9 @@ class SoftmaxTests(TestCase):
         print(f"\n  Testing scaled masked softmax backward with shape {shape}")
 
         # Use bf16 for all computation
-        x = generate_random_tensor(shape, dtype=torch.bfloat16, device=self.device, requires_grad=True)
+        x = generate_random_tensor(
+            shape, dtype=torch.bfloat16, device=self.device, requires_grad=True
+        )
         scale = 0.125
         grad_output = generate_random_tensor(shape, dtype=torch.bfloat16, device=self.device)
 
@@ -149,8 +161,11 @@ class SoftmaxTests(TestCase):
                     grad_output.clone(), softmax_out_test.clone(), scale
                 )
                 self.assert_close(
-                    grad_input.float(), reference_grad, rtol=1e-2, atol=1e-2,
-                    msg=f"Scaled masked softmax backward mismatch for {backend_name}"
+                    grad_input.float(),
+                    reference_grad,
+                    rtol=1e-2,
+                    atol=1e-2,
+                    msg=f"Scaled masked softmax backward mismatch for {backend_name}",
                 )
                 print(f"    ✓ {backend_name}")
             except NotImplementedError:
@@ -168,8 +183,8 @@ class SoftmaxTests(TestCase):
         seq_len = shape[-1]
 
         causal_mask = torch.triu(
-            torch.full((seq_len, seq_len), float('-inf'), dtype=x.dtype, device=self.device),
-            diagonal=1
+            torch.full((seq_len, seq_len), float("-inf"), dtype=x.dtype, device=self.device),
+            diagonal=1,
         )
         reference = F.softmax(x.float() * scale + causal_mask.float(), dim=-1).to(x.dtype)
 
@@ -178,8 +193,11 @@ class SoftmaxTests(TestCase):
             try:
                 output = backend.scaled_upper_triang_masked_softmax_forward(x, scale)
                 self.assert_close(
-                    output, reference, rtol=1e-2, atol=1e-3,
-                    msg=f"Scaled upper triang masked softmax forward mismatch for {backend_name}"
+                    output,
+                    reference,
+                    rtol=1e-2,
+                    atol=1e-3,
+                    msg=f"Scaled upper triang masked softmax forward mismatch for {backend_name}",
                 )
                 print(f"    ✓ {backend_name}")
             except NotImplementedError:
@@ -193,14 +211,16 @@ class SoftmaxTests(TestCase):
         print(f"\n  Testing scaled upper triang masked softmax backward with shape {shape}")
 
         # Use bf16 for all computation
-        x = generate_random_tensor(shape, dtype=torch.bfloat16, device=self.device, requires_grad=True)
+        x = generate_random_tensor(
+            shape, dtype=torch.bfloat16, device=self.device, requires_grad=True
+        )
         scale = 0.125
         seq_len = shape[-1]
         grad_output = generate_random_tensor(shape, dtype=torch.bfloat16, device=self.device)
 
         causal_mask = torch.triu(
-            torch.full((seq_len, seq_len), float('-inf'), dtype=torch.float32, device=self.device),
-            diagonal=1
+            torch.full((seq_len, seq_len), float("-inf"), dtype=torch.float32, device=self.device),
+            diagonal=1,
         )
 
         # Compute reference gradient using autograd (in float32 for precision)
@@ -221,8 +241,11 @@ class SoftmaxTests(TestCase):
                     grad_output.clone(), softmax_out_test.clone(), scale
                 )
                 self.assert_close(
-                    grad_input.float(), reference_grad, rtol=1e-2, atol=1e-2,
-                    msg=f"Scaled upper triang masked softmax backward mismatch for {backend_name}"
+                    grad_input.float(),
+                    reference_grad,
+                    rtol=1e-2,
+                    atol=1e-2,
+                    msg=f"Scaled upper triang masked softmax backward mismatch for {backend_name}",
                 )
                 print(f"    ✓ {backend_name}")
             except NotImplementedError:
@@ -245,8 +268,8 @@ class SoftmaxTests(TestCase):
 
         # Aligned causal mask (lower triangular)
         causal_mask = torch.triu(
-            torch.full((seq_len, seq_len), float('-inf'), dtype=x.dtype, device=self.device),
-            diagonal=1
+            torch.full((seq_len, seq_len), float("-inf"), dtype=x.dtype, device=self.device),
+            diagonal=1,
         )
         reference = F.softmax(x.float() * scale + causal_mask.float(), dim=-1).to(x.dtype)
 
@@ -255,8 +278,11 @@ class SoftmaxTests(TestCase):
             try:
                 output = backend.scaled_aligned_causal_masked_softmax_forward(x, scale)
                 self.assert_close(
-                    output, reference, rtol=1e-2, atol=1e-3,
-                    msg=f"Scaled aligned causal masked softmax forward mismatch for {backend_name}"
+                    output,
+                    reference,
+                    rtol=1e-2,
+                    atol=1e-3,
+                    msg=f"Scaled aligned causal masked softmax forward mismatch for {backend_name}",
                 )
                 print(f"    ✓ {backend_name}")
             except NotImplementedError:
@@ -274,14 +300,16 @@ class SoftmaxTests(TestCase):
         print(f"\n  Testing scaled aligned causal masked softmax backward with shape {shape}")
 
         # Use bf16 for all computation
-        x = generate_random_tensor(shape, dtype=torch.bfloat16, device=self.device, requires_grad=True)
+        x = generate_random_tensor(
+            shape, dtype=torch.bfloat16, device=self.device, requires_grad=True
+        )
         scale = 0.125
         seq_len = shape[-1]
         grad_output = generate_random_tensor(shape, dtype=torch.bfloat16, device=self.device)
 
         causal_mask = torch.triu(
-            torch.full((seq_len, seq_len), float('-inf'), dtype=torch.float32, device=self.device),
-            diagonal=1
+            torch.full((seq_len, seq_len), float("-inf"), dtype=torch.float32, device=self.device),
+            diagonal=1,
         )
 
         # Compute reference gradient using autograd (in float32 for precision)
@@ -302,8 +330,13 @@ class SoftmaxTests(TestCase):
                     grad_output.clone(), softmax_out_test.clone(), scale
                 )
                 self.assert_close(
-                    grad_input.float(), reference_grad, rtol=1e-2, atol=1e-2,
-                    msg=f"Scaled aligned causal masked softmax backward mismatch for {backend_name}"
+                    grad_input.float(),
+                    reference_grad,
+                    rtol=1e-2,
+                    atol=1e-2,
+                    msg=(
+                        f"Scaled aligned causal masked softmax backward mismatch for {backend_name}"
+                    ),
                 )
                 print(f"    ✓ {backend_name}")
             except NotImplementedError:
@@ -314,9 +347,9 @@ class SoftmaxTests(TestCase):
                 print(f"    ✗ {backend_name}: {e}")
 
     def run_all_tests(self):
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("Testing Softmax Operations")
-        print("="*60)
+        print("=" * 60)
         print(f"Available backends: {', '.join(self.backends)}")
 
         # Scaled softmax tests

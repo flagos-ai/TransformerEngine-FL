@@ -25,7 +25,7 @@ def get_available_backends() -> List[str]:
         impl_ids = set()
         for impl in all_impls:
             # impl_id format: "kind.name" (e.g., "default.flagos", "vendor.cuda")
-            parts = impl.impl_id.split('.', 1)
+            parts = impl.impl_id.split(".", 1)
             if len(parts) == 2:
                 impl_ids.add(parts[1])  # Get the "name" part
             else:
@@ -35,6 +35,7 @@ def get_available_backends() -> List[str]:
     except Exception as e:
         print(f"Warning: Could not load backends: {e}")
         import traceback
+
         traceback.print_exc()
         return []
 
@@ -70,7 +71,10 @@ def get_backend(name: str):
             # Try to find implementation matching backend_name
             # Match against impl_id suffix (e.g., "vendor.cuda" matches "cuda")
             for impl in impls:
-                if impl.impl_id.endswith(f".{self.backend_name}") or impl.impl_id == self.backend_name:
+                if (
+                    impl.impl_id.endswith(f".{self.backend_name}")
+                    or impl.impl_id == self.backend_name
+                ):
                     if impl.is_available():
                         return impl
                     else:
@@ -152,7 +156,9 @@ class TestCase:
         if self.description:
             print(f"Description: {self.description}")
         print(f"{'='*60}")
-        print(f"Total: {total}, Passed: {self.passed}, Failed: {self.failed}, Skipped: {self.skipped}")
+        print(
+            f"Total: {total}, Passed: {self.passed}, Failed: {self.failed}, Skipped: {self.skipped}"
+        )
         if self.errors:
             print(f"\nErrors:")
             for i, error in enumerate(self.errors, 1):

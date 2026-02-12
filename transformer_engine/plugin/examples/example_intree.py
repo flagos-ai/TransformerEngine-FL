@@ -44,14 +44,16 @@ my_rmsnorm_fwd._is_available = lambda: True
 # ============================================================
 registry = OpRegistry()
 
-registry.register_impl(OpImpl(
-    op_name="rmsnorm_fwd",           # Operator name
-    impl_id="vendor.mybackend",      # Implementation ID (unique identifier)
-    kind=BackendImplKind.VENDOR,     # Type: VENDOR / DEFAULT / REFERENCE
-    vendor="mybackend",              # Vendor name
-    fn=my_rmsnorm_fwd,               # Implementation function
-    priority=200,                    # Priority (higher = preferred)
-))
+registry.register_impl(
+    OpImpl(
+        op_name="rmsnorm_fwd",  # Operator name
+        impl_id="vendor.mybackend",  # Implementation ID (unique identifier)
+        kind=BackendImplKind.VENDOR,  # Type: VENDOR / DEFAULT / REFERENCE
+        vendor="mybackend",  # Vendor name
+        fn=my_rmsnorm_fwd,  # Implementation function
+        priority=200,  # Priority (higher = preferred)
+    )
+)
 
 
 # ============================================================

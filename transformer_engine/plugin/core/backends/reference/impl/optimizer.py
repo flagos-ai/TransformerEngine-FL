@@ -88,8 +88,8 @@ def multi_tensor_adam_torch(
         raise ValueError("All tensor lists must have the same length")
 
     if bias_correction:
-        bias_correction1 = 1 - beta1 ** step
-        bias_correction2 = 1 - beta2 ** step
+        bias_correction1 = 1 - beta1**step
+        bias_correction2 = 1 - beta2**step
     else:
         bias_correction1 = 1.0
         bias_correction2 = 1.0
@@ -154,12 +154,14 @@ def multi_tensor_adam_param_remainder_torch(
 
     grads, params, exp_avgs, exp_avg_sqs, param_remainders = tensor_lists
 
-    if not (len(params) == len(grads) == len(exp_avgs) == len(exp_avg_sqs) == len(param_remainders)):
+    if not (
+        len(params) == len(grads) == len(exp_avgs) == len(exp_avg_sqs) == len(param_remainders)
+    ):
         raise ValueError("All tensor lists must have the same length")
 
     if bias_correction:
-        bias_correction1 = 1 - beta1 ** step
-        bias_correction2 = 1 - beta2 ** step
+        bias_correction1 = 1 - beta1**step
+        bias_correction2 = 1 - beta2**step
     else:
         bias_correction1 = 1.0
         bias_correction2 = 1.0
@@ -181,7 +183,7 @@ def multi_tensor_adam_param_remainder_torch(
         # We need to scale it back to the proper magnitude
         # BF16 has 16 bits total (1 sign, 8 exponent, 7 mantissa)
         # The remainder compensates for the lost precision
-        param_master = param_fp32 + param_remainder.float() * (2.0 ** -16)
+        param_master = param_fp32 + param_remainder.float() * (2.0**-16)
 
         # Standard Adam update on FP32 master weight
         if mode == 0:  # L2 regularization
@@ -213,7 +215,7 @@ def multi_tensor_adam_param_remainder_torch(
 
         # Compute remainder: difference between FP32 master and BF16 representation
         # Scale and quantize to int16 range
-        remainder_fp32 = (param_master - param_bf16.float()) * (2.0 ** 16)
+        remainder_fp32 = (param_master - param_bf16.float()) * (2.0**16)
         remainder_int16 = remainder_fp32.round().clamp(-32768, 32767).to(dtype=torch.int16)
 
         # Write back

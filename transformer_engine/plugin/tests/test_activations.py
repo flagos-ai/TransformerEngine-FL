@@ -19,8 +19,7 @@ from transformer_engine.plugin.test_utils import (
 class ActivationTests(TestCase):
     def __init__(self, device="cpu"):
         super().__init__(
-            "Activation Functions",
-            "Test correctness of all activation functions across backends"
+            "Activation Functions", "Test correctness of all activation functions across backends"
         )
         self.backends = get_available_backends()
         self.reference_backend = "reference"
@@ -28,11 +27,11 @@ class ActivationTests(TestCase):
 
     # ==================== Reference implementations ====================
     def _get_reference_gelu(self, x):
-        return F.gelu(x, approximate='tanh')
+        return F.gelu(x, approximate="tanh")
 
     def _get_reference_geglu(self, x):
         a, b = x.chunk(2, dim=-1)
-        return F.gelu(a, approximate='tanh') * b
+        return F.gelu(a, approximate="tanh") * b
 
     def _get_reference_qgelu(self, x):
         return x * torch.sigmoid(1.702 * x)
@@ -147,8 +146,11 @@ class ActivationTests(TestCase):
             try:
                 output = backend.clamped_swiglu(x, None, 7.0, 1.702)
                 self.assert_close(
-                    output, reference, rtol=1e-4, atol=1e-6,
-                    msg=f"clamped_swiglu forward mismatch for {backend_name}"
+                    output,
+                    reference,
+                    rtol=1e-4,
+                    atol=1e-6,
+                    msg=f"clamped_swiglu forward mismatch for {backend_name}",
                 )
                 print(f"    ✓ {backend_name}")
             except NotImplementedError:
@@ -165,8 +167,11 @@ class ActivationTests(TestCase):
                 op_fn = getattr(backend, op_name)
                 output = op_fn(x, None)
                 self.assert_close(
-                    output, reference, rtol=rtol, atol=atol,
-                    msg=f"{op_name} forward mismatch for {backend_name}"
+                    output,
+                    reference,
+                    rtol=rtol,
+                    atol=atol,
+                    msg=f"{op_name} forward mismatch for {backend_name}",
                 )
                 print(f"    ✓ {backend_name}")
             except NotImplementedError:
@@ -179,7 +184,9 @@ class ActivationTests(TestCase):
     # ==================== Backward tests ====================
     def test_gelu_backward(self, shape=(4, 8)):
         print(f"\n  Testing GELU backward with shape {shape}")
-        x = generate_random_tensor(shape, dtype=torch.float32, device=self.device, requires_grad=True)
+        x = generate_random_tensor(
+            shape, dtype=torch.float32, device=self.device, requires_grad=True
+        )
         grad_output = generate_random_tensor(shape, dtype=torch.float32, device=self.device)
         y = self._get_reference_gelu(x)
         y.backward(grad_output)
@@ -189,9 +196,14 @@ class ActivationTests(TestCase):
 
     def test_geglu_backward(self, shape=(4, 16)):
         print(f"\n  Testing GEGLU backward with shape {shape}")
-        x = generate_random_tensor(shape, dtype=torch.float32, device=self.device, requires_grad=True)
-        grad_output = generate_random_tensor((shape[0], shape[1] // 2) if len(shape) == 2 else (*shape[:-1], shape[-1] // 2),
-                                              dtype=torch.float32, device=self.device)
+        x = generate_random_tensor(
+            shape, dtype=torch.float32, device=self.device, requires_grad=True
+        )
+        grad_output = generate_random_tensor(
+            (shape[0], shape[1] // 2) if len(shape) == 2 else (*shape[:-1], shape[-1] // 2),
+            dtype=torch.float32,
+            device=self.device,
+        )
         y = self._get_reference_geglu(x)
         y.backward(grad_output)
         reference_grad = x.grad.clone()
@@ -200,7 +212,9 @@ class ActivationTests(TestCase):
 
     def test_qgelu_backward(self, shape=(4, 8)):
         print(f"\n  Testing QGELU backward with shape {shape}")
-        x = generate_random_tensor(shape, dtype=torch.float32, device=self.device, requires_grad=True)
+        x = generate_random_tensor(
+            shape, dtype=torch.float32, device=self.device, requires_grad=True
+        )
         grad_output = generate_random_tensor(shape, dtype=torch.float32, device=self.device)
         y = self._get_reference_qgelu(x)
         y.backward(grad_output)
@@ -210,9 +224,14 @@ class ActivationTests(TestCase):
 
     def test_qgeglu_backward(self, shape=(4, 16)):
         print(f"\n  Testing QGEGLU backward with shape {shape}")
-        x = generate_random_tensor(shape, dtype=torch.float32, device=self.device, requires_grad=True)
-        grad_output = generate_random_tensor((shape[0], shape[1] // 2) if len(shape) == 2 else (*shape[:-1], shape[-1] // 2),
-                                              dtype=torch.float32, device=self.device)
+        x = generate_random_tensor(
+            shape, dtype=torch.float32, device=self.device, requires_grad=True
+        )
+        grad_output = generate_random_tensor(
+            (shape[0], shape[1] // 2) if len(shape) == 2 else (*shape[:-1], shape[-1] // 2),
+            dtype=torch.float32,
+            device=self.device,
+        )
         y = self._get_reference_qgeglu(x)
         y.backward(grad_output)
         reference_grad = x.grad.clone()
@@ -221,7 +240,9 @@ class ActivationTests(TestCase):
 
     def test_relu_backward(self, shape=(4, 8)):
         print(f"\n  Testing ReLU backward with shape {shape}")
-        x = generate_random_tensor(shape, dtype=torch.float32, device=self.device, requires_grad=True)
+        x = generate_random_tensor(
+            shape, dtype=torch.float32, device=self.device, requires_grad=True
+        )
         grad_output = generate_random_tensor(shape, dtype=torch.float32, device=self.device)
         y = self._get_reference_relu(x)
         y.backward(grad_output)
@@ -231,9 +252,14 @@ class ActivationTests(TestCase):
 
     def test_reglu_backward(self, shape=(4, 16)):
         print(f"\n  Testing ReGLU backward with shape {shape}")
-        x = generate_random_tensor(shape, dtype=torch.float32, device=self.device, requires_grad=True)
-        grad_output = generate_random_tensor((shape[0], shape[1] // 2) if len(shape) == 2 else (*shape[:-1], shape[-1] // 2),
-                                              dtype=torch.float32, device=self.device)
+        x = generate_random_tensor(
+            shape, dtype=torch.float32, device=self.device, requires_grad=True
+        )
+        grad_output = generate_random_tensor(
+            (shape[0], shape[1] // 2) if len(shape) == 2 else (*shape[:-1], shape[-1] // 2),
+            dtype=torch.float32,
+            device=self.device,
+        )
         y = self._get_reference_reglu(x)
         y.backward(grad_output)
         reference_grad = x.grad.clone()
@@ -242,7 +268,9 @@ class ActivationTests(TestCase):
 
     def test_srelu_backward(self, shape=(4, 8)):
         print(f"\n  Testing SReLU backward with shape {shape}")
-        x = generate_random_tensor(shape, dtype=torch.float32, device=self.device, requires_grad=True)
+        x = generate_random_tensor(
+            shape, dtype=torch.float32, device=self.device, requires_grad=True
+        )
         grad_output = generate_random_tensor(shape, dtype=torch.float32, device=self.device)
         y = self._get_reference_srelu(x)
         y.backward(grad_output)
@@ -252,9 +280,14 @@ class ActivationTests(TestCase):
 
     def test_sreglu_backward(self, shape=(4, 16)):
         print(f"\n  Testing SReGLU backward with shape {shape}")
-        x = generate_random_tensor(shape, dtype=torch.float32, device=self.device, requires_grad=True)
-        grad_output = generate_random_tensor((shape[0], shape[1] // 2) if len(shape) == 2 else (*shape[:-1], shape[-1] // 2),
-                                              dtype=torch.float32, device=self.device)
+        x = generate_random_tensor(
+            shape, dtype=torch.float32, device=self.device, requires_grad=True
+        )
+        grad_output = generate_random_tensor(
+            (shape[0], shape[1] // 2) if len(shape) == 2 else (*shape[:-1], shape[-1] // 2),
+            dtype=torch.float32,
+            device=self.device,
+        )
         y = self._get_reference_sreglu(x)
         y.backward(grad_output)
         reference_grad = x.grad.clone()
@@ -263,7 +296,9 @@ class ActivationTests(TestCase):
 
     def test_silu_backward(self, shape=(4, 8)):
         print(f"\n  Testing SiLU backward with shape {shape}")
-        x = generate_random_tensor(shape, dtype=torch.float32, device=self.device, requires_grad=True)
+        x = generate_random_tensor(
+            shape, dtype=torch.float32, device=self.device, requires_grad=True
+        )
         grad_output = generate_random_tensor(shape, dtype=torch.float32, device=self.device)
         y = self._get_reference_silu(x)
         y.backward(grad_output)
@@ -273,24 +308,34 @@ class ActivationTests(TestCase):
 
     def test_swiglu_backward(self, shape=(4, 16)):
         print(f"\n  Testing SwiGLU backward with shape {shape}")
-        x = generate_random_tensor(shape, dtype=torch.float32, device=self.device, requires_grad=True)
-        grad_output = generate_random_tensor((shape[0], shape[1] // 2) if len(shape) == 2 else (*shape[:-1], shape[-1] // 2),
-                                              dtype=torch.float32, device=self.device)
+        x = generate_random_tensor(
+            shape, dtype=torch.float32, device=self.device, requires_grad=True
+        )
+        grad_output = generate_random_tensor(
+            (shape[0], shape[1] // 2) if len(shape) == 2 else (*shape[:-1], shape[-1] // 2),
+            dtype=torch.float32,
+            device=self.device,
+        )
         y = self._get_reference_swiglu(x)
         y.backward(grad_output)
         reference_grad = x.grad.clone()
         x.grad = None
         self._test_activation_backward("dswiglu", x, grad_output, reference_grad)
 
-    def _test_activation_backward(self, op_name, x, grad_output, reference_grad, rtol=1e-4, atol=1e-6):
+    def _test_activation_backward(
+        self, op_name, x, grad_output, reference_grad, rtol=1e-4, atol=1e-6
+    ):
         for backend_name in self.backends:
             backend = get_backend(backend_name)
             try:
                 op_fn = getattr(backend, op_name)
                 grad_input = op_fn(grad_output, x.detach(), None)
                 self.assert_close(
-                    grad_input, reference_grad, rtol=rtol, atol=atol,
-                    msg=f"{op_name} backward mismatch for {backend_name}"
+                    grad_input,
+                    reference_grad,
+                    rtol=rtol,
+                    atol=atol,
+                    msg=f"{op_name} backward mismatch for {backend_name}",
                 )
                 print(f"    ✓ {backend_name}")
             except NotImplementedError:
@@ -303,7 +348,9 @@ class ActivationTests(TestCase):
     # ==================== Bias + backward tests ====================
     def test_dbias_dgelu(self, shape=(4, 8)):
         print(f"\n  Testing dbias_dgelu with shape {shape}")
-        x = generate_random_tensor(shape, dtype=torch.float32, device=self.device, requires_grad=True)
+        x = generate_random_tensor(
+            shape, dtype=torch.float32, device=self.device, requires_grad=True
+        )
         grad_output = generate_random_tensor(shape, dtype=torch.float32, device=self.device)
 
         # Reference: compute dgelu and sum for bias grad
@@ -318,12 +365,18 @@ class ActivationTests(TestCase):
             try:
                 grad_input, grad_bias = backend.dbias_dgelu(grad_output, x.detach(), None)
                 self.assert_close(
-                    grad_input, ref_grad_input, rtol=1e-4, atol=1e-6,
-                    msg=f"dbias_dgelu grad_input mismatch for {backend_name}"
+                    grad_input,
+                    ref_grad_input,
+                    rtol=1e-4,
+                    atol=1e-6,
+                    msg=f"dbias_dgelu grad_input mismatch for {backend_name}",
                 )
                 self.assert_close(
-                    grad_bias, ref_grad_bias, rtol=1e-4, atol=1e-6,
-                    msg=f"dbias_dgelu grad_bias mismatch for {backend_name}"
+                    grad_bias,
+                    ref_grad_bias,
+                    rtol=1e-4,
+                    atol=1e-6,
+                    msg=f"dbias_dgelu grad_bias mismatch for {backend_name}",
                 )
                 print(f"    ✓ {backend_name}")
             except NotImplementedError:
@@ -343,7 +396,9 @@ class ActivationTests(TestCase):
 
     def test_dbias_dsilu(self, shape=(4, 8)):
         print(f"\n  Testing dbias_dsilu with shape {shape}")
-        x = generate_random_tensor(shape, dtype=torch.float32, device=self.device, requires_grad=True)
+        x = generate_random_tensor(
+            shape, dtype=torch.float32, device=self.device, requires_grad=True
+        )
         grad_output = generate_random_tensor(shape, dtype=torch.float32, device=self.device)
 
         y = self._get_reference_silu(x)
@@ -357,12 +412,18 @@ class ActivationTests(TestCase):
             try:
                 grad_input, grad_bias = backend.dbias_dsilu(grad_output, x.detach(), None)
                 self.assert_close(
-                    grad_input, ref_grad_input, rtol=1e-4, atol=1e-6,
-                    msg=f"dbias_dsilu grad_input mismatch for {backend_name}"
+                    grad_input,
+                    ref_grad_input,
+                    rtol=1e-4,
+                    atol=1e-6,
+                    msg=f"dbias_dsilu grad_input mismatch for {backend_name}",
                 )
                 self.assert_close(
-                    grad_bias, ref_grad_bias, rtol=1e-4, atol=1e-6,
-                    msg=f"dbias_dsilu grad_bias mismatch for {backend_name}"
+                    grad_bias,
+                    ref_grad_bias,
+                    rtol=1e-4,
+                    atol=1e-6,
+                    msg=f"dbias_dsilu grad_bias mismatch for {backend_name}",
                 )
                 print(f"    ✓ {backend_name}")
             except NotImplementedError:
@@ -382,7 +443,9 @@ class ActivationTests(TestCase):
 
     def test_dbias_drelu(self, shape=(4, 8)):
         print(f"\n  Testing dbias_drelu with shape {shape}")
-        x = generate_random_tensor(shape, dtype=torch.float32, device=self.device, requires_grad=True)
+        x = generate_random_tensor(
+            shape, dtype=torch.float32, device=self.device, requires_grad=True
+        )
         grad_output = generate_random_tensor(shape, dtype=torch.float32, device=self.device)
 
         y = self._get_reference_relu(x)
@@ -396,12 +459,18 @@ class ActivationTests(TestCase):
             try:
                 grad_input, grad_bias = backend.dbias_drelu(grad_output, x.detach(), None)
                 self.assert_close(
-                    grad_input, ref_grad_input, rtol=1e-4, atol=1e-6,
-                    msg=f"dbias_drelu grad_input mismatch for {backend_name}"
+                    grad_input,
+                    ref_grad_input,
+                    rtol=1e-4,
+                    atol=1e-6,
+                    msg=f"dbias_drelu grad_input mismatch for {backend_name}",
                 )
                 self.assert_close(
-                    grad_bias, ref_grad_bias, rtol=1e-4, atol=1e-6,
-                    msg=f"dbias_drelu grad_bias mismatch for {backend_name}"
+                    grad_bias,
+                    ref_grad_bias,
+                    rtol=1e-4,
+                    atol=1e-6,
+                    msg=f"dbias_drelu grad_bias mismatch for {backend_name}",
                 )
                 print(f"    ✓ {backend_name}")
             except NotImplementedError:
@@ -421,7 +490,9 @@ class ActivationTests(TestCase):
 
     def test_dbias_dqgelu(self, shape=(4, 8)):
         print(f"\n  Testing dbias_dqgelu with shape {shape}")
-        x = generate_random_tensor(shape, dtype=torch.float32, device=self.device, requires_grad=True)
+        x = generate_random_tensor(
+            shape, dtype=torch.float32, device=self.device, requires_grad=True
+        )
         grad_output = generate_random_tensor(shape, dtype=torch.float32, device=self.device)
 
         y = self._get_reference_qgelu(x)
@@ -435,12 +506,18 @@ class ActivationTests(TestCase):
             try:
                 grad_input, grad_bias = backend.dbias_dqgelu(grad_output, x.detach(), None)
                 self.assert_close(
-                    grad_input, ref_grad_input, rtol=1e-4, atol=1e-6,
-                    msg=f"dbias_dqgelu grad_input mismatch for {backend_name}"
+                    grad_input,
+                    ref_grad_input,
+                    rtol=1e-4,
+                    atol=1e-6,
+                    msg=f"dbias_dqgelu grad_input mismatch for {backend_name}",
                 )
                 self.assert_close(
-                    grad_bias, ref_grad_bias, rtol=1e-4, atol=1e-6,
-                    msg=f"dbias_dqgelu grad_bias mismatch for {backend_name}"
+                    grad_bias,
+                    ref_grad_bias,
+                    rtol=1e-4,
+                    atol=1e-6,
+                    msg=f"dbias_dqgelu grad_bias mismatch for {backend_name}",
                 )
                 print(f"    ✓ {backend_name}")
             except NotImplementedError:
@@ -460,7 +537,9 @@ class ActivationTests(TestCase):
 
     def test_dbias_dsrelu(self, shape=(4, 8)):
         print(f"\n  Testing dbias_dsrelu with shape {shape}")
-        x = generate_random_tensor(shape, dtype=torch.float32, device=self.device, requires_grad=True)
+        x = generate_random_tensor(
+            shape, dtype=torch.float32, device=self.device, requires_grad=True
+        )
         grad_output = generate_random_tensor(shape, dtype=torch.float32, device=self.device)
 
         y = self._get_reference_srelu(x)
@@ -474,12 +553,18 @@ class ActivationTests(TestCase):
             try:
                 grad_input, grad_bias = backend.dbias_dsrelu(grad_output, x.detach(), None)
                 self.assert_close(
-                    grad_input, ref_grad_input, rtol=1e-4, atol=1e-6,
-                    msg=f"dbias_dsrelu grad_input mismatch for {backend_name}"
+                    grad_input,
+                    ref_grad_input,
+                    rtol=1e-4,
+                    atol=1e-6,
+                    msg=f"dbias_dsrelu grad_input mismatch for {backend_name}",
                 )
                 self.assert_close(
-                    grad_bias, ref_grad_bias, rtol=1e-4, atol=1e-6,
-                    msg=f"dbias_dsrelu grad_bias mismatch for {backend_name}"
+                    grad_bias,
+                    ref_grad_bias,
+                    rtol=1e-4,
+                    atol=1e-6,
+                    msg=f"dbias_dsrelu grad_bias mismatch for {backend_name}",
                 )
                 print(f"    ✓ {backend_name}")
             except NotImplementedError:
@@ -498,9 +583,9 @@ class ActivationTests(TestCase):
                 print(f"    ✗ {backend_name}: {e}")
 
     def run_all_tests(self):
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("Testing Activation Functions")
-        print("="*60)
+        print("=" * 60)
         print(f"Available backends: {', '.join(self.backends)}")
 
         shapes = [(4, 8), (8, 16), (2, 4, 8)]

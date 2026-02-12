@@ -14,9 +14,18 @@ from transformer_engine.plugin.test_utils import get_available_backends, get_bac
 
 
 class BenchmarkResult:
-    def __init__(self, backend_name: str, operation_name: str, shape: tuple,
-                 mean_time: float, std_time: float, min_time: float, max_time: float,
-                 gflops: float = None, bandwidth: float = None):
+    def __init__(
+        self,
+        backend_name: str,
+        operation_name: str,
+        shape: tuple,
+        mean_time: float,
+        std_time: float,
+        min_time: float,
+        max_time: float,
+        gflops: float = None,
+        bandwidth: float = None,
+    ):
         self.backend_name = backend_name
         self.operation_name = operation_name
         self.shape = shape
@@ -30,9 +39,11 @@ class BenchmarkResult:
     def __str__(self):
         gflops_str = f"{self.gflops:.2f} GFLOPS" if self.gflops else "N/A"
         bandwidth_str = f"{self.bandwidth:.2f} GB/s" if self.bandwidth else "N/A"
-        return (f"{self.backend_name:12s} {self.mean_time:8.4f}±{self.std_time:6.4f} ms  "
-                f"[{self.min_time:7.4f}, {self.max_time:7.4f}]  "
-                f"{gflops_str:15s} {bandwidth_str:12s}")
+        return (
+            f"{self.backend_name:12s} {self.mean_time:8.4f}±{self.std_time:6.4f} ms  "
+            f"[{self.min_time:7.4f}, {self.max_time:7.4f}]  "
+            f"{gflops_str:15s} {bandwidth_str:12s}"
+        )
 
 
 def time_operation(func, warmup_iters=10, benchmark_iters=100):
@@ -56,25 +67,25 @@ def time_operation(func, warmup_iters=10, benchmark_iters=100):
         times.append((end - start) * 1000)
 
     return {
-        'mean': np.mean(times),
-        'std': np.std(times),
-        'min': np.min(times),
-        'max': np.max(times),
+        "mean": np.mean(times),
+        "std": np.std(times),
+        "min": np.min(times),
+        "max": np.max(times),
     }
 
 
 def compute_gflops(operation: str, shape: tuple, time_ms: float) -> float:
-    if operation in ['gelu', 'relu', 'silu']:
+    if operation in ["gelu", "relu", "silu"]:
         flops = np.prod(shape) * 5
-    elif operation == 'layernorm':
+    elif operation == "layernorm":
         total_elements = np.prod(shape)
         hidden_size = shape[-1]
         flops = total_elements * (3 + 2 * hidden_size)
-    elif operation == 'rmsnorm':
+    elif operation == "rmsnorm":
         total_elements = np.prod(shape)
         hidden_size = shape[-1]
         flops = total_elements * (2 + hidden_size)
-    elif operation == 'gemm':
+    elif operation == "gemm":
         M, N, K = shape
         flops = 2 * M * N * K
     else:
@@ -86,29 +97,31 @@ def compute_gflops(operation: str, shape: tuple, time_ms: float) -> float:
 def compute_bandwidth(operation: str, shape: tuple, time_ms: float) -> float:
     bytes_per_element = 4
 
-    if operation in ['gelu', 'relu', 'silu']:
+    if operation in ["gelu", "relu", "silu"]:
         total_bytes = np.prod(shape) * 2 * bytes_per_element
-    elif operation in ['layernorm', 'rmsnorm']:
+    elif operation in ["layernorm", "rmsnorm"]:
         total_bytes = np.prod(shape) * 5 * bytes_per_element
-    elif operation == 'gemm':
+    elif operation == "gemm":
         M, N, K = shape
-        total_bytes = (M*K + K*N + M*N) * bytes_per_element
+        total_bytes = (M * K + K * N + M * N) * bytes_per_element
     else:
         return None
 
     return (total_bytes / 1e9) / (time_ms / 1000)
 
 
-def benchmark_activations(backends: List[str], shapes: List[tuple], device: str) -> List[BenchmarkResult]:
-    print("\n" + "="*80)
+def benchmark_activations(
+    backends: List[str], shapes: List[tuple], device: str
+) -> List[BenchmarkResult]:
+    print("\n" + "=" * 80)
     print("Activation Function Performance Test")
-    print("="*80)
+    print("=" * 80)
 
     results = []
     operations = [
-        ('gelu', 'GELU'),
-        ('relu', 'ReLU'),
-        ('silu', 'SiLU'),
+        ("gelu", "GELU"),
+        ("relu", "ReLU"),
+        ("silu", "SiLU"),
     ]
 
     for shape in shapes:
@@ -117,7 +130,9 @@ def benchmark_activations(backends: List[str], shapes: List[tuple], device: str)
 
         for op_method, op_name in operations:
             print(f"\n  {op_name}:")
-            print(f"    {'Backend':<12s} {'Time (ms)':<20s} {'Range (ms)':<25s} {'GFLOPS':<15s} {'Bandwidth'}")
+            print(
+                f"    {'Backend':<12s} {'Time (ms)':<20s} {'Range (ms)':<25s} {'GFLOPS':<15s} {'Bandwidth'}"
+            )
             print(f"    {'-'*85}")
 
             for backend_name in backends:
@@ -127,13 +142,19 @@ def benchmark_activations(backends: List[str], shapes: List[tuple], device: str)
                     func = lambda: getattr(backend, op_method)(x, None)
                     timing = time_operation(func)
 
-                    gflops = compute_gflops(op_method, shape, timing['mean'])
-                    bandwidth = compute_bandwidth(op_method, shape, timing['mean'])
+                    gflops = compute_gflops(op_method, shape, timing["mean"])
+                    bandwidth = compute_bandwidth(op_method, shape, timing["mean"])
 
                     result = BenchmarkResult(
-                        backend_name, op_method, shape,
-                        timing['mean'], timing['std'], timing['min'], timing['max'],
-                        gflops, bandwidth
+                        backend_name,
+                        op_method,
+                        shape,
+                        timing["mean"],
+                        timing["std"],
+                        timing["min"],
+                        timing["max"],
+                        gflops,
+                        bandwidth,
                     )
                     results.append(result)
                     print(f"    {result}")
@@ -144,10 +165,12 @@ def benchmark_activations(backends: List[str], shapes: List[tuple], device: str)
     return results
 
 
-def benchmark_normalization(backends: List[str], shapes: List[tuple], device: str) -> List[BenchmarkResult]:
-    print("\n" + "="*80)
+def benchmark_normalization(
+    backends: List[str], shapes: List[tuple], device: str
+) -> List[BenchmarkResult]:
+    print("\n" + "=" * 80)
     print("Normalization Performance Test")
-    print("="*80)
+    print("=" * 80)
 
     results = []
     eps = 1e-5
@@ -160,23 +183,33 @@ def benchmark_normalization(backends: List[str], shapes: List[tuple], device: st
         bias = torch.zeros(hidden_size, dtype=torch.float32, device=device)
 
         print(f"\n  LayerNorm forward:")
-        print(f"    {'Backend':<12s} {'Time (ms)':<20s} {'Range (ms)':<25s} {'GFLOPS':<15s} {'Bandwidth'}")
+        print(
+            f"    {'Backend':<12s} {'Time (ms)':<20s} {'Range (ms)':<25s} {'GFLOPS':<15s} {'Bandwidth'}"
+        )
         print(f"    {'-'*85}")
 
         for backend_name in backends:
             backend = get_backend(backend_name)
 
             try:
-                func = lambda: backend.layernorm_fwd(x, weight, bias, eps, None, None, torch.float32, 0, False)
+                func = lambda: backend.layernorm_fwd(
+                    x, weight, bias, eps, None, None, torch.float32, 0, False
+                )
                 timing = time_operation(func)
 
-                gflops = compute_gflops('layernorm', shape, timing['mean'])
-                bandwidth = compute_bandwidth('layernorm', shape, timing['mean'])
+                gflops = compute_gflops("layernorm", shape, timing["mean"])
+                bandwidth = compute_bandwidth("layernorm", shape, timing["mean"])
 
                 result = BenchmarkResult(
-                    backend_name, 'layernorm_fwd', shape,
-                    timing['mean'], timing['std'], timing['min'], timing['max'],
-                    gflops, bandwidth
+                    backend_name,
+                    "layernorm_fwd",
+                    shape,
+                    timing["mean"],
+                    timing["std"],
+                    timing["min"],
+                    timing["max"],
+                    gflops,
+                    bandwidth,
                 )
                 results.append(result)
                 print(f"    {result}")
@@ -185,23 +218,33 @@ def benchmark_normalization(backends: List[str], shapes: List[tuple], device: st
                 print(f"    {backend_name:12s} SKIPPED ({type(e).__name__})")
 
         print(f"\n  RMSNorm forward:")
-        print(f"    {'Backend':<12s} {'Time (ms)':<20s} {'Range (ms)':<25s} {'GFLOPS':<15s} {'Bandwidth'}")
+        print(
+            f"    {'Backend':<12s} {'Time (ms)':<20s} {'Range (ms)':<25s} {'GFLOPS':<15s} {'Bandwidth'}"
+        )
         print(f"    {'-'*85}")
 
         for backend_name in backends:
             backend = get_backend(backend_name)
 
             try:
-                func = lambda: backend.rmsnorm_fwd(x, weight, eps, None, None, torch.float32, 0, False)
+                func = lambda: backend.rmsnorm_fwd(
+                    x, weight, eps, None, None, torch.float32, 0, False
+                )
                 timing = time_operation(func)
 
-                gflops = compute_gflops('rmsnorm', shape, timing['mean'])
-                bandwidth = compute_bandwidth('rmsnorm', shape, timing['mean'])
+                gflops = compute_gflops("rmsnorm", shape, timing["mean"])
+                bandwidth = compute_bandwidth("rmsnorm", shape, timing["mean"])
 
                 result = BenchmarkResult(
-                    backend_name, 'rmsnorm_fwd', shape,
-                    timing['mean'], timing['std'], timing['min'], timing['max'],
-                    gflops, bandwidth
+                    backend_name,
+                    "rmsnorm_fwd",
+                    shape,
+                    timing["mean"],
+                    timing["std"],
+                    timing["min"],
+                    timing["max"],
+                    gflops,
+                    bandwidth,
                 )
                 results.append(result)
                 print(f"    {result}")
@@ -213,15 +256,17 @@ def benchmark_normalization(backends: List[str], shapes: List[tuple], device: st
 
 
 def benchmark_gemm(backends: List[str], configs: List[tuple], device: str) -> List[BenchmarkResult]:
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("GEMM Performance Test")
-    print("="*80)
+    print("=" * 80)
 
     results = []
 
     for M, N, K in configs:
         print(f"\nConfig: M={M}, N={N}, K={K}")
-        print(f"  {'Backend':<12s} {'Time (ms)':<20s} {'Range (ms)':<25s} {'GFLOPS':<15s} {'Bandwidth'}")
+        print(
+            f"  {'Backend':<12s} {'Time (ms)':<20s} {'Range (ms)':<25s} {'GFLOPS':<15s} {'Bandwidth'}"
+        )
         print(f"  {'-'*85}")
 
         A = torch.randn(M, K, dtype=torch.float32, device=device)
@@ -234,20 +279,38 @@ def benchmark_gemm(backends: List[str], configs: List[tuple], device: str) -> Li
 
             try:
                 func = lambda: backend.generic_gemm(
-                    A, False, B, False, D,
-                    None, torch.float32, None, None,
-                    False, None, False,
-                    workspace, 1024, False, False
+                    A,
+                    False,
+                    B,
+                    False,
+                    D,
+                    None,
+                    torch.float32,
+                    None,
+                    None,
+                    False,
+                    None,
+                    False,
+                    workspace,
+                    1024,
+                    False,
+                    False,
                 )
                 timing = time_operation(func)
 
-                gflops = compute_gflops('gemm', (M, N, K), timing['mean'])
-                bandwidth = compute_bandwidth('gemm', (M, N, K), timing['mean'])
+                gflops = compute_gflops("gemm", (M, N, K), timing["mean"])
+                bandwidth = compute_bandwidth("gemm", (M, N, K), timing["mean"])
 
                 result = BenchmarkResult(
-                    backend_name, 'gemm', (M, N, K),
-                    timing['mean'], timing['std'], timing['min'], timing['max'],
-                    gflops, bandwidth
+                    backend_name,
+                    "gemm",
+                    (M, N, K),
+                    timing["mean"],
+                    timing["std"],
+                    timing["min"],
+                    timing["max"],
+                    gflops,
+                    bandwidth,
                 )
                 results.append(result)
                 print(f"  {result}")
@@ -259,11 +322,12 @@ def benchmark_gemm(backends: List[str], configs: List[tuple], device: str) -> Li
 
 
 def print_summary(all_results: List[BenchmarkResult]):
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("Performance Comparison Summary")
-    print("="*80)
+    print("=" * 80)
 
     from collections import defaultdict
+
     by_operation = defaultdict(lambda: defaultdict(list))
 
     for result in all_results:
@@ -271,7 +335,7 @@ def print_summary(all_results: List[BenchmarkResult]):
 
     print("\nAverage Performance (all shapes):")
     print(f"{'Operation':<20s} {'Backend':<12s} {'Avg Time (ms)':<15s} {'Avg GFLOPS':<15s}")
-    print("-"*65)
+    print("-" * 65)
 
     for op_name, backends_data in sorted(by_operation.items()):
         for backend_name, results in sorted(backends_data.items()):
@@ -282,9 +346,9 @@ def print_summary(all_results: List[BenchmarkResult]):
             gflops_str = f"{avg_gflops:.2f}" if avg_gflops else "N/A"
             print(f"{op_name:<20s} {backend_name:<12s} {avg_time:<15.4f} {gflops_str:<15s}")
 
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("Fastest Backend (by operation)")
-    print("="*80)
+    print("=" * 80)
 
     for op_name, backends_data in sorted(by_operation.items()):
         backend_avg_times = {}
@@ -299,33 +363,44 @@ def print_summary(all_results: List[BenchmarkResult]):
 def save_results_csv(results: List[BenchmarkResult], filename: str):
     import csv
 
-    with open(filename, 'w', newline='') as f:
+    with open(filename, "w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow([
-            'Backend', 'Operation', 'Shape', 'Mean(ms)', 'Std(ms)',
-            'Min(ms)', 'Max(ms)', 'GFLOPS', 'GB/s'
-        ])
+        writer.writerow(
+            [
+                "Backend",
+                "Operation",
+                "Shape",
+                "Mean(ms)",
+                "Std(ms)",
+                "Min(ms)",
+                "Max(ms)",
+                "GFLOPS",
+                "GB/s",
+            ]
+        )
 
         for result in results:
-            writer.writerow([
-                result.backend_name,
-                result.operation_name,
-                str(result.shape),
-                f"{result.mean_time:.4f}",
-                f"{result.std_time:.4f}",
-                f"{result.min_time:.4f}",
-                f"{result.max_time:.4f}",
-                f"{result.gflops:.2f}" if result.gflops else "N/A",
-                f"{result.bandwidth:.2f}" if result.bandwidth else "N/A",
-            ])
+            writer.writerow(
+                [
+                    result.backend_name,
+                    result.operation_name,
+                    str(result.shape),
+                    f"{result.mean_time:.4f}",
+                    f"{result.std_time:.4f}",
+                    f"{result.min_time:.4f}",
+                    f"{result.max_time:.4f}",
+                    f"{result.gflops:.2f}" if result.gflops else "N/A",
+                    f"{result.bandwidth:.2f}" if result.bandwidth else "N/A",
+                ]
+            )
 
     print(f"\nResults saved to: {filename}")
 
 
 def main():
-    print("\n" + "="*80)
-    print(" "*25 + "Multi-Backend Performance Comparison Test")
-    print("="*80)
+    print("\n" + "=" * 80)
+    print(" " * 25 + "Multi-Backend Performance Comparison Test")
+    print("=" * 80)
 
     device = "cpu"
     if torch.cuda.is_available():
@@ -381,9 +456,9 @@ def main():
 
     save_results_csv(all_results, f"{output_dir}/all_results.csv")
 
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("Testing complete!")
-    print("="*80 + "\n")
+    print("=" * 80 + "\n")
 
     return 0
 

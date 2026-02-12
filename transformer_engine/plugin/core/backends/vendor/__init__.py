@@ -37,6 +37,7 @@ if not _SKIP_CUDA_BUILD:
         _vendor_loading_errors.append(("cuda", type(e).__name__, str(e)))
         print(f"Error loading CUDA vendor backend: {type(e).__name__}: {e}")
         import traceback
+
         traceback.print_exc()
 else:
     print("CUDA vendor backend skipped (CUDA build was disabled at build time)")

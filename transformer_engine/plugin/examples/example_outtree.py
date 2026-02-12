@@ -62,14 +62,16 @@ def create_plugin_module():
 
         print("[MyVendorPlugin] Registering operator implementations...")
 
-        registry.register_impl(OpImpl(
-            op_name="rmsnorm_fwd",
-            impl_id="vendor.myvendor",
-            kind=BackendImplKind.VENDOR,
-            vendor="myvendor",
-            fn=my_rmsnorm_fwd,
-            priority=200,
-        ))
+        registry.register_impl(
+            OpImpl(
+                op_name="rmsnorm_fwd",
+                impl_id="vendor.myvendor",
+                kind=BackendImplKind.VENDOR,
+                vendor="myvendor",
+                fn=my_rmsnorm_fwd,
+                priority=200,
+            )
+        )
 
         print("[MyVendorPlugin] Registration complete!")
 
@@ -90,6 +92,7 @@ sys.modules["my_vendor_plugin"] = plugin
 # Step 3: Set environment variables for TE-FL auto-discovery
 # ============================================================
 import os
+
 os.environ["TE_FL_PLUGIN_MODULES"] = "my_vendor_plugin"
 os.environ["TE_FL_PREFER"] = "vendor"  # Prefer vendor backend
 

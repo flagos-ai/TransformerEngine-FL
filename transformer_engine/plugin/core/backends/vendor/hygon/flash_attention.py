@@ -9,6 +9,7 @@ import torch
 
 from transformer_engine.plugin.core.ops import FlashAttentionBase
 
+
 class FlashAttentionHYGON(FlashAttentionBase):
     def __init__(
         self,
@@ -30,12 +31,12 @@ class FlashAttentionHYGON(FlashAttentionBase):
 
         # Store initialization parameters for lazy loading
         self._init_params = {
-            'softmax_scale': softmax_scale,
-            'attention_dropout': attention_dropout,
-            'attention_dropout_ctx': attention_dropout_ctx or nullcontext,
-            'attention_type': attention_type,
-            'layer_number': layer_number,
-            'deterministic': deterministic,
+            "softmax_scale": softmax_scale,
+            "attention_dropout": attention_dropout,
+            "attention_dropout_ctx": attention_dropout_ctx or nullcontext,
+            "attention_type": attention_type,
+            "layer_number": layer_number,
+            "deterministic": deterministic,
         }
         self._native_flash_attn = None
 
@@ -52,7 +53,9 @@ class FlashAttentionHYGON(FlashAttentionBase):
             )
 
             if FlashAttentionNative is None:
-                raise RuntimeError("FlashAttention class is None - flash-attn may not be installed correctly")
+                raise RuntimeError(
+                    "FlashAttention class is None - flash-attn may not be installed correctly"
+                )
 
             self._native_flash_attn = FlashAttentionNative(**self._init_params)
 
@@ -63,8 +66,7 @@ class FlashAttentionHYGON(FlashAttentionBase):
             )
         except Exception as e:
             raise RuntimeError(
-                f"Failed to initialize native FlashAttention: {e}. "
-                f"Init params: {self._init_params}"
+                f"Failed to initialize native FlashAttention: {e}. Init params: {self._init_params}"
             )
 
     @property

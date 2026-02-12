@@ -14,6 +14,7 @@ from .types import OpImpl
 @dataclass
 class OpRegistrySnapshot:
     """Immutable snapshot of operator registry state"""
+
     impls_by_op: Dict[str, List[OpImpl]]
 
 
@@ -67,10 +68,7 @@ class OpRegistry:
             OpRegistrySnapshot with all registered implementations
         """
         with self._lock:
-            impls_by_op = {
-                op: list(by_id.values())
-                for op, by_id in self._impls_by_op.items()
-            }
+            impls_by_op = {op: list(by_id.values()) for op, by_id in self._impls_by_op.items()}
         return OpRegistrySnapshot(impls_by_op=impls_by_op)
 
     def get_implementations(self, op_name: str) -> List[OpImpl]:

@@ -25,6 +25,7 @@ _DTYPE_TO_TORCH_DTYPE = {
     DType.kFloat8E5M2: torch.float8_e5m2,
 }
 
+
 def _to_torch_dtype(dtype):
     """Convert DType enum to torch.dtype."""
     if dtype is None:
@@ -36,6 +37,7 @@ def _to_torch_dtype(dtype):
         if dtype_enum in _DTYPE_TO_TORCH_DTYPE:
             return _DTYPE_TO_TORCH_DTYPE[dtype_enum]
     raise ValueError(f"Unsupported dtype: {dtype}")
+
 
 def layernorm_fwd_torch(
     input: torch.Tensor,
@@ -70,6 +72,7 @@ def layernorm_fwd_torch(
     rsigma = rsigma.squeeze(-1)
 
     return output, mean, rsigma
+
 
 def layernorm_bwd_torch(
     dy: torch.Tensor,
