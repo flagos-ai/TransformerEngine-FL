@@ -69,7 +69,7 @@ jobs:
           set-safe-directory: true
       
       - name: Install Dependencies & Build Transformer Engine
-        # timeout-minutes: 30
+        timeout-minutes: 40
         env:
           NVTE_FRAMEWORK: pytorch
           TE_WITH_NCCL: 1
@@ -116,6 +116,7 @@ jobs:
         env:
           XML_LOG_DIR: "/logs/pytorch/thunder"
           THUNDER_PATH: "lightning-thunder"
+          TE_PATH: .
         run: |
           # Activate conda environment
           source /opt/miniconda3/etc/profile.d/conda.sh
@@ -124,7 +125,7 @@ jobs:
           # Run thunder integration tests
           echo "=== Running L1 PyTorch Thunder Integration Tests ==="
           bash ./qa/L1_pytorch_thunder_integration/test.sh
-        # timeout-minutes: 5
+        timeout-minutes: 5
 
       - name: Run L1 PyTorch Distributed Unit Tests
         continue-on-error: true
@@ -139,7 +140,7 @@ jobs:
           # Run distributed unit tests
           echo "=== Running L1 PyTorch Distributed Unit Tests ==="
           bash ./qa/L1_pytorch_distributed_unittest/test.sh
-        # timeout-minutes: 5
+        timeout-minutes: 5
 
       - name: Run L1 PyTorch ONNX Unit Tests
         env:
@@ -153,4 +154,4 @@ jobs:
           # Run ONNX unit tests
           echo "=== Running L1 PyTorch ONNX Unit Tests ==="
           bash ./qa/L1_pytorch_onnx_unittest/test.sh
-        # timeout-minutes: 60
+        timeout-minutes: 30

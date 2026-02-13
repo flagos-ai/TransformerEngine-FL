@@ -55,7 +55,7 @@ jobs:
           set-safe-directory: true
       
       - name: Install Dependencies & Build Transformer Engine
-        # timeout-minutes: 30
+        timeout-minutes: 40
         env:
           NVTE_FRAMEWORK: pytorch
           TE_WITH_NCCL: 1
@@ -104,7 +104,7 @@ jobs:
           wait_for_gpu
 
       - name: Run QA L3 PyTorch FlashAttention Versions Test
-        # timeout-minutes: 30
+        timeout-minutes: 30
         env:
           XML_LOG_DIR: "/logs/pytorch/attention"
           TE_PATH: .

@@ -54,7 +54,7 @@ jobs:
           set-safe-directory: true
       
       - name: Install Dependencies & Build Transformer Engine
-        timeout-minutes: 60
+        timeout-minutes: 40
         env:
           NVTE_FRAMEWORK: pytorch
           TE_WITH_NCCL: 1
@@ -95,7 +95,7 @@ jobs:
           wait_for_gpu
 
       - name: Plugin Test
-        timeout-minutes: 30
+        timeout-minutes: 10
         run: |
           # Activate conda environment
           source /opt/miniconda3/etc/profile.d/conda.sh
