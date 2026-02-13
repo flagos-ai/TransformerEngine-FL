@@ -76,7 +76,7 @@ jobs:
 
           # Install dependencies
           echo "=== Installing Dependencies ==="
-          pip install transformers expecttest
+          pip install transformers expecttest pytest
 
           # Build and install transformer_engine
           echo "=== Building Transformer Engine ==="
