@@ -11,6 +11,9 @@ jobs:
   pytorch:
     name: 'PyTorch'
     runs-on: [ self-hosted, Linux, X64, nvidia, gpu-8 ]
+    defaults:
+      run:
+        shell: bash
     container:
       image: harbor.baai.ac.cn/flagscale/cuda12.8.1-torch2.7.1-python3.10-te2.9:20260209
       options: --user root
