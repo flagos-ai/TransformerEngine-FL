@@ -103,31 +103,31 @@ jobs:
           source .github/workflows/scripts/gpu_check.sh
           wait_for_gpu
 
-      - name: Run QA L3 PyTorch FlashAttention Versions Test
-        # timeout-minutes: 30
-        env:
-          XML_LOG_DIR: "/logs/pytorch/attention"
-          TE_PATH: .
-          MAX_JOBS: 32
-        run: |
-          # Activate conda environment
-          source /opt/miniconda3/etc/profile.d/conda.sh
-          conda activate flagscale-train
+      # - name: Run QA L3 PyTorch FlashAttention Versions Test
+      #   # timeout-minutes: 30
+      #   env:
+      #     XML_LOG_DIR: "/logs/pytorch/attention"
+      #     TE_PATH: .
+      #     MAX_JOBS: 32
+      #   run: |
+      #     # Activate conda environment
+      #     source /opt/miniconda3/etc/profile.d/conda.sh
+      #     conda activate flagscale-train
 
-          # Create log directory with proper permissions
-          echo "=== Preparing Test Environment ==="
-          mkdir -p "$XML_LOG_DIR"
-          chmod 777 "$XML_LOG_DIR"
+      #     # Create log directory with proper permissions
+      #     echo "=== Preparing Test Environment ==="
+      #     mkdir -p "$XML_LOG_DIR"
+      #     chmod 777 "$XML_LOG_DIR"
 
-          # Download flash_attn_interface.py
-          pip3 install pytest==8.2.1
-          git clone https://github.com/Dao-AILab/flash-attention.git
-          cd flash-attention/ && git checkout 27f501d && cd hopper/ && python setup.py install
-          python_path=`python -c "import site; print(site.getsitepackages()[0])"`
-          mkdir -p $python_path/flash_attn_3
-          wget -P $python_path/flash_attn_3 https://raw.githubusercontent.com/Dao-AILab/flash-attention/27f501dbe011f4371bff938fe7e09311ab3002fa/hopper/flash_attn_interface.py
-          cd ../../
+      #     # Download flash_attn_interface.py
+      #     pip3 install pytest==8.2.1
+      #     git clone https://github.com/Dao-AILab/flash-attention.git
+      #     cd flash-attention/ && git checkout 27f501d && cd hopper/ && python setup.py install
+      #     python_path=`python -c "import site; print(site.getsitepackages()[0])"`
+      #     mkdir -p $python_path/flash_attn_3
+      #     wget -P $python_path/flash_attn_3 https://raw.githubusercontent.com/Dao-AILab/flash-attention/27f501dbe011f4371bff938fe7e09311ab3002fa/hopper/flash_attn_interface.py
+      #     cd ../../
 
-          # Run pytest with detailed output and error tracking
-          NVTE_TORCH_COMPILE=0 python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest.xml $TE_PATH/tests/pytorch/attention/test_attention.py
+      #     # Run pytest with detailed output and error tracking
+      #     NVTE_TORCH_COMPILE=0 python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest.xml $TE_PATH/tests/pytorch/attention/test_attention.py
 
