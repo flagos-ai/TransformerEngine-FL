@@ -112,46 +112,46 @@ jobs:
           source .github/workflows/scripts/gpu_check.sh
           wait_for_gpu
 
-      # - name: Run L1 PyTorch Thunder Integration Tests
-      #   env:
-      #     XML_LOG_DIR: "/logs/pytorch/thunder"
-      #     THUNDER_PATH: "lightning-thunder"
-      #     TE_PATH: .
-      #   run: |
-      #     # Activate conda environment
-      #     source /opt/miniconda3/etc/profile.d/conda.sh
-      #     conda activate flagscale-train
+      - name: Run L1 PyTorch Thunder Integration Tests
+        env:
+          XML_LOG_DIR: "/logs/pytorch/thunder"
+          THUNDER_PATH: "lightning-thunder"
+          TE_PATH: .
+        run: |
+          # Activate conda environment
+          source /opt/miniconda3/etc/profile.d/conda.sh
+          conda activate flagscale-train
 
-      #     # Run thunder integration tests
-      #     echo "=== Running L1 PyTorch Thunder Integration Tests ==="
-      #     bash ./qa/L1_pytorch_thunder_integration/test.sh
-      #   # timeout-minutes: 5
+          # Run thunder integration tests
+          echo "=== Running L1 PyTorch Thunder Integration Tests ==="
+          bash ./qa/L1_pytorch_thunder_integration/test.sh
+        # timeout-minutes: 5
 
-      # - name: Run L1 PyTorch Distributed Unit Tests
-      #   continue-on-error: true
-      #   env:
-      #     XML_LOG_DIR: "/logs/pytorch/distributed"
-      #     TE_PATH: .
-      #   run: |
-      #     # Activate conda environment
-      #     source /opt/miniconda3/etc/profile.d/conda.sh
-      #     conda activate flagscale-train
+      - name: Run L1 PyTorch Distributed Unit Tests
+        continue-on-error: true
+        env:
+          XML_LOG_DIR: "/logs/pytorch/distributed"
+          TE_PATH: .
+        run: |
+          # Activate conda environment
+          source /opt/miniconda3/etc/profile.d/conda.sh
+          conda activate flagscale-train
 
-      #     # Run distributed unit tests
-      #     echo "=== Running L1 PyTorch Distributed Unit Tests ==="
-      #     bash ./qa/L1_pytorch_distributed_unittest/test.sh
-      #   # timeout-minutes: 5
+          # Run distributed unit tests
+          echo "=== Running L1 PyTorch Distributed Unit Tests ==="
+          bash ./qa/L1_pytorch_distributed_unittest/test.sh
+        # timeout-minutes: 5
 
-      # - name: Run L1 PyTorch ONNX Unit Tests
-      #   env:
-      #     XML_LOG_DIR: "/logs/pytorch/onnx"
-      #     TE_PATH: .
-      #   run: |
-      #     # Activate conda environment
-      #     source /opt/miniconda3/etc/profile.d/conda.sh
-      #     conda activate flagscale-train
+      - name: Run L1 PyTorch ONNX Unit Tests
+        env:
+          XML_LOG_DIR: "/logs/pytorch/onnx"
+          TE_PATH: .
+        run: |
+          # Activate conda environment
+          source /opt/miniconda3/etc/profile.d/conda.sh
+          conda activate flagscale-train
 
-      #     # Run ONNX unit tests
-      #     echo "=== Running L1 PyTorch ONNX Unit Tests ==="
-      #     bash ./qa/L1_pytorch_onnx_unittest/test.sh
-      #   # timeout-minutes: 30
+          # Run ONNX unit tests
+          echo "=== Running L1 PyTorch ONNX Unit Tests ==="
+          bash ./qa/L1_pytorch_onnx_unittest/test.sh
+        # timeout-minutes: 30

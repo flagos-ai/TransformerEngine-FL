@@ -10,24 +10,25 @@ on:
 jobs:
   pytorch:
     name: 'PyTorch'
-    runs-on: ubuntu-latest
+    runs-on: [ self-hosted, Linux, X64, nvidia, gpu-8 ]
     container:
-      image: nvcr.io/nvidia/cuda:12.8.0-devel-ubuntu22.04
+      image: harbor.baai.ac.cn/flagscale/cuda12.8.1-torch2.7.1-python3.10-te2.9:20260209
       options: --user root
     steps:
-      - name: 'Dependencies'
-        run: |
-          apt-get update
-          apt-get install -y git python3.9 pip cudnn9-cuda-12
-          pip install cmake torch ninja pydantic importlib-metadata>=1.0 packaging pybind11 numpy einops onnxscript nvidia-mathdx==25.1.1
       - name: 'Checkout'
         uses: actions/checkout@v3
         with:
           submodules: recursive
-      # - name: 'Build'
-      #   run: pip install --no-build-isolation . -v --no-deps
-      #   env:
-      #     NVTE_FRAMEWORK: pytorch
-      #     MAX_JOBS: 1
-      # - name: 'Sanity check'
-      #   run: python3 tests/pytorch/test_sanity_import.py
+      - name: 'Build'
+        run:
+          source /opt/miniconda3/etc/profile.d/conda.sh
+          conda activate flagscale-train
+          pip install --no-build-isolation . -v --no-deps
+        env:
+          NVTE_FRAMEWORK: pytorch
+          TE_WITH_NCCL: 1
+      - name: 'Sanity check'
+        run: 
+          source /opt/miniconda3/etc/profile.d/conda.sh
+          conda activate flagscale-train
+          python3 tests/pytorch/test_sanity_import.py

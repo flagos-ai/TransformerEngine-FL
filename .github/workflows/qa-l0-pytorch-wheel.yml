@@ -50,29 +50,29 @@ jobs:
           submodules: recursive
           set-safe-directory: true
 
-      # - name: L0 Pytorch Wheel
-      #   id: L0_pytoech_wheel
-      #   # timeout-minutes: 50
-      #   env:
-      #     TE_PATH: .
-      #     RUN_LOG: /logs/pytorch/wheel
-      #   run: |
-      #     echo "TE_PATH: ${TE_PATH}"
-      #     sed -i "s/^cd transformer_engine\/pytorch\s*$/pushd transformer_engine\/pytorch/" qa/L0_pytorch_wheel/test.sh
-      #     sed -i '44 s/^cd \s*\$TE_PATH\s*$/popd/' qa/L0_pytorch_wheel/test.sh
+      - name: L0 Pytorch Wheel
+        id: L0_pytoech_wheel
+        # timeout-minutes: 50
+        env:
+          TE_PATH: .
+          RUN_LOG: /logs/pytorch/wheel
+        run: |
+          echo "TE_PATH: ${TE_PATH}"
+          sed -i "s/^cd transformer_engine\/pytorch\s*$/pushd transformer_engine\/pytorch/" qa/L0_pytorch_wheel/test.sh
+          sed -i '44 s/^cd \s*\$TE_PATH\s*$/popd/' qa/L0_pytorch_wheel/test.sh
 
-      #     cat qa/L0_pytorch_wheel/test.sh
-      #     source /opt/miniconda3/etc/profile.d/conda.sh
-      #     conda activate flagscale-train
-      #     pip uninstall -y transformer_engine
+          cat qa/L0_pytorch_wheel/test.sh
+          source /opt/miniconda3/etc/profile.d/conda.sh
+          conda activate flagscale-train
+          pip uninstall -y transformer_engine
 
-      #     bash qa/L0_pytorch_wheel/test.sh | tee ${RUN_LOG}/pytorch_wheel-${{ github.run_id }}.log
+          bash qa/L0_pytorch_wheel/test.sh | tee ${RUN_LOG}/pytorch_wheel-${{ github.run_id }}.log
 
-      # - name: Upload Installation Logs
-      #   if: always() && steps.L0_pytoech_wheel.outcome == 'failure'
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: L0-pytorch-logs-${{ github.run_id }}
-      #     path: /logs/pytorch/wheel
-      #     retention-days: 7
-      #     if-no-files-found: warn
+      - name: Upload Installation Logs
+        if: always() && steps.L0_pytoech_wheel.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: L0-pytorch-logs-${{ github.run_id }}
+          path: /logs/pytorch/wheel
+          retention-days: 7
+          if-no-files-found: warn
