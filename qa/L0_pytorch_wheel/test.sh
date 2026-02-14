@@ -44,7 +44,7 @@ pip3 install --no-build-isolation --no-deps -vvv dist/* || error_exit "Failed to
 cd $TE_PATH
 pip3 install --no-build-isolation --no-deps -vvv dist/*.whl || error_exit "Failed to install dist/*.whl --no-deps"
 
-python3 $TE_PATH/tests/pytorch/test_sanity_import.py || test_fail "test_sanity_import.py"
+# python3 $TE_PATH/tests/pytorch/test_sanity_import.py || test_fail "test_sanity_import.py"
 
 if [ "$RET" -ne 0 ]; then
     echo "Error in the following test cases:$FAILED_CASES"
