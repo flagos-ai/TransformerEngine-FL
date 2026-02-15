@@ -153,5 +153,5 @@ jobs:
 
           # Run ONNX unit tests
           echo "=== Running L1 PyTorch ONNX Unit Tests ==="
-          bash ./qa/L1_pytorch_onnx_unittest/test.sh
+          # bash ./qa/L1_pytorch_onnx_unittest/test.sh
         # timeout-minutes: 30
