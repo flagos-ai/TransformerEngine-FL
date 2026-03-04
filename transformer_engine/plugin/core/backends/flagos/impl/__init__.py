@@ -6,3 +6,5 @@ from .gemm import *
 from .rmsnorm import *
 from .fused_adam import *
 from .multi_tensor import *
+from .activation import *
+from .moe_permute import *
