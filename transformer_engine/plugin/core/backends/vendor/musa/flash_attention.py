@@ -31,12 +31,12 @@ class FlashAttentionMUSA(FlashAttentionBase):
 
         # Store initialization parameters for lazy loading
         self._init_params = {
-            'softmax_scale': softmax_scale,
-            'attention_dropout': attention_dropout,
-            'attention_dropout_ctx': attention_dropout_ctx or nullcontext,
-            'attention_type': attention_type,
-            'layer_number': layer_number,
-            'deterministic': deterministic,
+            "softmax_scale": softmax_scale,
+            "attention_dropout": attention_dropout,
+            "attention_dropout_ctx": attention_dropout_ctx or nullcontext,
+            "attention_type": attention_type,
+            "layer_number": layer_number,
+            "deterministic": deterministic,
         }
         self._musa_flash_attn = None
 
@@ -48,15 +48,17 @@ class FlashAttentionMUSA(FlashAttentionBase):
         try:
             # Import here to avoid circular dependency issues
             # transformer_engine_torch must be registered before this import
-            from transformer_engine_musa.pytorch.attention import (
-                FlashAttention as FlashAttentionMusa,
+            from transformer_engine.pytorch.attention.dot_product_attention.backends import (
+                FlashAttention as FlashAttentionMUSA,
             )
 
-            if FlashAttentionMusa is None:
-                raise RuntimeError("FlashAttention class is None - flash-attn may not be installed correctly")
+            if FlashAttentionMUSA is None:
+                raise RuntimeError(
+                    "FlashAttention class is None - flash-attn may not be installed correctly"
+                )
 
-            self._musa_flash_attn = FlashAttentionMusa(**self._init_params)
-            print("Successfully initialized musa FlashAttention for MUSA backend.")
+            self._musa_flash_attn = FlashAttentionMUSA(**self._init_params)
+
         except ImportError as e:
             raise RuntimeError(
                 f"Failed to import musa FlashAttention: {e}. "
@@ -64,8 +66,7 @@ class FlashAttentionMUSA(FlashAttentionBase):
             )
         except Exception as e:
             raise RuntimeError(
-                f"Failed to initialize musa FlashAttention: {e}. "
-                f"Init params: {self._init_params}"
+                f"Failed to initialize musa FlashAttention: {e}. Init params: {self._init_params}"
             )
 
     @property
