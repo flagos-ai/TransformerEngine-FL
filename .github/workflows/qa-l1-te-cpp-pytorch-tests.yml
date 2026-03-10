@@ -26,6 +26,9 @@ on:
       - 'tests/pytorch/attention/**'
       - 'qa/L1_pytorch_onnx_unittest/**'
       - 'tests/pytorch/test_onnx_export.py'
+      
+# 新增手动触发器
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.actor }}

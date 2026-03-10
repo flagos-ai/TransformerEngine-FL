@@ -1,0 +1,16 @@
+# Configuration Template
+# This file describes the structure for hardware-specific configurations.
+#
+# Fields:
+# - image: Docker image to use for the runner
+# - labels: List of labels for the runner
+# - docker_options: Additional Docker options for mounting devices, volumes, etc.
+#
+# Example:
+# image: <docker_image>
+# labels:
+#   - <label1>
+#   - <label2>
+# docker_options: |
+#   --option1 value1
+#   --option2 value2

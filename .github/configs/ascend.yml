@@ -1,0 +1,15 @@
+# Huawei Ascend NPU configuration
+image: ascend-infer:ubuntu18.04
+labels:
+  - npu
+  - ascend
+docker_options: |
+  --device /dev/davinci0
+  --device /dev/davinci1
+  --device /dev/davinci2
+  --device /dev/davinci3
+  --device /dev/davinci_manager
+  --device /dev/devmm_svm
+  --device /dev/hisi_hdc
+  --volume /usr/local/Ascend/driver:/usr/local/Ascend/driver
+  --volume /usr/local/Ascend/add-ons:/usr/local/Ascend/add-ons

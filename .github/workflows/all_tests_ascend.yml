@@ -1,0 +1,16 @@
+name: All Tests Ascend
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  ascend-tests:
+    uses: ./.github/workflows/all_tests_common.yml
+    with:
+      hardware_config: '../configs/ascend.yml'
+      test_type: 'all'
+    # Note: This is a placeholder for Ascend NPU configuration
+    # Ensure runners with Ascend hardware are available

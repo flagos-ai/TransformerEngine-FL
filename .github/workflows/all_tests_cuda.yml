@@ -1,0 +1,14 @@
+name: All Tests CUDA
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  cuda-tests:
+    uses: ./.github/workflows/all_tests_common.yml
+    with:
+      hardware_config: '../configs/cuda.yml'
+      test_type: 'all'

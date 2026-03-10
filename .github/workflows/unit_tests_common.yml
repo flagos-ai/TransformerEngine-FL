@@ -1,0 +1,51 @@
+name: Unit Tests Common
+
+on:
+  workflow_call:
+    inputs:
+      hardware_config:
+        required: true
+        type: string
+        description: 'Hardware configuration file path'
+      language:
+        required: false
+        default: 'python'
+        type: string
+        description: 'Language for unit tests (python, cpp)'
+
+jobs:
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Load hardware config
+        id: config
+        run: |
+          if [ -f "${{ inputs.hardware_config }}" ]; then
+            echo "config=$(cat ${{ inputs.hardware_config }})" >> $GITHUB_OUTPUT
+          else
+            echo "Config file not found: ${{ inputs.hardware_config }}"
+            exit 1
+          fi
+
+      - name: Setup environment
+        run: |
+          # Setup based on hardware config
+
+      - name: Build project
+        run: |
+          # Build necessary components
+
+      - name: Run Python unit tests
+        if: inputs.language == 'python' || inputs.language == 'all'
+        run: |
+          # Run Python unit tests
+          # Example: python -m pytest tests/python/
+
+      - name: Run C++ unit tests
+        if: inputs.language == 'cpp' || inputs.language == 'all'
+        run: |
+          # Run C++ unit tests
+          # Example: make test-cpp

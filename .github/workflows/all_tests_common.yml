@@ -1,0 +1,53 @@
+name: All Tests Common
+
+on:
+  workflow_call:
+    inputs:
+      hardware_config:
+        required: true
+        type: string
+        description: 'Hardware configuration file path (e.g., ../configs/cuda.yml)'
+      test_type:
+        required: false
+        default: 'all'
+        type: string
+        description: 'Type of tests to run (all, unit, etc.)'
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Load hardware config
+        id: config
+        run: |
+          # Load config from file
+          if [ -f "${{ inputs.hardware_config }}" ]; then
+            echo "config=$(cat ${{ inputs.hardware_config }})" >> $GITHUB_OUTPUT
+          else
+            echo "Config file not found: ${{ inputs.hardware_config }}"
+            exit 1
+          fi
+
+      - name: Setup environment
+        run: |
+          # Parse config and setup
+          # This is a placeholder - implement based on config
+
+      - name: Build project
+        run: |
+          # Compile the project
+          # Example: make build or python setup.py build_ext --inplace
+
+      - name: Run tests
+        run: |
+          # Run all tests or specific based on test_type
+          if [ "${{ inputs.test_type }}" == "unit" ]; then
+            # Run unit tests
+            echo "Running unit tests"
+          else
+            # Run all tests
+            echo "Running all tests"
+          fi

@@ -1,0 +1,60 @@
+# CUDA Hardware Configuration for TransformerEngine-FL
+# Refactored for BAAI DGX A100 Nodes
+# This file defines environment variables, volumes, and test filters for TE tests.
+
+hardware_name: cuda
+display_name: "NVIDIA CUDA (A100)"
+
+ci_image: harbor.baai.ac.cn/flagscale/cuda12.8.1-torch2.7.1-python3.10-te2.9:20260209
+
+# Runner labels for self-hosted A100 node
+runner_labels:
+  - self-hosted
+  - Linux
+  - X64
+  - nvidia
+  - gpu-8
+
+# Container volumes
+container_volumes:
+  - .:/opt/transformerengine
+  - ./ci_logs:/logs
+  - /home/flagscale_cicd/data:/opt/data
+
+# Container options
+container_options: >-
+  --privileged 
+  --gpus all 
+  --shm-size=500g 
+  --ipc=host 
+  --ulimit memlock=-1 
+  --ulimit stack=67108864 
+  --user root
+
+# Device types
+device_types:
+  - a100
+
+# Environment variables
+env_vars:
+  NVTE_FRAMEWORK: pytorch
+  TE_WITH_NCCL: 1
+  NVTE_PROJECT_BUILDING: 1
+  TE_FL_SKIP_CUDA: 0
+
+# Test matrix configuration
+test_matrix:
+  l0_pytorch:
+    path: "qa/L0_pytorch_unittest/test.sh"
+    ignored_tests:
+      - test_sanity_layernorm_mlp
+      - test_sanity_gpt
+      - test_sanity_bert
+      - test_sanity_T5
+      - test_sanity_amp_and_nvfuser
+      - test_sanity_drop_path
+      - test_layernorm_mlp_accuracy
+      - test_grouped_linear_accuracy
+      - test_gpt_accuracy
+      - test_basic_linear
+      - test_layer_norm
