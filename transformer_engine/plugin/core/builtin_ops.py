@@ -86,3 +86,12 @@ def register_builtins(registry: OpRegistry) -> None:
     except Exception as e:
         # Iluvatar may not be available, this is expected
         pass
+
+    # Register ASCEND (VENDOR) implementations
+    try:
+        from .backends.vendor.ascend.register_ops import register_builtins as register_ascend
+
+        register_ascend(registry)
+    except Exception as e:
+        # ASCEND may not be available, this is expected
+        pass
