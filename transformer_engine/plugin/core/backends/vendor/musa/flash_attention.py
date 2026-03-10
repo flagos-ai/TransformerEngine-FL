@@ -48,16 +48,16 @@ class FlashAttentionMUSA(FlashAttentionBase):
         try:
             # Import here to avoid circular dependency issues
             # transformer_engine_torch must be registered before this import
-            from transformer_engine.pytorch.attention.dot_product_attention.backends import (
-                FlashAttention as FlashAttentionMUSA,
+            from transformer_engine_musa.pytorch.attention import (
+                FlashAttention as FlashAttentionMusa,
             )
 
-            if FlashAttentionMUSA is None:
+            if FlashAttentionMusa is None:
                 raise RuntimeError(
                     "FlashAttention class is None - flash-attn may not be installed correctly"
                 )
 
-            self._musa_flash_attn = FlashAttentionMUSA(**self._init_params)
+            self._musa_flash_attn = FlashAttentionMusa(**self._init_params)
 
         except ImportError as e:
             raise RuntimeError(

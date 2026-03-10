@@ -1547,9 +1547,9 @@ class MUSABackend(TEFLBackendBase):
 
     ############## class func #################################
     def get_flash_attention_class(self):
-        from .flash_attention import FlashAttentionMUSA
+        from .flash_attention import FlashAttentionMusa
 
-        return FlashAttentionMUSA
+        return FlashAttentionMusa
 
     def create_fp8_tensor_meta(self) -> FP8TensorMeta:
         tex = self._get_tex()
