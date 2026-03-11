@@ -81,10 +81,13 @@ def _ensure_musa_libs():
 
 
 def _check_musa_available() -> bool:
-    if not torch.musa.is_available():
+    try:
+        if not torch.musa.is_available():
+            return False
+        else:
+            return True
+    except Exception as e:
         return False
-    else:
-        return True
 
 
 def _get_tex():
