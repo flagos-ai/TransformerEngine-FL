@@ -41,7 +41,7 @@ def register_builtins(registry: OpRegistry) -> None:
         register_reference(registry)
     except Exception as e:
         print(f"[WARNING] Failed to register Reference operators: {e}")
-    
+
     # Register MUSA (VENDOR) implementations
     try:
         from .backends.vendor.musa.register_ops import register_builtins as register_musa
@@ -50,7 +50,6 @@ def register_builtins(registry: OpRegistry) -> None:
     except Exception as e:
         # MUSA may not be available, this is expected
         pass
-
 
     # Register CUDA (VENDOR) implementations
     try:
