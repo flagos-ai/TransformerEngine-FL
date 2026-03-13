@@ -167,8 +167,8 @@ jobs:
       ports:
         - 80
       volumes: ${{ fromJson(inputs.container_volumes) }}
-      options: ${{ inputs.container_options }}
-      # options: --pull never ${{ inputs.container_options }}
+      # options: ${{ inputs.container_options }}
+      options: --pull never ${{ inputs.container_options }}
     steps:
       # Check if this test group should run based on changed files or "full ci" label
       - name: Check if tests should run
