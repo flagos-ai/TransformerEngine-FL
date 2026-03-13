@@ -32,7 +32,7 @@ container_volumes:
   - /usr/local/maca:/usr/local/maca:ro  # [关键] 挂载宿主机的 MACA 驱动库（设为只读），确保算子能跑
 
 # Container options (hardware-specific settings)
-container_options: '--privileged --gpus all --shm-size=500g --hostname megatron_cicd --user root --ulimit nofile=65535:65535 '
+container_options: '--privileged --shm-size=500g --hostname megatron_cicd --user root --ulimit nofile=65535:65535 '
 
 # Device types to run tests on
 device_types:
