@@ -268,7 +268,12 @@ jobs:
 
           # Run unit tests with torchrun
           # Each test group runs in isolation to avoid state pollution
-          torchrun --nproc_per_node=8 -m pytest -v $TEST_PATH $IGNORE_OPTS -p no:randomly
+          NUM_GPUS=$(python3 -c "import torch; print(torch.cuda.device_count())")
+          echo "=== Detected $NUM_GPUS GPUs, starting torchrun ==="
+
+          # 使用动态获取的数量启动测试
+          torchrun --nproc_per_node=$NUM_GPUS -m pytest -v $TEST_PATH $IGNORE_OPTS -p no:randomly
+          
           exit_code=$?
           echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
           exit $exit_code
