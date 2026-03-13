@@ -163,7 +163,7 @@ jobs:
     name: unit-${{ inputs.device }}-${{ matrix.test_group.name }}
     container:
       image: ${{ inputs.image }}
-
+      image-pull-policy: never
       ports:
         - 80
       volumes: ${{ fromJson(inputs.container_volumes) }}
