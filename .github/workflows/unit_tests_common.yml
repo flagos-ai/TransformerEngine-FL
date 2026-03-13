@@ -163,10 +163,11 @@ jobs:
     name: unit-${{ inputs.device }}-${{ matrix.test_group.name }}
     container:
       image: ${{ inputs.image }}
+
       ports:
         - 80
       volumes: ${{ fromJson(inputs.container_volumes) }}
-      options: ${{ inputs.container_options }}
+      options: --pull never ${{ inputs.container_options }}
     steps:
       # Check if this test group should run based on changed files or "full ci" label
       - name: Check if tests should run
@@ -273,7 +274,7 @@ jobs:
 
           # 使用动态获取的数量启动测试
           torchrun --nproc_per_node=$NUM_GPUS -m pytest -v $TEST_PATH $IGNORE_OPTS -p no:randomly
-          
+
           exit_code=$?
           echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
           exit $exit_code
