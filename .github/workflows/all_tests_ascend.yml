@@ -1,16 +1,32 @@
-name: All Tests Ascend
+name: ascend_tests
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: ["main"]
   pull_request:
-    branches: [ main, develop ]
+    branches: ["main"]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.actor }}
+  cancel-in-progress: true
 
 jobs:
-  ascend-tests:
+  run_tests:
+    # Package manager and environment settings are read from .github/configs/ascend.yml
     uses: ./.github/workflows/all_tests_common.yml
     with:
-      hardware_config: '../configs/ascend.yml'
-      test_type: 'all'
-    # Note: This is a placeholder for Ascend NPU configuration
-    # Ensure runners with Ascend hardware are available
+      platform: ascend
+
+  all_tests:
+    needs: run_tests
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Verify workflow status
+        run: |
+          if [ "${{ needs.run_tests.result }}" != "success" ]; then
+            echo "❌ Tests workflow failed"
+            exit 1
+          fi
+          echo "✅ All tests passed!"
