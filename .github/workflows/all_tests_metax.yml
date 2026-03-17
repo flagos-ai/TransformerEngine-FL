@@ -13,7 +13,6 @@ concurrency:
 
 jobs:
   run_tests:
-    # 关键修改：告诉 common 工作流去读取 .github/configs/metax.yml
     uses: ./.github/workflows/all_tests_common.yml
     with:
       platform: metax

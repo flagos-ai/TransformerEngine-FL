@@ -26,10 +26,10 @@ container_volumes:
   # - /home/flagscale_cicd/docker/docker_build/docker_tokenizers:/home/gitlab-runner/tokenizers
   # - /home/flagscale_cicd/docker/docker_build/docker_data/Megatron-LM/datasets:/opt/data/datasets
   # - /home/flagscale_cicd/docker/docker_build/docker_tokenizers/Megatron-LM/tokenizers:/opt/data/tokenizers
-  # --- 新增：Transformer Engine 开发专用路径 ---
-  - /home/muxiuser/jinglong/TransformerEngine-FL:/workspace/TransformerEngine-FL  # 开发仓库
-  - /home/muxiuser/jinglong:/opt/te_packages  # 存放编译好的 TE 包，供测试安装使用
-  - /usr/local/maca:/usr/local/maca:ro  # [关键] 挂载宿主机的 MACA 驱动库（设为只读），确保算子能跑
+  # --- add ：Transformer Engine  ---
+  - /home/muxiuser/jinglong/TransformerEngine-FL:/workspace/TransformerEngine-FL  
+  - /home/muxiuser/jinglong:/opt/te_packages  
+  - /usr/local/maca:/usr/local/maca:ro  
 
 # Container options (hardware-specific settings)
 container_options: '--privileged --shm-size=500g --hostname megatron_cicd --user root --ulimit nofile=65535:65535 '
