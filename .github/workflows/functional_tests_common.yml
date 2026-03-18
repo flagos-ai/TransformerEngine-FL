@@ -66,12 +66,14 @@ jobs:
     
       - name: Setup Python environment
         env:
-          MACA_HOME: /opt/maca
-          CUDA_HOME: /opt/maca
-          NVTE_WITH_CUDA: '0'
+          
           NVTE_WITH_MACA: '1'
+          NVTE_WITH_CUDA: '0'
           NVCC: /opt/maca/bin/mcc
-          PATH: /opt/maca/bin:/opt/conda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+          CUDA_HOME: /opt/maca
+          
+          PATH: /opt/maca/bin:${{ env.PATH }}
+          LD_LIBRARY_PATH: /opt/maca/lib:${{ env.LD_LIBRARY_PATH }}
         run: |
           set -euo pipefail
           cd $PROJECT_ROOT

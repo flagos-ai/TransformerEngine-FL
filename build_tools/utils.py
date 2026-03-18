@@ -198,11 +198,11 @@ def cuda_toolkit_include_path() -> Tuple[str, str]:
 
 
 @functools.lru_cache(maxsize=None)
-def nvcc_path() -> Tuple[str, str]:
-    """Returns the NVCC binary path.
+def nvcc_path() -> Path: 
+    
+    if os.getenv("NVCC"):
+        return Path(os.getenv("NVCC"))
 
-    Throws FileNotFoundError if NVCC is not found."""
-    # Try finding NVCC
     nvcc_bin: Optional[Path] = None
     if nvcc_bin is None and os.getenv("CUDA_HOME"):
         # Check in CUDA_HOME
@@ -214,13 +214,12 @@ def nvcc_path() -> Tuple[str, str]:
         if nvcc_bin is not None:
             cuda_home = Path(nvcc_bin.rstrip("/bin/nvcc"))
             nvcc_bin = Path(nvcc_bin)
-    if nvcc_bin is None:
-        # Last-ditch guess in /usr/local/cuda
-        cuda_home = Path("/usr/local/cuda")
-        nvcc_bin = cuda_home / "bin" / "nvcc"
-    if not nvcc_bin.is_file():
-        raise FileNotFoundError(f"Could not find NVCC at {nvcc_bin}")
-
+    if nvcc_bin is None or not nvcc_bin.is_file():
+        
+        mcc_bin = shutil.which("mcc")
+        if mcc_bin:
+            return Path(mcc_bin)
+        raise FileNotFoundError(f"Could not find NVCC/MCC executable")
     return nvcc_bin
 
 
@@ -259,6 +258,8 @@ def skip_cuda_build() -> bool:
 
 @functools.lru_cache(maxsize=None)
 def cuda_archs() -> str:
+    if skip_cuda_build() or os.getenv("NVTE_WITH_MACA") == "1":
+        return ""  # Return empty string when skipping CUDA build or when building with MACA, since MACA requires CUDA 12.1 which supports a wide range of architectures and we want to avoid accidentally excluding some architectures
     if skip_cuda_build():
         return ""  # Return empty string when skipping CUDA build
     archs = os.getenv("NVTE_CUDA_ARCHS")
@@ -280,6 +281,8 @@ def cuda_version() -> Tuple[int, ...]:
     nvcc is not found, look for the cuda runtime package pip `nvidia-cuda-runtime-cu12`
     and check pip version.
     """
+    if os.getenv("NVTE_WITH_MACA") == "1" or os.environ.get("NVTE_WITH_CUDA") == "0":
+        return (12, 1) # Assume CUDA 12.1 when building with MACA or when CUDA build is disabled, since MACA requires CUDA 12.1
 
     try:
         nvcc_bin = nvcc_path()
