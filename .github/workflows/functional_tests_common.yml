@@ -61,15 +61,22 @@ jobs:
       - name: Activate Python environment
         run: |
           source /opt/conda/etc/profile.d/conda.sh
-          conda activate base   # 或镜像内实际的 env name
+          conda activate base   
           echo "PATH=$PATH" >> $GITHUB_ENV
     
       - name: Setup Python environment
+        env:
+          MACA_HOME: /opt/maca
+          CUDA_HOME: /opt/maca
+          NVTE_WITH_CUDA: '0'
+          NVTE_WITH_MACA: '1'
+          NVCC: /opt/maca/bin/mcc
+          PATH: /opt/maca/bin:/opt/conda/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
         run: |
           set -euo pipefail
           cd $PROJECT_ROOT
-          pip install -e . --no-deps 
-        timeout-minutes: 30
+          pip install -e . --no-deps --no-build-isolation
+        timeout-minutes: 60
 
       - name: Run functional tests
         id: functional_test
