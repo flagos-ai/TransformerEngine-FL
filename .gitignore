@@ -42,3 +42,5 @@ tensor_dumps/
 artifacts/
 # Auto-generated build configuration (specific to each environment)
 transformer_engine/plugin/core/_build_config.py
+# Mac OS
+.DS_Store
