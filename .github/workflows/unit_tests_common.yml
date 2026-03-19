@@ -1,5 +1,6 @@
 name: Common Unit Tests
 
+
 on:
   workflow_call:
     inputs:
@@ -96,6 +97,7 @@ jobs:
       - name: Check if tests should run
         id: should_run
         run: |
+          echo "should_run=true" >> $GITHUB_OUTPUT
           GROUP='${{ matrix.test_group.name }}'
           # Force run if 'full ci' label exists
           if [ "${{ contains(github.event.pull_request.labels.*.name, 'full ci') }}" == "true" ]; then 
@@ -121,7 +123,7 @@ jobs:
         run: |
           set -euo pipefail
           # 1. Execute hardware-specific setup (e.g. conda activate, export paths)
-          
+
           #! setup_commands from all_tests_xxx.yml(like all_tests_metax.yml) 
           ${{ inputs.setup_commands }}
           
