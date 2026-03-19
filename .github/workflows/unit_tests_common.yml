@@ -130,7 +130,8 @@ jobs:
           # 2. Universal dependency sync using the activated python environment
           python3 -m pip install --no-cache-dir transformers expecttest boto3==1.42.1 --no-deps || true
           python3 -m pip install -v -e . --no-deps
-        timeout-minutes: 40
+        # more time needed...
+        timeout-minutes: 120
 
       - name: Execute Tests
         if: steps.should_run.outputs.should_run == 'true'
