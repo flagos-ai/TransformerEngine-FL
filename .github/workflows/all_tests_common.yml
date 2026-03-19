@@ -7,6 +7,10 @@ on:
         required: true
         type: string
         description: Platform name (e.g., cuda, default)
+      setup_commands:
+        required: false
+        type: string
+        default: ''
 
 jobs:
   checkout_and_config:
