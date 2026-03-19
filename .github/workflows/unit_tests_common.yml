@@ -54,7 +54,6 @@ jobs:
           
           CHANGED_FILES=$(git diff --name-only $BASE_REF...HEAD 2>/dev/null || git diff --name-only $BASE_REF HEAD)
 
-          # 修改 detect_changes 里的 grep 正则，增加对 .github/ 的匹配
           echo "core=$(echo "$CHANGED_FILES" | grep -qE "^tests/unit_tests/|^megatron/core/|^.github/" && echo "true" || echo "false")" >> $GITHUB_OUTPUT
           echo "qa_l0=$(echo "$CHANGED_FILES" | grep -qE "^qa/L0_|^transformer_engine/|^tests/pytorch/|^.github/" && echo "true" || echo "false")" >> $GITHUB_OUTPUT
   
@@ -129,8 +128,8 @@ jobs:
           ${{ inputs.setup_commands }}
           
           # 2. Universal dependency sync using the activated python environment
-          python3 -m pip install --no-cache-dir transformers expecttest boto3==1.42.1
-          python3 -m pip install -e . --no-deps
+          python3 -m pip install --no-cache-dir transformers expecttest boto3==1.42.1 --no-deps || true
+          python3 -m pip install -v -e . --no-deps
         timeout-minutes: 20
 
       - name: Execute Tests
