@@ -121,6 +121,9 @@ jobs:
       - name: Environment Setup
         if: steps.should_run.outputs.should_run == 'true'
         env:
+          TE_FL_SKIP_CUDA: '1' 
+          SKIP_CUDA_BUILD: '1'
+          
           NVTE_WITH_MACA: '1'
           NVTE_WITH_CUDA: '0'
           MACA_HOME: /opt/maca
@@ -136,7 +139,8 @@ jobs:
           #! setup_commands from all_tests_xxx.yml(like all_tests_metax.yml) 
           ${{ inputs.setup_commands }}
 
-          
+          python3 -m pip install --no-cache-dir cmake ninja --no-deps
+          cmake --version
 
           which python3
           python3 -c "import torch; print(f'Native Torch Version: {torch.__version__}')"
