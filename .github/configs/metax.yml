@@ -1,4 +1,4 @@
-# CUDA Hardware Configuration for Megatron-LM-FL
+# CUDA Hardware Configuration for TE-FL
 # This file defines CI/CD settings for CUDA-based testing
 # Test configurations are defined in tests/test_utils/config/platforms/cuda.yaml
 

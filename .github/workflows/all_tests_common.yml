@@ -83,6 +83,7 @@ jobs:
     uses: ./.github/workflows/unit_tests_common.yml
     name: unit_tests
     with:
+      setup_commands: ${{ inputs.setup_commands }}
       platform: ${{ inputs.platform }}
       device: ${{ matrix.device }}
       image: ${{ needs.checkout_and_config.outputs.ci_image }}

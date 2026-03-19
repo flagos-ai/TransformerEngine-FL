@@ -6,11 +6,9 @@ on:
       platform:
         required: true
         type: string
-        description: Platform name (e.g., cuda, default)
       device:
         required: true
         type: string
-        description: Device type (e.g., a100, a800, h100, generic)
       image:
         required: true
         type: string
@@ -27,10 +25,14 @@ on:
         required: false
         type: string
         default: ''
-        description: JSON array of test files to ignore
+      # New input for hardware-specific initialization (e.g., conda activate)
+      setup_commands:
+        required: false
+        type: string
+        default: ''
 
 jobs:
-  # 1. Change Detection: Monitors both new unit tests and legacy QA paths
+  # 1. Change Detection
   detect_changes:
     runs-on: ubuntu-latest
     outputs:
@@ -46,18 +48,15 @@ jobs:
         id: filter
         run: |
           set -euo pipefail
-          # Identify base reference for diff
           BASE_REF="${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || 'HEAD~1' }}"
           [ "${{ github.event_name }}" == "pull_request" ] && git fetch origin ${{ github.base_ref }} --depth=1
           
           CHANGED_FILES=$(git diff --name-only $BASE_REF...HEAD 2>/dev/null || git diff --name-only $BASE_REF HEAD)
 
-          # Logic for core framework and new pytest suite
           echo "core=$(echo "$CHANGED_FILES" | grep -qE "^tests/unit_tests/|^megatron/core/" && echo "true" || echo "false")" >> $GITHUB_OUTPUT
-          # Logic for legacy QA L0 scripts and PyTorch specific paths
           echo "qa_l0=$(echo "$CHANGED_FILES" | grep -qE "^qa/L0_|^transformer_engine/|^tests/pytorch/" && echo "true" || echo "false")" >> $GITHUB_OUTPUT
 
-  # 2. Unified Test Execution: Supports both pytest and legacy shell scripts
+  # 2. Unified Test Execution
   unit_test:
     needs: detect_changes
     defaults:
@@ -68,15 +67,12 @@ jobs:
       fail-fast: false
       matrix:
         test_group:
-          # Modern Pytest architecture
           - name: core
             path: "tests/unit_tests/test_*.py"
             test_type: "pytest"
           - name: distributed
             path: "tests/unit_tests/distributed/"
             test_type: "pytest"
-          
-          # Integrated legacy QA L0 groups
           - name: pytorch_unittest
             path: "qa/L0_pytorch_unittest/test.sh"
             test_type: "sh"
@@ -93,10 +89,7 @@ jobs:
     name: unit-${{ inputs.device }}-${{ matrix.test_group.name }}
     container:
       image: ${{ inputs.image }}
-      ports:
-        - 80
       volumes: ${{ fromJson(inputs.container_volumes) }}
-      # Crucial: --pull never prevents internet access; container_options should include --privileged
       options: --pull never ${{ inputs.container_options }}
 
     steps:
@@ -104,9 +97,8 @@ jobs:
         id: should_run
         run: |
           GROUP='${{ matrix.test_group.name }}'
-          FULL_CI='${{ contains(github.event.pull_request.labels.*.name, 'full ci') }}'
-          
-          if [ "$FULL_CI" == "true" ]; then 
+          # Force run if 'full ci' label exists
+          if [ "${{ contains(github.event.pull_request.labels.*.name, 'full ci') }}" == "true" ]; then 
             echo "should_run=true" >> $GITHUB_OUTPUT; exit 0
           fi
 
@@ -115,51 +107,51 @@ jobs:
           else
             CHANGED='${{ needs.detect_changes.outputs.core }}'
           fi
+          # For debugging, you can force this to true
           echo "should_run=$CHANGED" >> $GITHUB_OUTPUT
 
       - name: Checkout source code
-        # if: steps.should_run.outputs.should_run == 'true'
+        if: steps.should_run.outputs.should_run == 'true'
         uses: actions/checkout@v4
         with:
           set-safe-directory: true
 
-      - name: Metax Environment Setup
-        # if: steps.should_run.outputs.should_run == 'true'
+      - name: Environment Setup
+        if: steps.should_run.outputs.should_run == 'true'
         run: |
           set -euo pipefail
-          # Dynamically set MACA library path if drivers are mounted
-          if [ -d "/usr/local/maca/lib" ]; then
-            echo "Setting MACA library path..."
-            echo "LD_LIBRARY_PATH=/usr/local/maca/lib:${LD_LIBRARY_PATH:-}" >> $GITHUB_ENV
-          fi
+          # 1. Execute hardware-specific setup (e.g. conda activate, export paths)
           
-          # Install dependencies required by legacy QA scripts
-          pip install --no-cache-dir transformers expecttest boto3==1.42.1
-          # Install current repo in editable mode without re-building
-          pip install -e . --no-deps
+          #! setup_commands from all_tests_xxx.yml(like all_tests_metax.yml) 
+          ${{ inputs.setup_commands }}
+          
+          # 2. Universal dependency sync using the activated python environment
+          python3 -m pip install --no-cache-dir transformers expecttest boto3==1.42.1
+          python3 -m pip install -e . --no-deps
         timeout-minutes: 20
 
       - name: Execute Tests
-        # if: steps.should_run.outputs.should_run == 'true'
+        if: steps.should_run.outputs.should_run == 'true'
         working-directory: ${{ github.workspace }}
         run: |
           set -euo pipefail
+          # 1. Re-execute setup commands for the new shell session
+          ${{ inputs.setup_commands }}
           
-          # Base environment variables (required for legacy scripts)
+          # 2. Export Common TE Variables
           export TE_PATH=$GITHUB_WORKSPACE
           export PYTHONPATH=$GITHUB_WORKSPACE:${PYTHONPATH:-}
           export RUN_LOG=/tmp/te_logs && mkdir -p $RUN_LOG
 
-          # Detect local GPU count dynamically (e.g., 2 for C500)
+          # 3. Dynamic Hardware Detection
           NUM_GPUS=$(python3 -c "import torch; print(torch.cuda.device_count() if torch.cuda.is_available() else 0)")
-          echo "=== Detected $NUM_GPUS GPUs, starting execution ==="
+          echo "=== Platform: ${{ inputs.platform }} | Device: ${{ inputs.device }} | GPUs: $NUM_GPUS ==="
 
           if [ "${{ matrix.test_group.test_type }}" == "sh" ]; then
             echo "::group::Executing Legacy Shell Script"
-            # Dynamically detect TE installation path to avoid "SO not found" errors
+            # Detect TE path for legacy scripts to find C++/MACA extensions
             export TE_LIB_PATH=$(python3 -c "import transformer_engine; import os; print(os.path.dirname(transformer_engine.__file__))")
             
-            # Special env for Lint group
             if [[ "${{ matrix.test_group.name }}" == *"lint"* ]]; then
                export CPP_ONLY=0
                export PYTHON_ONLY=0
@@ -168,11 +160,10 @@ jobs:
             echo "::endgroup::"
           else
             echo "::group::Executing Modern Pytest"
-            # Build deselect options from ignored_tests input
+            # Extract ignored tests from configuration
             IGNORED_TESTS='${{ inputs.ignored_tests }}'
             IGNORE_OPTS=$(echo "$IGNORED_TESTS" | python3 -c "import sys, json; t = json.load(sys.stdin); print(' '.join(['--deselect=' + i for i in t])) if t else print('')")
             
-            # Run distributed tests with torchrun
             torchrun --nproc_per_node=$NUM_GPUS -m pytest -v ${{ matrix.test_group.path }} $IGNORE_OPTS -p no:randomly
             echo "::endgroup::"
           fi

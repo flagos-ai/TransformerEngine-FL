@@ -16,6 +16,11 @@ jobs:
     uses: ./.github/workflows/all_tests_common.yml
     with:
       platform: metax
+      # Metax Environment Setup
+      setup_commands: |
+        source /opt/miniconda3/etc/profile.d/conda.sh
+        conda activate flagscale-train
+        export LD_LIBRARY_PATH=/usr/local/maca/lib:$LD_LIBRARY_PATH
 
   all_tests:
     needs: run_tests
