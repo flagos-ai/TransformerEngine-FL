@@ -26,6 +26,12 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v4
 
+      - name: Check if tests should run
+        id: should_run
+        run: |
+         
+          echo "should_run=true" >> $GITHUB_OUTPUT
+
       - name: Load platform configuration
         id: config
         run: |
