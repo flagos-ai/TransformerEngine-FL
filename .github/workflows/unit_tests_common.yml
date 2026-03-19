@@ -54,9 +54,10 @@ jobs:
           
           CHANGED_FILES=$(git diff --name-only $BASE_REF...HEAD 2>/dev/null || git diff --name-only $BASE_REF HEAD)
 
-          echo "core=$(echo "$CHANGED_FILES" | grep -qE "^tests/unit_tests/|^megatron/core/" && echo "true" || echo "false")" >> $GITHUB_OUTPUT
-          echo "qa_l0=$(echo "$CHANGED_FILES" | grep -qE "^qa/L0_|^transformer_engine/|^tests/pytorch/" && echo "true" || echo "false")" >> $GITHUB_OUTPUT
-
+          # 修改 detect_changes 里的 grep 正则，增加对 .github/ 的匹配
+          echo "core=$(echo "$CHANGED_FILES" | grep -qE "^tests/unit_tests/|^megatron/core/|^.github/" && echo "true" || echo "false")" >> $GITHUB_OUTPUT
+          echo "qa_l0=$(echo "$CHANGED_FILES" | grep -qE "^qa/L0_|^transformer_engine/|^tests/pytorch/|^.github/" && echo "true" || echo "false")" >> $GITHUB_OUTPUT
+  
   # 2. Unified Test Execution
   unit_test:
     needs: detect_changes
