@@ -121,28 +121,23 @@ jobs:
       - name: Environment Setup
         if: steps.should_run.outputs.should_run == 'true'
         env:
-          
           NVTE_WITH_MACA: '1'
           NVTE_WITH_CUDA: '0'
+          MACA_HOME: /opt/maca
           NVCC: /opt/maca/bin/mcc
           CUDA_HOME: /opt/maca
-          
-          PATH: /opt/maca/bin:${{ env.PATH }}
-          LD_LIBRARY_PATH: /opt/maca/lib:${{ env.LD_LIBRARY_PATH }}
         run: |
+          export PATH=/opt/maca/bin:$PATH
+          export LD_LIBRARY_PATH=/opt/maca/lib:/usr/local/maca/lib:${LD_LIBRARY_PATH:-}
+
           set -euo pipefail
           # 1. Execute hardware-specific setup (e.g. conda activate, export paths)
 
           #! setup_commands from all_tests_xxx.yml(like all_tests_metax.yml) 
           ${{ inputs.setup_commands }}
 
-          export PATH=/opt/maca/bin:$PATH
-          export LD_LIBRARY_PATH=/opt/maca/lib:/usr/local/maca/lib:$LD_LIBRARY_PATH
-          export MACA_HOME=/opt/maca
-          export NVCC=/opt/maca/bin/mcc
-          export NVTE_WITH_MACA=1
-          export NVTE_WITH_CUDA=0
           
+
           which python3
           python3 -c "import torch; print(f'Native Torch Version: {torch.__version__}')"
 
