@@ -18,9 +18,17 @@ jobs:
       platform: metax
       # Metax Environment Setup
       setup_commands: |
-        source /opt/miniconda3/etc/profile.d/conda.sh
-        conda activate flagscale-train
-        export LD_LIBRARY_PATH=/usr/local/maca/lib:$LD_LIBRARY_PATH
+       
+        if [ -f "/opt/conda/etc/profile.d/conda.sh" ]; then
+          source /opt/conda/etc/profile.d/conda.sh
+          
+          conda activate flagscale-train || echo "Using default conda environment"
+        fi
+        
+        export LD_LIBRARY_PATH=/usr/local/maca/lib:/opt/maca/lib:$LD_LIBRARY_PATH
+        
+        python3 --version
+        which python3
 
   all_tests:
     needs: run_tests
