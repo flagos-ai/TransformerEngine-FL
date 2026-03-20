@@ -174,10 +174,13 @@ jobs:
           if [[ "${{ matrix.test_group.name }}" == *"lint"* ]]; then
             export CPP_ONLY=0
             export PYTHON_ONLY=0
-          fi
+          else
+            # Ensure runtime uses current workspace build, not preinstalled stale TE packages.
+            python3 -m pip uninstall -y transformer_engine transformer-engine transformer-engine-cu12 transformer-engine-cu13 transformer-engine-torch transformer_engine_torch transformer_engine_torch_nv transformer_engine_torch_metax transformer_engine_torch_hygon transformer_engine_torch_iluvatar transformer_engine_torch_kunlunxin transformer_engine_torch_maca 2>/dev/null || true
+            python3 -m pip install -v -e . --no-deps --no-build-isolation
 
-          if [[ "${{ matrix.test_group.name }}" == *"wheel"* ]]; then
-            pip uninstall -y transformer_engine transformer-engine transformer-engine-cu12 transformer-engine-torch 2>/dev/null || true
+            # Fail fast on backend/API mismatch before running the full test group.
+            python3 -c "import sys; import transformer_engine_torch as tex; required=['multi_tensor_scale','multi_tensor_compute_scale_and_scale_inv']; missing=[n for n in required if not hasattr(tex, n)]; print('[TE check] module:', tex); print('[TE check] missing:', ', '.join(missing) if missing else 'none'); sys.exit(1 if missing else 0)"
           fi
 
           bash ${{ matrix.test_group.path }}
