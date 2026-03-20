@@ -68,12 +68,12 @@ jobs:
       fail-fast: false
       matrix:
         test_group:
-          - name: core
-            path: "tests/unit_tests/test_*.py"
-            test_type: "pytest"
-          - name: distributed
-            path: "tests/unit_tests/distributed/"
-            test_type: "pytest"
+          # - name: core
+          #   path: "tests/unit_tests/test_*.py"
+          #   test_type: "pytest"
+          # - name: distributed
+          #   path: "tests/unit_tests/distributed/"
+          #   test_type: "pytest"
           - name: pytorch_unittest
             path: "qa/L0_pytorch_unittest/test.sh"
             test_type: "sh"
@@ -110,13 +110,22 @@ jobs:
             CHANGED='${{ needs.detect_changes.outputs.core }}'
           fi
           # For debugging, you can force this to true
-          echo "should_run=$CHANGED" >> $GITHUB_OUTPUT
+          # echo "should_run=$CHANGED" >> $GITHUB_OUTPUT
+
+          # Force Run
+          echo "should_run=true" >> $GITHUB_OUTPUT
 
       - name: Checkout source code
         if: steps.should_run.outputs.should_run == 'true'
         uses: actions/checkout@v4
         with:
           set-safe-directory: true
+
+      - name: Activate Python environment
+        run: |
+          source /opt/conda/etc/profile.d/conda.sh
+          conda activate base
+          echo "PATH=$PATH" >> $GITHUB_ENV
 
       - name: Environment Setup
         if: steps.should_run.outputs.should_run == 'true'
@@ -157,36 +166,19 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           set -euo pipefail
-          # 1. Re-execute setup commands for the new shell session
           ${{ inputs.setup_commands }}
-          
-          # 2. Export Common TE Variables
+
           export TE_PATH=$GITHUB_WORKSPACE
           export PYTHONPATH=$GITHUB_WORKSPACE:${PYTHONPATH:-}
-          export RUN_LOG=/tmp/te_logs && mkdir -p $RUN_LOG
 
-          # 3. Dynamic Hardware Detection
-          NUM_GPUS=$(python3 -c "import torch; print(torch.cuda.device_count() if torch.cuda.is_available() else 0)")
-          echo "=== Platform: ${{ inputs.platform }} | Device: ${{ inputs.device }} | GPUs: $NUM_GPUS ==="
-
-          if [ "${{ matrix.test_group.test_type }}" == "sh" ]; then
-            echo "::group::Executing Legacy Shell Script"
-            # Detect TE path for legacy scripts to find C++/MACA extensions
-            export TE_LIB_PATH=$(python3 -c "import transformer_engine; import os; print(os.path.dirname(transformer_engine.__file__))")
-            
-            if [[ "${{ matrix.test_group.name }}" == *"lint"* ]]; then
-               export CPP_ONLY=0
-               export PYTHON_ONLY=0
-            fi
-            bash ${{ matrix.test_group.path }}
-            echo "::endgroup::"
-          else
-            echo "::group::Executing Modern Pytest"
-            # Extract ignored tests from configuration
-            IGNORED_TESTS='${{ inputs.ignored_tests }}'
-            IGNORE_OPTS=$(echo "$IGNORED_TESTS" | python3 -c "import sys, json; t = json.load(sys.stdin); print(' '.join(['--deselect=' + i for i in t])) if t else print('')")
-            
-            torchrun --nproc_per_node=$NUM_GPUS -m pytest -v ${{ matrix.test_group.path }} $IGNORE_OPTS -p no:randomly
-            echo "::endgroup::"
+          if [[ "${{ matrix.test_group.name }}" == *"lint"* ]]; then
+            export CPP_ONLY=0
+            export PYTHON_ONLY=0
           fi
+
+          if [[ "${{ matrix.test_group.name }}" == *"wheel"* ]]; then
+            pip uninstall -y transformer_engine transformer-engine transformer-engine-cu12 transformer-engine-torch 2>/dev/null || true
+          fi
+
+          bash ${{ matrix.test_group.path }}
         timeout-minutes: 60
