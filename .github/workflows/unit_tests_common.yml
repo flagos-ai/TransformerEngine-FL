@@ -132,15 +132,17 @@ jobs:
         env:
           TE_FL_SKIP_CUDA: '1' 
           SKIP_CUDA_BUILD: '1'
-          
           NVTE_WITH_MACA: '1'
           NVTE_WITH_CUDA: '0'
+
+          # MetaX: MACA is at /opt/maca on both host and container
           MACA_HOME: /opt/maca
           NVCC: /opt/maca/bin/mcc
           CUDA_HOME: /opt/maca
+          
         run: |
           export PATH=/opt/maca/bin:$PATH
-          export LD_LIBRARY_PATH=/opt/maca/lib:/usr/local/maca/lib:${LD_LIBRARY_PATH:-}
+          export LD_LIBRARY_PATH=/opt/maca/lib:${LD_LIBRARY_PATH:-}
 
           set -euo pipefail
           # 1. Execute hardware-specific setup (e.g. conda activate, export paths)
@@ -170,14 +172,22 @@ jobs:
 
           export TE_PATH=$GITHUB_WORKSPACE
           export PYTHONPATH=$GITHUB_WORKSPACE:${PYTHONPATH:-}
+          export MACA_HOME=/opt/maca
+          export CUDA_HOME=/opt/maca
+          export PATH=/opt/maca/bin:$PATH
+          export LD_LIBRARY_PATH=/opt/maca/lib:${LD_LIBRARY_PATH:-}
+          export NVTE_WITH_MACA=1
+          export NVTE_WITH_CUDA=0
+          export TE_FL_SKIP_CUDA=1
+          export SKIP_CUDA_BUILD=1
 
           if [[ "${{ matrix.test_group.name }}" == *"lint"* ]]; then
             export CPP_ONLY=0
             export PYTHON_ONLY=0
-          else
+          elif [[ "${{ matrix.test_group.name }}" != *"debug"* ]]; then
             # Fail fast on backend/API mismatch before running the full test group.
-            # Keep this lightweight: do not reinstall editable package here.
-            python3 -c "import sys; import transformer_engine_torch as tex; required=['multi_tensor_scale','multi_tensor_compute_scale_and_scale_inv']; missing=[n for n in required if not hasattr(tex, n)]; print('[TE check] module:', tex); print('[TE check] file:', getattr(tex, '__file__', 'N/A')); print('[TE check] missing:', ', '.join(missing) if missing else 'none'); sys.exit(1 if missing else 0)"
+            # Skip for debug group (does not use FP8/optimizer symbols).
+            python3 -c "import sys, importlib; import transformer_engine.common as _te_common; tex = importlib.import_module('transformer_engine_torch'); required=['multi_tensor_scale','multi_tensor_compute_scale_and_scale_inv']; missing=[n for n in required if not hasattr(tex, n)]; print('[TE check] module:', tex); print('[TE check] file:', getattr(tex, '__file__', 'N/A')); print('[TE check] missing:', ', '.join(missing) if missing else 'none'); sys.exit(1 if missing else 0)"
           fi
 
           bash ${{ matrix.test_group.path }}
@@ -186,7 +196,7 @@ jobs:
       - name: Debug - keep container alive on failure
         if: failure()
         run: |
-          echo "Container sleeping for 30 minutes for debugging..."
+          echo "Container sleeping for 10 minutes for debugging..."
           echo "On host, run: docker ps  then  docker exec -it <container_id> bash"
-          sleep 1800
+          sleep 600
         timeout-minutes: 60
