@@ -193,6 +193,35 @@ jobs:
 
         # more time needed...
         timeout-minutes: 120
+      
+      - name: Build Transformer Engine & Check Version
+        # timeout-minutes: 40
+        env:
+          NVTE_FRAMEWORK: pytorch
+          TE_WITH_NCCL: 1
+        run: |
+          # Print environment information for debugging
+          echo "=== Environment Info ==="
+          conda info
+          python --version
+          pip --version
+          gcc --version
+          nvcc --version
+          cmake --version
+          cat /usr/local/cuda-12.8/include/cudnn_version.h | grep -E "CUDNN_MAJOR|CUDNN_MINOR|CUDNN_PATCHLEVEL"
+
+          # Install dependencies
+          echo "=== Installing Dependencies ==="
+          pip install transformers expecttest pytest
+
+          # Build and install transformer_engine
+          echo "=== Building Transformer Engine ==="
+          pip install --no-build-isolation -vvv . --no-deps
+
+          # Verify installation
+          echo "=== Verifying Installation ==="
+          python3 tests/pytorch/test_sanity_import.py
+          python3 -c "import transformer_engine; print('TE Version:', transformer_engine.__version__)"
 
       - name: Execute Tests
         if: steps.should_run.outputs.should_run == 'true'
