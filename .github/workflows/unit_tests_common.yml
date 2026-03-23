@@ -146,6 +146,9 @@ jobs:
 
           set -euo pipefail
           # 1. Execute hardware-specific setup (e.g. conda activate, export paths)
+          
+          #install git when setpu
+          apt-get update && apt-get install -y -qq git
 
           #! setup_commands from all_tests_xxx.yml(like all_tests_metax.yml) 
           ${{ inputs.setup_commands }}
