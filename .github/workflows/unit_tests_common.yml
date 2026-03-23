@@ -80,12 +80,12 @@ jobs:
           # - name: pytorch_unittest
           #   path: "qa/L0_pytorch_unittest/test.sh"
           #   test_type: "sh"
-          - name: pytorch_lint
-            path: "qa/L0_pytorch_lint/test.sh"
-            test_type: "sh"
-          # - name: pytorch_wheel
-          #   path: "qa/L0_pytorch_wheel/test.sh"
+          # - name: pytorch_lint
+          #   path: "qa/L0_pytorch_lint/test.sh"
           #   test_type: "sh"
+          - name: pytorch_wheel
+            path: "qa/L0_pytorch_wheel/test.sh"
+            test_type: "sh"
 
     name: unit-${{ inputs.device }}-${{ matrix.test_group.name }}
     container:
