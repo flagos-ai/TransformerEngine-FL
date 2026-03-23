@@ -27,6 +27,7 @@ container_volumes:
   # - /home/flagscale_cicd/docker/docker_build/docker_tokenizers/Megatron-LM/tokenizers:/opt/data/tokenizers
 
   # --- add ：Transformer Engine  ---
+  - /home/muxiuser:/home/muxiuser
   - /home/muxiuser/jinglong/TransformerEngine-FL:/workspace/TransformerEngine-FL
   - /home/muxiuser/jinglong:/opt/te_packages
   - /opt/maca:/opt/maca
@@ -37,6 +38,8 @@ container_volumes:
 
 # Container options (hardware-specific settings)
 container_options: >-
+  - /home/muxiuser:/home/muxiuser
+  - /opt/maca:/opt/maca
   --privileged
   --shm-size=500g
   --hostname TransformerEngine_cicd
