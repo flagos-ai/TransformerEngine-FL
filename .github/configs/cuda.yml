@@ -3,7 +3,7 @@
 # This file defines environment variables, volumes, and test filters for TE tests.
 
 hardware_name: cuda
-display_name: "NVIDIA CUDA (A100)"
+display_name: 'NVIDIA CUDA (A100)'
 
 ci_image: harbor.baai.ac.cn/flagscale/cuda12.8.1-torch2.7.1-python3.10-te2.9:20260209
 
@@ -35,17 +35,21 @@ container_options: >-
 device_types:
   - a100
 
-# Environment variables
-env_vars:
+# Build environment variables (platform-specific)
+build_env:
+  TE_FL_SKIP_CUDA: '0'
+  SKIP_CUDA_BUILD: '0'
+  NVTE_WITH_CUDA: '1'
+  NVTE_WITH_MACA: '0'
+  TE_WITH_NCCL: '1'
   NVTE_FRAMEWORK: pytorch
-  TE_WITH_NCCL: 1
-  NVTE_PROJECT_BUILDING: 1
-  TE_FL_SKIP_CUDA: 0
+  CUDA_HOME: /usr/local/cuda
+  NVCC: /usr/local/cuda/bin/nvcc
 
 # Test matrix configuration
 test_matrix:
   l0_pytorch:
-    path: "qa/L0_pytorch_unittest/test.sh"
+    path: 'qa/L0_pytorch_unittest/test.sh'
     ignored_tests:
       - test_sanity_layernorm_mlp
       - test_sanity_gpt

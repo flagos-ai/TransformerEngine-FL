@@ -49,6 +49,19 @@ container_options: >-
   -e TORCH_DISTRIBUTED_BACKEND=mccl
   -e MACA_VISIBLE_DEVICES=all
   -e LD_LIBRARY_PATH=/opt/maca/lib:/usr/local/lib:$LD_LIBRARY_PATH
+
+# Build environment variables (platform-specific)
+build_env:
+  TE_FL_SKIP_CUDA: '1'
+  SKIP_CUDA_BUILD: '1'
+  NVTE_WITH_CUDA: '0'
+  NVTE_WITH_MACA: '1'
+  NVTE_FRAMEWORK: pytorch
+  TE_WITH_NCCL: '0'
+  CUDA_HOME: /opt/maca
+  NVCC: /opt/maca/bin/mcc
+  MACA_HOME: /opt/maca
+
 # Device types to run tests on
 device_types:
   - c500
