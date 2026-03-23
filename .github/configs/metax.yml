@@ -29,7 +29,7 @@ container_volumes:
   # --- add ：Transformer Engine  ---
   - /home/muxiuser/jinglong/TransformerEngine-FL:/workspace/TransformerEngine-FL
   - /home/muxiuser/jinglong:/opt/te_packages
-  # - /opt/maca:/opt/maca:ro
+  - /opt/maca:/opt/maca
 
   # Metax GPU driver
   - /dev/dri:/dev/dri
@@ -42,13 +42,14 @@ container_options: >-
   --hostname TransformerEngine_cicd
   --user root
   --ulimit nofile=65535:65535
-  -v /home/muxiuser:/home/muxiuser
+  --group-add video
+  --group-add render
   --device=/dev/dri
   --device=/dev/mxcd
-  --group-add video
   -e PLATFORM=metax
   -e TORCH_DISTRIBUTED_BACKEND=mccl
   -e MACA_VISIBLE_DEVICES=all
+  -e LD_LIBRARY_PATH=/opt/maca/lib:/usr/local/lib:$LD_LIBRARY_PATH
 # Device types to run tests on
 device_types:
   - c500
