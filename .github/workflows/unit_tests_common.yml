@@ -130,8 +130,8 @@ jobs:
       - name: Environment Setup
         if: steps.should_run.outputs.should_run == 'true'
         env:
-          TE_FL_SKIP_CUDA: '1' 
-          SKIP_CUDA_BUILD: '1'
+          # TE_FL_SKIP_CUDA: '1' 
+          # SKIP_CUDA_BUILD: '1'
           NVTE_WITH_MACA: '1'
           NVTE_WITH_CUDA: '0'
 
