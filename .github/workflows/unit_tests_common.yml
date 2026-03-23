@@ -151,6 +151,7 @@ jobs:
           
           # 3. Install system tools (Crucial: do NOT update Python libraries here)
           apt-get update -qq && apt-get install -y -qq git cmake ninja-build
+          python3 -m pip install nvdlfw-inspect --no-deps || true
 
           # 4. Environment Debugging: Print current versions
           echo "=== Pre-install Check ==="
