@@ -43,8 +43,8 @@ container_options: >-
   --hostname TransformerEngine_cicd
   --user root
   --ulimit nofile=65535:65535
-  --device=/dev/dri
-  --device=/dev/mxcd
+  --device=/dev/dri:/dev/dri
+  --device=/dev/mxcd:/dev/mxcd
   -e PLATFORM=metax
   -e TORCH_DISTRIBUTED_BACKEND=mccl
   -e MACA_VISIBLE_DEVICES=all
