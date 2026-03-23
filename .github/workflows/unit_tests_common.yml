@@ -74,12 +74,12 @@ jobs:
           # - name: distributed
           #   path: "tests/unit_tests/distributed/"
           #   test_type: "pytest"
-          # - name: pytorch_debug
-          #   path: "qa/L0_pytorch_debug_unittest/test.sh"
-          #   test_type: "sh"
-          - name: pytorch_unittest
-            path: "qa/L0_pytorch_unittest/test.sh"
+          - name: pytorch_debug
+            path: "qa/L0_pytorch_debug_unittest/test.sh"
             test_type: "sh"
+          # - name: pytorch_unittest
+          #   path: "qa/L0_pytorch_unittest/test.sh"
+          #   test_type: "sh"
           # - name: pytorch_lint
           #   path: "qa/L0_pytorch_lint/test.sh"
           #   test_type: "sh"
@@ -159,7 +159,7 @@ jobs:
           python3 -c "import torch; print(f'Original Torch: {torch.__version__}')"
 
           # 5. Remove existing versions to prevent library conflicts
-          python3 -m pip uninstall transformer_engine transformer_engine_metax -y || true
+          python3 -m pip uninstall transformer_engine -y || true
 
           # 6. Install the Metax Binary Backend (The foundation for MACA operators)
           WHL_PATH="/home/muxiuser/transformer_engine_metax-2.9.0-cp312-cp312-linux_x86_64.whl"
@@ -226,7 +226,7 @@ jobs:
       - name: Debug - keep container alive on failure
         if: failure()
         run: |
-          echo "Container sleeping for 10 minutes for debugging..."
+          echo "Container sleeping for 200 minutes for debugging..."
           echo "On host, run: docker ps  then  docker exec -it <container_id> bash"
           sleep 600
-        timeout-minutes: 60
+        timeout-minutes: 200
