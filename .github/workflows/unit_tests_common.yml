@@ -171,6 +171,11 @@ jobs:
             exit 1
           fi
 
+          # Find the actual .so file path
+          REAL_SO=$(find /opt/conda -name "transformer_engine_torch_metax*.so" | head -n 1)
+          # Create a symbolic link so that 'import transformer_engine_torch' works
+          ln -s "$REAL_SO" /opt/conda/lib/python3.12/site-packages/transformer_engine_torch.so
+
           # 7. Verify the binary backend is correctly linked
           echo "Verifying binary backend linkage..."
           python3 -c "import transformer_engine_torch; print('Binary backend loaded successfully')"
@@ -183,7 +188,7 @@ jobs:
           python3 setup.py install
           
           echo "=== Environment Setup Complete ==="
-          
+
         # more time needed...
         timeout-minutes: 120
 
