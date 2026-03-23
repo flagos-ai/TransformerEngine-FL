@@ -18,8 +18,8 @@ FAIL=0
 
 # It is not installed as a requirement,
 # because it is not available on PyPI.
-pip uninstall -y nvdlfw-inspect
-pip install git+https://github.com/NVIDIA/nvidia-dlfw-inspect.git
+# pip uninstall -y nvdlfw-inspect
+# pip install git+https://github.com/NVIDIA/nvidia-dlfw-inspect.git
 
 pip install pytest==8.2.1
 pytest -v -s --junitxml=$XML_LOG_DIR/test_sanity.xml $TE_PATH/tests/pytorch/debug/test_sanity.py  --feature_dirs=$NVTE_TEST_NVINSPECT_FEATURE_DIRS || FAIL=1
