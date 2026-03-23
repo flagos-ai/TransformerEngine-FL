@@ -38,8 +38,6 @@ container_volumes:
 
 # Container options (hardware-specific settings)
 container_options: >-
-  - /home/muxiuser:/home/muxiuser
-  - /opt/maca:/opt/maca
   --privileged
   --shm-size=500g
   --hostname TransformerEngine_cicd
