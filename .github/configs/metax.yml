@@ -42,8 +42,6 @@ container_options: >-
   --hostname TransformerEngine_cicd
   --user root
   --ulimit nofile=65535:65535
-  --group-add video
-  --group-add render
   --device=/dev/dri
   --device=/dev/mxcd
   -e PLATFORM=metax
