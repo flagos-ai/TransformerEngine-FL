@@ -42,6 +42,7 @@ container_options: >-
   --hostname TransformerEngine_cicd
   --user root
   --ulimit nofile=65535:65535
+  -v /home/muxiuser:/home/muxiuser
   --device=/dev/dri
   --device=/dev/mxcd
   --group-add video
