@@ -144,6 +144,7 @@ jobs:
           # 1. Base path and environment settings
           export PATH=/opt/maca/bin:$PATH
           export LD_LIBRARY_PATH=/opt/maca/lib:${LD_LIBRARY_PATH:-}
+          echo "LD_LIBRARY_PATH=/opt/maca/lib:${LD_LIBRARY_PATH:-}" >> $GITHUB_ENV
           set -euo pipefail
 
           # 2. Execute hardware-specific initialization (e.g., conda, device paths)
@@ -228,5 +229,5 @@ jobs:
         run: |
           echo "Container sleeping for 200 minutes for debugging..."
           echo "On host, run: docker ps  then  docker exec -it <container_id> bash"
-          sleep 600
+          sleep 60000
         timeout-minutes: 200
