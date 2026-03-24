@@ -32,7 +32,6 @@ container_volumes:
 
 # Container options (hardware-specific settings)
 container_options: >-
-  --net=host
   --uts=host
   --ipc=host
   --privileged=true
