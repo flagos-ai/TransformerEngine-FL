@@ -140,6 +140,8 @@ jobs:
 
       - name: Environment Setup
         if: steps.should_run.outputs.should_run == 'true'
+        env:
+          PLATFORM: ${{ inputs.platform }}
         run: |
           set -euo pipefail
 
