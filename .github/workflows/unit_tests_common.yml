@@ -151,7 +151,7 @@ jobs:
 
           echo "===== Step 2: Create nvcc Symlink (cucc -> nvcc) ====="
           # TransformerEngine expects nvcc, but MACA provides cucc
-          ln -s /opt/maca/tools/cu-bridge/bin/cucc /opt/maca/tools/cu-bridge/bin/nvcc
+          ln -sf /opt/maca/tools/cu-bridge/bin/cucc /opt/maca/tools/cu-bridge/bin/nvcc
           which nvcc || true
 
           echo "===== Step 3: Install Required System Tools ====="
