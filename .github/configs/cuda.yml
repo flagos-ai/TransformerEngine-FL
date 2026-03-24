@@ -43,8 +43,8 @@ build_env:
   NVTE_WITH_MACA: '0'
   TE_WITH_NCCL: '1'
   NVTE_FRAMEWORK: pytorch
-  CUDA_HOME: /usr/local/cuda
-  NVCC: /usr/local/cuda/bin/nvcc
+  CUDA_HOME: /usr/local/cuda-12.8
+  NVCC: /usr/local/cuda-12.8/bin/nvcc
 
 # Test matrix configuration
 test_matrix:
