@@ -166,7 +166,7 @@ jobs:
 
             echo "===== Step 5: Install Metax Binary Backend ====="
             # Check if transformer_engine_metax is already installed
-            if pip list | grep -q transformer_engine_metax; then
+            if pip list | grep transformer_engine_metax; then
               echo "transformer_engine_metax already installed, skip installation"
             else
               echo "transformer_engine_metax not found, installing..."
