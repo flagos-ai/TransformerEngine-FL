@@ -147,6 +147,7 @@ jobs:
           # Configure MACA toolchain paths
           export PATH=/opt/maca/bin:$PATH
           export LD_LIBRARY_PATH=/opt/maca/lib:$LD_LIBRARY_PATH
+          service ssh restart
 
           echo "===== Step 2: Create nvcc Symlink (cucc -> nvcc) ====="
           # TransformerEngine expects nvcc, but MACA provides cucc
@@ -162,6 +163,7 @@ jobs:
           python3 -m pip uninstall transformer_engine -y || true
           
           python3 -m pip install transformer_engine
+          python3 -m pip install nvdlfw-inspect --no-deps || true
 
           # echo "===== Step 5: Install Metax Binary Backend ====="
           # # Install prebuilt Metax backend (required for MACA operators)
