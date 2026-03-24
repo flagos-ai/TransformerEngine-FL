@@ -163,31 +163,26 @@ jobs:
             # install again
             python3 -m pip install transformer_engine 
 
+            pip list | grep transformer_engine_metax
 
-            echo "===== Step 5: Install Metax Binary Backend ====="
-            # Check if transformer_engine_metax is already installed
-            if pip list | grep transformer_engine_metax; then
-              echo "transformer_engine_metax already installed, skip installation"
-            else
-              echo "transformer_engine_metax not found, installing..."
+            # echo "===== Step 5: Install Metax Binary Backend ====="
+            # # Check if transformer_engine_metax is already installed
+            # if pip list | grep transformer_engine_metax; then
+            #   echo "transformer_engine_metax already installed, skip installation"
+            # else
+            #   echo "transformer_engine_metax not found, installing..."
 
-              WHL_PATH=/transformer_engine_metax-2.9.0-cp312-cp312-linux_x86_64.whl
+            #   WHL_PATH=/transformer_engine_metax-2.9.0-cp312-cp312-linux_x86_64.whl
 
-              if [ ! -f "$WHL_PATH" ]; then
-                echo "ERROR: wheel not found: $WHL_PATH"
-                exit 1
-              fi
+            #   if [ ! -f "$WHL_PATH" ]; then
+            #     echo "ERROR: wheel not found: $WHL_PATH"
+            #     exit 1
+            #   fi
 
-              # Install without dependencies to avoid breaking MACA environment
-              python3 -m pip install "$WHL_PATH" --no-deps
-            fi
+            #   # Install without dependencies to avoid breaking MACA environment
+            #   python3 -m pip install "$WHL_PATH" --no-deps
+            # fi
 
-            # echo "===== Step 6: Verify Metax Backend ====="
-            # # Ensure transformer_engine_torch is correctly loaded
-            # python3 - <<'EOF'
-            # import transformer_engine_torch as te
-            # print("Backend loaded successfully:", te)
-            # EOF
 
             echo "===== Step 7: Install TE-FL Plugin Layer ====="
             cd /workspace/TransformerEngine-FL
