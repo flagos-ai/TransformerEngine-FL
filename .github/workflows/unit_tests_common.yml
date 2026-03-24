@@ -97,7 +97,8 @@ jobs:
     #   image: ${{ inputs.image }}
     #   volumes: ${{ fromJson(inputs.container_volumes) }}
     #   options: --pull never ${{ inputs.container_options }}
-   
+
+
     steps:
       - name: Check if tests should run
         id: should_run
@@ -225,6 +226,7 @@ jobs:
 
           bash ${{ matrix.test_group.path }}
         timeout-minutes: 60
+    
 
       - name: Debug - keep container alive on failure
         if: failure()
