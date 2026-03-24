@@ -164,45 +164,45 @@ jobs:
             python3 -m pip install transformer_engine 
 
 
-          echo "===== Step 5: Install Metax Binary Backend ====="
-          # Check if transformer_engine_metax is already installed
-          if pip list | grep -q transformer_engine_metax; then
-            echo "transformer_engine_metax already installed, skip installation"
-          else
-            echo "transformer_engine_metax not found, installing..."
+            echo "===== Step 5: Install Metax Binary Backend ====="
+            # Check if transformer_engine_metax is already installed
+            if pip list | grep -q transformer_engine_metax; then
+              echo "transformer_engine_metax already installed, skip installation"
+            else
+              echo "transformer_engine_metax not found, installing..."
 
-            WHL_PATH=/transformer_engine_metax-2.9.0-cp312-cp312-linux_x86_64.whl
+              WHL_PATH=/transformer_engine_metax-2.9.0-cp312-cp312-linux_x86_64.whl
 
-            if [ ! -f "$WHL_PATH" ]; then
-              echo "ERROR: wheel not found: $WHL_PATH"
-              exit 1
+              if [ ! -f "$WHL_PATH" ]; then
+                echo "ERROR: wheel not found: $WHL_PATH"
+                exit 1
+              fi
+
+              # Install without dependencies to avoid breaking MACA environment
+              python3 -m pip install "$WHL_PATH" --no-deps
             fi
 
-            # Install without dependencies to avoid breaking MACA environment
-            python3 -m pip install "$WHL_PATH" --no-deps
-          fi
-
-          # echo "===== Step 6: Verify Metax Backend ====="
-          # # Ensure transformer_engine_torch is correctly loaded
-          # python3 - <<'EOF'
-          # import transformer_engine_torch as te
-          # print("Backend loaded successfully:", te)
-          # EOF
+            # echo "===== Step 6: Verify Metax Backend ====="
+            # # Ensure transformer_engine_torch is correctly loaded
+            # python3 - <<'EOF'
+            # import transformer_engine_torch as te
+            # print("Backend loaded successfully:", te)
+            # EOF
 
             echo "===== Step 7: Install TE-FL Plugin Layer ====="
             cd /workspace/TransformerEngine-FL
             TE_FL_SKIP_CUDA=1 python3 setup.py install
 
-          # echo "===== Step 8: Final Verification ====="
-          # # Verify both TE Python API and backend are functional
-          # python3 - <<'EOF'
-          # import transformer_engine
-          # import transformer_engine_torch as te
-          # print("transformer_engine:", transformer_engine)
-          # print("transformer_engine_torch:", te)
-          # EOF
+            # echo "===== Step 8: Final Verification ====="
+            # # Verify both TE Python API and backend are functional
+            # python3 - <<'EOF'
+            # import transformer_engine
+            # import transformer_engine_torch as te
+            # print("transformer_engine:", transformer_engine)
+            # print("transformer_engine_torch:", te)
+            # EOF
 
-          echo "===== Environment Setup Complete ====="
+            echo "===== Environment Setup Complete ====="
       
       - name: Execute Tests
         if: steps.should_run.outputs.should_run == 'true'
