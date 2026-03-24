@@ -79,15 +79,15 @@ jobs:
           # - name: distributed
           #   path: "tests/unit_tests/distributed/"
           #   test_type: "pytest"
-          # - name: pytorch_debug
-          #   path: "qa/L0_pytorch_debug_unittest/test.sh"
-          #   test_type: "sh"
+          - name: pytorch_debug
+            path: "qa/L0_pytorch_debug_unittest/test.sh"
+            test_type: "sh"
           # - name: pytorch_unittest
           #   path: "qa/L0_pytorch_unittest/test.sh"
           #   test_type: "sh"
-          - name: pytorch_lint
-            path: "qa/L0_pytorch_lint/test.sh"
-            test_type: "sh"
+          # - name: pytorch_lint
+          #   path: "qa/L0_pytorch_lint/test.sh"
+          #   test_type: "sh"
           # - name: pytorch_wheel
           #   path: "qa/L0_pytorch_wheel/test.sh"
           #   test_type: "sh"
@@ -162,7 +162,7 @@ jobs:
           # Prevent conflicts with preinstalled or incompatible versions
           python3 -m pip uninstall transformer_engine -y || true
           
-          python3 -m pip install transformer_engine
+          
           python3 -m pip install nvdlfw-inspect --no-deps || true
 
           # echo "===== Step 5: Install Metax Binary Backend ====="
@@ -198,7 +198,7 @@ jobs:
           print("transformer_engine_torch:", te)
           EOF
 
-          echo "===== Environment Setup Complete ====="
+          echo "===== Environment Setup Complete ===== "
       
       - name: Execute Tests
         if: steps.should_run.outputs.should_run == 'true'
