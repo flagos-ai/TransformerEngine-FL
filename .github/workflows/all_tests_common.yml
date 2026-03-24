@@ -26,6 +26,7 @@ jobs:
       device_types: ${{ steps.config.outputs.device_types }}
       train_test_matrix: ${{ steps.config.outputs.train_test_matrix }}
       ignored_tests: ${{ steps.config.outputs.ignored_tests }}
+      build_env: ${{ steps.config.outputs.build_env }}
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
@@ -78,6 +79,10 @@ jobs:
           IGNORED_TESTS=$(yq '.test_matrix.unit.ignored_tests // [] | tojson(0)' "$CONFIG_FILE")
           echo "ignored_tests=$IGNORED_TESTS" >> $GITHUB_OUTPUT
 
+          # Read build environment variables (default to empty object if not defined)
+          BUILD_ENV=$(yq '.build_env // {} | tojson(0)' "$CONFIG_FILE")
+          echo "build_env=$BUILD_ENV" >> $GITHUB_OUTPUT
+
   unit_tests:
     needs: checkout_and_config
     strategy:
@@ -95,6 +100,7 @@ jobs:
       container_volumes: ${{ needs.checkout_and_config.outputs.container_volumes }}
       container_options: ${{ needs.checkout_and_config.outputs.container_options }}
       ignored_tests: ${{ needs.checkout_and_config.outputs.ignored_tests }}
+      build_env: ${{ needs.checkout_and_config.outputs.build_env }}
 
   # arguments.py not compatible with megatron-core-fl
   # functional_tests:
@@ -127,14 +133,12 @@ jobs:
           # Check all test jobs (skip if not run)
           failed=false
 
-          # if [ "${{ needs.unit_tests.result }}" != "success" ]; then
-          #   echo "❌ Unit tests failed"
-          #   failed=true
-          # fi
+          if [ "${{ needs.unit_tests.result }}" != "success" ]; then
+            echo "❌ Unit tests failed"
+            failed=true
+          fi
 
-          # # # Only check functional tests if they ran
-          # if [ "${{ needs.functional_tests.result }}" != "success" ] && \
-          #    [ "${{ needs.functional_tests.result }}" != "skipped" ]; then
+          # if [ "${{ needs.functional_tests.result }}" != "success" ]; then
           #   echo "❌ Training functional tests failed"
           #   failed=true
           # fi

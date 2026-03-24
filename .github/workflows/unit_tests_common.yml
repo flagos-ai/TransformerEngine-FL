@@ -31,6 +31,11 @@ on:
         required: false
         type: string
         default: ''
+      # Platform-specific build environment variables (JSON object from config)
+      build_env:
+        required: false
+        type: string
+        default: '{}'
 
 jobs:
   # 1. Change Detection
@@ -123,28 +128,38 @@ jobs:
 
       - name: Activate Python environment
         run: |
-          source /opt/conda/etc/profile.d/conda.sh
-          conda activate base
+          if [ -f /opt/conda/etc/profile.d/conda.sh ]; then
+            source /opt/conda/etc/profile.d/conda.sh
+            conda activate base
+          fi
           echo "PATH=$PATH" >> $GITHUB_ENV
+          echo "Python: $(which python3) ($(python3 --version 2>&1))"
 
       - name: Environment Setup
         if: steps.should_run.outputs.should_run == 'true'
-        env:
-          TE_FL_SKIP_CUDA: '1' 
-          SKIP_CUDA_BUILD: '1'
-          NVTE_WITH_MACA: '1'
-          NVTE_WITH_CUDA: '0'
-
-          # MetaX: MACA is at /opt/maca on both host and container
-          MACA_HOME: /opt/maca
-          NVCC: /opt/maca/bin/mcc
-          CUDA_HOME: /opt/maca
-          
         run: |
+          # 0. Load platform-specific environment variables from build_env
+          echo "=== Loading platform build_env ==="
+          echo '${{ inputs.build_env }}' | python3 -c "
+          import json, sys, os
+          env = json.load(sys.stdin)
+          gh_env = os.environ.get('GITHUB_ENV', '')
+          if gh_env:
+              with open(gh_env, 'a') as f:
+                  for k, v in env.items():
+                      print(f'  {k}={v}')
+                      f.write(f'{k}={v}\n')
+                      os.environ[k] = str(v)
+          "
+          # Re-source GITHUB_ENV so vars are available in this step too
+          while IFS='=' read -r key value; do
+            [ -n "$key" ] && export "$key=$value"
+          done < "$GITHUB_ENV"
+
           # 1. Base path and environment settings
-          export PATH=/opt/maca/bin:$PATH
-          export LD_LIBRARY_PATH=/opt/maca/lib:${LD_LIBRARY_PATH:-}
-          echo "LD_LIBRARY_PATH=/opt/maca/lib:${LD_LIBRARY_PATH:-}" >> $GITHUB_ENV
+          export PATH=${CUDA_HOME:-/usr/local/cuda}/bin:$PATH
+          export LD_LIBRARY_PATH=${CUDA_HOME:-/usr/local/cuda}/lib:${LD_LIBRARY_PATH:-}
+          echo "LD_LIBRARY_PATH=${CUDA_HOME:-/usr/local/cuda}/lib:${LD_LIBRARY_PATH:-}" >> $GITHUB_ENV
           set -euo pipefail
 
           # 2. Execute hardware-specific initialization (e.g., conda, device paths)
@@ -193,6 +208,30 @@ jobs:
 
         # more time needed...
         timeout-minutes: 120
+      
+      - name: Build Transformer Engine & Check Version
+        # timeout-minutes: 40
+        run: |
+          # Print environment information for debugging
+          echo "=== Environment Info ==="
+          conda info
+          python --version
+          pip --version
+          gcc --version
+          cmake --version
+
+          # Install dependencies
+          echo "=== Installing Dependencies ==="
+          pip install transformers expecttest pytest
+
+          # Build and install transformer_engine
+          echo "=== Building Transformer Engine ==="
+          pip install --no-build-isolation -vvv . --no-deps
+
+          # Verify installation
+          echo "=== Verifying Installation ==="
+          python3 tests/pytorch/test_sanity_import.py
+          python3 -c "import transformer_engine; print('TE Version:', transformer_engine.__version__)"
 
       - name: Execute Tests
         if: steps.should_run.outputs.should_run == 'true'
@@ -201,16 +240,20 @@ jobs:
           set -euo pipefail
           ${{ inputs.setup_commands }}
 
+          # Load platform-specific environment variables
+          while IFS='=' read -r key value; do
+            [ -n "$key" ] && export "$key=$value"
+          done < <(echo '${{ inputs.build_env }}' | python3 -c "
+          import json, sys
+          env = json.load(sys.stdin)
+          for k, v in env.items():
+              print(f'{k}={v}')
+          ")
+
           export TE_PATH=$GITHUB_WORKSPACE
           export PYTHONPATH=$GITHUB_WORKSPACE:${PYTHONPATH:-}
-          export MACA_HOME=/opt/maca
-          export CUDA_HOME=/opt/maca
-          export PATH=/opt/maca/bin:$PATH
-          export LD_LIBRARY_PATH=/opt/maca/lib:${LD_LIBRARY_PATH:-}
-          export NVTE_WITH_MACA=1
-          export NVTE_WITH_CUDA=0
-          export TE_FL_SKIP_CUDA=1
-          export SKIP_CUDA_BUILD=1
+          export PATH=${CUDA_HOME:-/usr/local/cuda}/bin:$PATH
+          export LD_LIBRARY_PATH=${CUDA_HOME:-/usr/local/cuda}/lib:${LD_LIBRARY_PATH:-}
 
           if [[ "${{ matrix.test_group.name }}" == *"lint"* ]]; then
             export CPP_ONLY=0
