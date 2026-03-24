@@ -127,6 +127,8 @@ jobs:
           set-safe-directory: true
 
       - name: Activate Python environment
+        env:
+          PLATFORM: ${{ inputs.platform }}
         run: |
           if [ -f /opt/conda/etc/profile.d/conda.sh ]; then
             source /opt/conda/etc/profile.d/conda.sh
@@ -137,67 +139,80 @@ jobs:
 
       - name: Environment Setup
         if: steps.should_run.outputs.should_run == 'true'
+        env:
+          PLATFORM: ${{ inputs.platform }}
         run: |
           set -euo pipefail
+          echo "===== Platform: ${PLATFORM} ====="
 
-          echo "===== Step 1: Base Environment Setup ====="
-          # Configure MACA toolchain paths
-          export PATH=/opt/maca/bin:$PATH
-          export LD_LIBRARY_PATH=/opt/maca/lib:$LD_LIBRARY_PATH
+          if [[ "$PLATFORM" == "metax" ]]; then
+            echo "===== Step 1: Base Environment Setup (Metax) ====="
+            export PATH=/opt/maca/bin:$PATH
+            export LD_LIBRARY_PATH=/opt/maca/lib:$LD_LIBRARY_PATH
 
-          echo "===== Step 2: Create nvcc Symlink (cucc -> nvcc) ====="
-          # TransformerEngine expects nvcc, but MACA provides cucc
-          ln -sf /opt/maca/tools/cu-bridge/bin/cucc /opt/maca/tools/cu-bridge/bin/nvcc
-          which nvcc || true
+            echo "===== Step 2: Create nvcc Symlink (cucc -> nvcc) ====="
+            ln -sf /opt/maca/tools/cu-bridge/bin/cucc /opt/maca/tools/cu-bridge/bin/nvcc
+            which nvcc || true
 
-          echo "===== Step 3: Install Required System Tools ====="
-          # Install essential build tools (avoid modifying Python dependencies)
-          apt-get update -qq && apt-get install -y -qq git cmake ninja-build
+            echo "===== Step 3: Install Required System Tools ====="
+            apt-get update -qq && apt-get install -y -qq git cmake ninja-build
 
-          echo "===== Step 4: Remove Existing TransformerEngine ====="
-          # Prevent conflicts with preinstalled or incompatible versions
-          python3 -m pip uninstall transformer_engine -y || true
+            echo "===== Step 4: Remove Existing TransformerEngine ====="
+            python3 -m pip uninstall transformer_engine -y || true
 
-          echo "===== Step 5: Install Metax Binary Backend ====="
-          # Install prebuilt Metax backend (required for MACA operators)
-          WHL_PATH="/home/muxiuser/transformer_engine_metax-2.9.0-cp312-cp312-linux_x86_64.whl"
-          if [ ! -f "$WHL_PATH" ]; then
-            echo "ERROR: Wheel file not found at $WHL_PATH"
-            echo "Please verify volume mount: -v /home/muxiuser:/home/muxiuser"
-            exit 1
-          fi
+            echo "===== Step 5: Install Metax Binary Backend ====="
+            WHL_PATH="/home/muxiuser/transformer_engine_metax-2.9.0-cp312-cp312-linux_x86_64.whl"
+            if [ ! -f "$WHL_PATH" ]; then
+              echo "ERROR: Wheel file not found at $WHL_PATH"
+              echo "Please verify volume mount: -v /home/muxiuser:/home/muxiuser"
+              exit 1
+            fi
+            python3 -m pip install "$WHL_PATH" --no-deps --force-reinstall
 
-          # Use --no-deps to avoid overwriting Metax-optimized PyTorch
-          python3 -m pip install "$WHL_PATH" --no-deps --force-reinstall
-
-          echo "===== Step 6: Verify Metax Backend ====="
-          # Ensure transformer_engine_torch is correctly loaded
-          python3 - <<'EOF'
+            echo "===== Step 6: Verify Metax Backend ====="
+            python3 - <<'EOF'
           import transformer_engine_torch as te
           print("Backend loaded successfully:", te)
           EOF
 
-          echo "===== Step 7: Install TE-FL Plugin Layer ====="
-          # Install TransformerEngine-FL Python layer (plugin logic)
-          cd /workspace/TransformerEngine-FL
-          TE_FL_SKIP_CUDA=1 python3 setup.py install
+            echo "===== Step 7: Install TE-FL Plugin Layer ====="
+            cd /workspace/TransformerEngine-FL
+            TE_FL_SKIP_CUDA=1 python3 setup.py install
 
-          echo "===== Step 8: Final Verification ====="
-          # Verify both TE Python API and backend are functional
-          python3 - <<'EOF'
+            echo "===== Step 8: Final Verification ====="
+            python3 - <<'EOF'
           import transformer_engine
           import transformer_engine_torch as te
           print("transformer_engine:", transformer_engine)
           print("transformer_engine_torch:", te)
           EOF
 
+          elif [[ "$PLATFORM" == "cuda" ]]; then
+            echo "===== Step 1: Remove Existing TransformerEngine ====="
+            python3 -m pip uninstall transformer_engine -y || true
+
+            echo "===== Step 2: Build & Install TransformerEngine ====="
+            cd $GITHUB_WORKSPACE
+            pip install --no-build-isolation . -v --no-deps
+
+            echo "===== Step 3: Verify Installation ====="
+            python3 tests/pytorch/test_sanity_import.py
+
+          else
+            echo "ERROR: Unknown platform '${PLATFORM}'"
+            exit 1
+          fi
+
           echo "===== Environment Setup Complete ====="
       
       - name: Execute Tests
         if: steps.should_run.outputs.should_run == 'true'
         working-directory: ${{ github.workspace }}
+        env:
+          PLATFORM: ${{ inputs.platform }}
         run: |
           set -euo pipefail
+
           ${{ inputs.setup_commands }}
 
           # Load platform-specific environment variables
