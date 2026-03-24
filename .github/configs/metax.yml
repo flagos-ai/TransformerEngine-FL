@@ -46,6 +46,7 @@ container_options: >-
   --device=/dev/infiniband
   --user root
   --ulimit nofile=65535:65535
+  -v /nfs/metax_fs:/nfs/metax_fs
   -e PLATFORM=metax
   -e TORCH_DISTRIBUTED_BACKEND=mccl
   -e MACA_VISIBLE_DEVICES=all
