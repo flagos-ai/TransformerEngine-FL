@@ -128,7 +128,7 @@ jobs:
 
       - name: Activate Python environment
         run: |
-          if [[ "$PLATFORM" == "cuda" ]] && [ -f /opt/miniconda3/etc/profile.d/conda.sh ]; then
+          if [[ "$PLATFORM" == "cuda" ]]; then
             source /opt/miniconda3/etc/profile.d/conda.sh
             conda activate flagscale-train
           elif [ -f /opt/conda/etc/profile.d/conda.sh ]; then
@@ -140,7 +140,8 @@ jobs:
 
       - name: Environment Setup
         if: steps.should_run.outputs.should_run == 'true'
-        
+        env:
+          PLATFORM: ${{ inputs.platform }}
         run: |
           set -euo pipefail
 
@@ -204,12 +205,7 @@ jobs:
 
             echo "===== Step 8: Final Verification ====="
             # Verify both TE Python API and backend are functional
-            python3 -c "
-            import transformer_engine
-            import transformer_engine_torch as te
-            print("transformer_engine:", transformer_engine)
-            print("transformer_engine_torch:", te)
-            "
+            python3 -c 'import transformer_engine; import transformer_engine_torch as te; print("transformer_engine:", transformer_engine); print("transformer_engine_torch:", te)'
 
           else
             echo "ERROR: Unknown platform '${PLATFORM}'"
