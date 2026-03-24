@@ -5,11 +5,8 @@
 hardware_name: metax
 display_name: 'Metax Tests'
 
-# Docker image for this hardware
-# ci_image: cr.metax-tech.com/public-ai-release/maca/megatron-lm:0.12.0-maca.ai3.3.0.11-torch2.6-py312-ubuntu22.04-amd64
 ci_image: localhost:5000/megatron-lm-with-te:v1
 
-# Runner labels for this hardware
 runner_labels:
   - self-hosted
   - Linux
@@ -17,21 +14,15 @@ runner_labels:
   - metax
   - dev
 
-# Container volumes (hardware-specific paths)
 container_volumes:
   - /nfs/metax_fs:/nfs/metax_fs
   - /home/muxiuser:/home/muxiuser
   - /home/muxiuser/jinglong/TransformerEngine-FL:/workspace/TransformerEngine-FL
-  - /home/muxiuser/jinglong:/opt/te_packages
   - /opt/maca:/opt/maca
-
-  # device 映射
   - /dev/dri:/dev/dri
   - /dev/mxcd:/dev/mxcd
   - /dev/infiniband:/dev/infiniband
 
-# Container options (hardware-specific settings)
-# ? --net=host
 container_options: >-
   --uts=host
   --ipc=host
@@ -46,22 +37,15 @@ container_options: >-
   --device=/dev/infiniband
   --user root
   --ulimit nofile=65535:65535
-  -v /nfs/metax_fs:/nfs/metax_fs
   -e PLATFORM=metax
   -e TORCH_DISTRIBUTED_BACKEND=mccl
   -e MACA_VISIBLE_DEVICES=all
   -e LD_LIBRARY_PATH=/opt/maca/lib:/usr/local/lib:$LD_LIBRARY_PATH
 
-# Build environment variables (platform-specific)
 build_env:
   TE_FL_SKIP_CUDA: '1'
-  SKIP_CUDA_BUILD: '1'
-  NVTE_WITH_CUDA: '0'
   NVTE_WITH_MACA: '1'
-  NVTE_FRAMEWORK: pytorch
-  TE_WITH_NCCL: '0'
   CUDA_HOME: /opt/maca
-  NVCC: /opt/maca/bin/mcc
   MACA_HOME: /opt/maca
 
 # Device types to run tests on
