@@ -19,32 +19,36 @@ runner_labels:
 
 # Container volumes (hardware-specific paths)
 container_volumes:
-  # - /home/flagscale_cicd/flask/static:/workspace/report
-  # - /home/flagscale_cicd/flask/config:/workspace/config
-  # - /home/flagscale_cicd/docker/docker_build/docker_data:/home/gitlab-runner/data
-  # - /home/flagscale_cicd/docker/docker_build/docker_tokenizers:/home/gitlab-runner/tokenizers
-  # - /home/flagscale_cicd/docker/docker_build/docker_data/Megatron-LM/datasets:/opt/data/datasets
-  # - /home/flagscale_cicd/docker/docker_build/docker_tokenizers/Megatron-LM/tokenizers:/opt/data/tokenizers
-
-  # --- add ：Transformer Engine  ---
+  - /nfs/metax_fs:/nfs/metax_fs
   - /home/muxiuser:/home/muxiuser
   - /home/muxiuser/jinglong/TransformerEngine-FL:/workspace/TransformerEngine-FL
   - /home/muxiuser/jinglong:/opt/te_packages
   - /opt/maca:/opt/maca
 
-  # Metax GPU driver
+  # device 映射
   - /dev/dri:/dev/dri
   - /dev/mxcd:/dev/mxcd
+  - /dev/infiniband:/dev/infiniband
 
 # Container options (hardware-specific settings)
 container_options: >-
-  --privileged
-  --shm-size=500g
+  --net=host
+  --uts=host
+  --ipc=host
+  --privileged=true
+  --group-add video
+  --shm-size=100gb
+  --ulimit memlock=-1
+  --security-opt seccomp=unconfined
+  --security-opt apparmor=unconfined
+  --device=/dev/dri
+  --device=/dev/mxcd
+  --device=/dev/infiniband
   --hostname TransformerEngine_cicd
   --user root
   --ulimit nofile=65535:65535
-  --device=/dev/dri:/dev/dri
-  --device=/dev/mxcd:/dev/mxcd
+  # -w /nfs/metax_fs/qwen3_0.6b_pack/FlagScale
+
   -e PLATFORM=metax
   -e TORCH_DISTRIBUTED_BACKEND=mccl
   -e MACA_VISIBLE_DEVICES=all
