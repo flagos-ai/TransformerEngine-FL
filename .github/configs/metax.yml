@@ -31,6 +31,7 @@ container_volumes:
   - /dev/infiniband:/dev/infiniband
 
 # Container options (hardware-specific settings)
+# ? --net=host
 container_options: >-
   --uts=host
   --ipc=host
@@ -43,7 +44,6 @@ container_options: >-
   --device=/dev/dri
   --device=/dev/mxcd
   --device=/dev/infiniband
-  --hostname TransformerEngine_cicd
   --user root
   --ulimit nofile=65535:65535
   -e PLATFORM=metax
