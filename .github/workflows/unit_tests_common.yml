@@ -130,7 +130,10 @@ jobs:
         env:
           PLATFORM: ${{ inputs.platform }}
         run: |
-          if [ -f /opt/conda/etc/profile.d/conda.sh ]; then
+          if [[ "$PLATFORM" == "cuda" ]] && [ -f /opt/miniconda3/etc/profile.d/conda.sh ]; then
+            source /opt/miniconda3/etc/profile.d/conda.sh
+            conda activate flagscale-train
+          elif [ -f /opt/conda/etc/profile.d/conda.sh ]; then
             source /opt/conda/etc/profile.d/conda.sh
             conda activate base
           fi
@@ -145,7 +148,18 @@ jobs:
           set -euo pipefail
           echo "===== Platform: ${PLATFORM} ====="
 
-          if [[ "$PLATFORM" == "metax" ]]; then
+          if [[ "$PLATFORM" == "cuda" ]]; then
+            echo "===== Step 1: Remove Existing TransformerEngine ====="
+            pip uninstall transformer_engine -y || true
+
+            echo "===== Step 2: Build & Install TransformerEngine ====="
+            cd $GITHUB_WORKSPACE
+            pip install --no-build-isolation . -v --no-deps
+
+            echo "===== Step 3: Verify Installation ====="
+            python3 tests/pytorch/test_sanity_import.py
+
+          elif [[ "$PLATFORM" == "metax" ]]; then
             echo "===== Step 1: Base Environment Setup (Metax) ====="
             export PATH=/opt/maca/bin:$PATH
             export LD_LIBRARY_PATH=/opt/maca/lib:$LD_LIBRARY_PATH
@@ -196,6 +210,11 @@ jobs:
             # print("transformer_engine:", transformer_engine)
             # print("transformer_engine_torch:", te)
             # EOF
+
+            else
+              echo "ERROR: Unknown platform '${PLATFORM}'"
+              exit 1
+            fi
 
             echo "===== Environment Setup Complete ====="
       
