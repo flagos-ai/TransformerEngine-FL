@@ -126,17 +126,17 @@ jobs:
         with:
           set-safe-directory: true
 
-      - name: Activate Python environment
-        run: |
-          if [[ "$PLATFORM" == "cuda" ]]; then
-            source /opt/miniconda3/etc/profile.d/conda.sh
-            conda activate flagscale-train
-          elif [ -f /opt/conda/etc/profile.d/conda.sh ]; then
-            source /opt/conda/etc/profile.d/conda.sh
-            conda activate base
-          fi
-          echo "PATH=$PATH" >> $GITHUB_ENV
-          echo "Python: $(which python3) ($(python3 --version 2>&1))"
+      # - name: Activate Python environment
+      #   run: |
+      #     if [[ "$PLATFORM" == "cuda" ]]; then
+      #       source /opt/miniconda3/etc/profile.d/conda.sh
+      #       conda activate flagscale-train
+      #     elif [ -f /opt/conda/etc/profile.d/conda.sh ]; then
+      #       source /opt/conda/etc/profile.d/conda.sh
+      #       conda activate base
+      #     fi
+      #     echo "PATH=$PATH" >> $GITHUB_ENV
+      #     echo "Python: $(which python3) ($(python3 --version 2>&1))"
 
       - name: Environment Setup
         if: steps.should_run.outputs.should_run == 'true'
@@ -146,6 +146,12 @@ jobs:
           set -euo pipefail
 
           if [[ "$PLATFORM" == "cuda" ]]; then
+            echo "===== Step 0: Activate Python environment ====="
+            source /opt/miniconda3/etc/profile.d/conda.sh
+            conda activate flagscale-train
+            echo "PATH=$PATH" >> $GITHUB_ENV
+            echo "Python: $(which python3) ($(python3 --version 2>&1))"
+
             echo "===== Step 1: Remove Existing TransformerEngine ====="
             pip uninstall transformer_engine -y || true
 
@@ -156,7 +162,13 @@ jobs:
             echo "===== Step 3: Verify Installation ====="
             python3 tests/pytorch/test_sanity_import.py
 
-          elif [[ "$PLATFORM" == "metax" ]]; then
+          elif [[ "$PLATFORM" == "metax" ]] && [ -f /opt/conda/etc/profile.d/conda.sh ]; then
+            echo "===== Step 0: Activate Python environment ====="
+            source /opt/conda/etc/profile.d/conda.sh
+            conda activate base
+            echo "PATH=$PATH" >> $GITHUB_ENV
+            echo "Python: $(which python3) ($(python3 --version 2>&1))"
+
             echo "===== Step 1: Base Environment Setup ====="
             # Configure MACA toolchain paths
             export PATH=/opt/maca/bin:$PATH
@@ -205,7 +217,7 @@ jobs:
 
             echo "===== Step 8: Final Verification ====="
             # Verify both TE Python API and backend are functional
-            python3 -c 'import transformer_engine; import transformer_engine_torch as te; print("transformer_engine:", transformer_engine); print("transformer_engine_torch:", te)'
+            python3 -c "import transformer_engine; import transformer_engine_torch as te; print('transformer_engine:', transformer_engine); print('transformer_engine_torch:', te)"
 
           else
             echo "ERROR: Unknown platform '${PLATFORM}'"
