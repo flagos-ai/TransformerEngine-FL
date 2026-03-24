@@ -183,10 +183,10 @@ jobs:
           # python3 -c "import transformer_engine_torch; print('Binary backend loaded successfully')"
 
           # 8. Install the TE-FL Plugin Layer (Python-side logic)
+          
           echo "Installing TE-FL plugin layer..."
           export TE_FL_SKIP_CUDA=1
           cd $GITHUB_WORKSPACE
-          # Using setup.py directly provides precise control over the installation process
           python3 setup.py install
           
           echo "=== Environment Setup Complete ==="
