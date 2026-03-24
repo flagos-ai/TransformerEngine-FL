@@ -79,14 +79,14 @@ jobs:
           # - name: distributed
           #   path: "tests/unit_tests/distributed/"
           #   test_type: "pytest"
+          - name: pytorch_lint
+            path: "qa/L0_pytorch_lint/test.sh"
+            test_type: "sh"
           - name: pytorch_debug
             path: "qa/L0_pytorch_debug_unittest/test.sh"
             test_type: "sh"
           # - name: pytorch_unittest
           #   path: "qa/L0_pytorch_unittest/test.sh"
-          #   test_type: "sh"
-          # - name: pytorch_lint
-          #   path: "qa/L0_pytorch_lint/test.sh"
           #   test_type: "sh"
           # - name: pytorch_wheel
           #   path: "qa/L0_pytorch_wheel/test.sh"
@@ -143,60 +143,77 @@ jobs:
         run: |
           set -euo pipefail
 
-          echo "===== Step 1: Base Environment Setup ====="
-          # Configure MACA toolchain paths
-          export PATH=/opt/maca/bin:$PATH
-          export LD_LIBRARY_PATH=/opt/maca/lib:$LD_LIBRARY_PATH
-          service ssh restart
+          if [[ "$PLATFORM" == "cuda" ]]; then
+            echo "===== Step 1: Remove Existing TransformerEngine ====="
+            pip uninstall transformer_engine -y || true
 
-          echo "===== Step 2: Create nvcc Symlink (cucc -> nvcc) ====="
-          # TransformerEngine expects nvcc, but MACA provides cucc
-          ln -sf /opt/maca/tools/cu-bridge/bin/cucc /opt/maca/tools/cu-bridge/bin/nvcc
-          which nvcc || true
+            echo "===== Step 2: Build & Install TransformerEngine ====="
+            cd $GITHUB_WORKSPACE
+            pip install --no-build-isolation . -v --no-deps
 
-          echo "===== Step 3: Install Required System Tools ====="
-          # Install essential build tools (avoid modifying Python dependencies)
-          apt-get update -qq && apt-get install -y -qq git cmake ninja-build
+            echo "===== Step 3: Verify Installation ====="
+            python3 tests/pytorch/test_sanity_import.py
 
-          echo "===== Step 4: Remove Existing TransformerEngine ====="
-          # Prevent conflicts with preinstalled or incompatible versions
-          python3 -m pip uninstall transformer_engine -y || true
-          
-          
-          python3 -m pip install nvdlfw-inspect --no-deps || true
+          elif [[ "$PLATFORM" == "metax" ]]; then
+            echo "===== Step 1: Base Environment Setup ====="
+            # Configure MACA toolchain paths
+            export PATH=/opt/maca/bin:$PATH
+            export LD_LIBRARY_PATH=/opt/maca/lib:$LD_LIBRARY_PATH
+            service ssh restart
 
-          # echo "===== Step 5: Install Metax Binary Backend ====="
-          # # Install prebuilt Metax backend (required for MACA operators)
-          # WHL_PATH="/home/muxiuser/transformer_engine_metax-2.9.0-cp312-cp312-linux_x86_64.whl"
-          # if [ ! -f "$WHL_PATH" ]; then
-          #   echo "ERROR: Wheel file not found at $WHL_PATH"
-          #   echo "Please verify volume mount: -v /home/muxiuser:/home/muxiuser"
-          #   exit 1
-          # fi
+            echo "===== Step 2: Create nvcc Symlink (cucc -> nvcc) ====="
+            # TransformerEngine expects nvcc, but MACA provides cucc
+            ln -sf /opt/maca/tools/cu-bridge/bin/cucc /opt/maca/tools/cu-bridge/bin/nvcc
+            which nvcc || true
 
-          # # Use --no-deps to avoid overwriting Metax-optimized PyTorch
-          # python3 -m pip install "$WHL_PATH" --no-deps --force-reinstall
+            echo "===== Step 3: Install Required System Tools ====="
+            # Install essential build tools (avoid modifying Python dependencies)
+            apt-get update -qq && apt-get install -y -qq git cmake ninja-build
 
-          # echo "===== Step 6: Verify Metax Backend ====="
-          # # Ensure transformer_engine_torch is correctly loaded
-          # python3 - <<'EOF'
-          # import transformer_engine_torch as te
-          # print("Backend loaded successfully:", te)
-          # EOF
+            echo "===== Step 4: Remove Existing TransformerEngine ====="
+            # Prevent conflicts with preinstalled or incompatible versions
+            python3 -m pip uninstall transformer_engine -y || true
+            
+            
+            python3 -m pip install nvdlfw-inspect --no-deps || true
 
-          echo "===== Step 7: Install TE-FL Plugin Layer ====="
-          # Install TransformerEngine-FL Python layer (plugin logic)
-          cd /workspace/TransformerEngine-FL
-          TE_FL_SKIP_CUDA=1 python3 setup.py install
+            # echo "===== Step 5: Install Metax Binary Backend ====="
+            # # Install prebuilt Metax backend (required for MACA operators)
+            # WHL_PATH="/home/muxiuser/transformer_engine_metax-2.9.0-cp312-cp312-linux_x86_64.whl"
+            # if [ ! -f "$WHL_PATH" ]; then
+            #   echo "ERROR: Wheel file not found at $WHL_PATH"
+            #   echo "Please verify volume mount: -v /home/muxiuser:/home/muxiuser"
+            #   exit 1
+            # fi
 
-          echo "===== Step 8: Final Verification ====="
-          # Verify both TE Python API and backend are functional
-          python3 - <<'EOF'
-          import transformer_engine
-          import transformer_engine_torch as te
-          print("transformer_engine:", transformer_engine)
-          print("transformer_engine_torch:", te)
-          EOF
+            # # Use --no-deps to avoid overwriting Metax-optimized PyTorch
+            # python3 -m pip install "$WHL_PATH" --no-deps --force-reinstall
+
+            # echo "===== Step 6: Verify Metax Backend ====="
+            # # Ensure transformer_engine_torch is correctly loaded
+            # python3 - <<'EOF'
+            # import transformer_engine_torch as te
+            # print("Backend loaded successfully:", te)
+            # EOF
+
+            echo "===== Step 7: Install TE-FL Plugin Layer ====="
+            # Install TransformerEngine-FL Python layer (plugin logic)
+            cd /workspace/TransformerEngine-FL
+            TE_FL_SKIP_CUDA=1 python3 setup.py install
+
+            echo "===== Step 8: Final Verification ====="
+            # Verify both TE Python API and backend are functional
+            python3 - <<'EOF'
+            import transformer_engine
+            import transformer_engine_torch as te
+            print("transformer_engine:", transformer_engine)
+            print("transformer_engine_torch:", te)
+            EOF
+
+          else
+            echo "ERROR: Unknown platform '${PLATFORM}'"
+            exit 1
+          fi
 
           echo "===== Environment Setup Complete ===== "
       
@@ -237,7 +254,7 @@ jobs:
       - name: Debug - keep container alive on failure
         if: failure()
         run: |
-          echo "Container sleeping for 200 minutes for debugging..."
+          echo "Container sleeping for 60 minutes for debugging..."
           echo "On host, run: docker ps  then  docker exec -it <container_id> bash"
-          sleep 60000
+          sleep 3600
         timeout-minutes: 200
