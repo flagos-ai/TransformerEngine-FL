@@ -138,23 +138,6 @@ jobs:
       - name: Environment Setup
         if: steps.should_run.outputs.should_run == 'true'
         run: |
-          # 0. Load platform-specific environment variables from build_env
-          echo "=== Loading platform build_env ==="
-          echo '${{ inputs.build_env }}' | python3 -c "
-          import json, sys, os
-          env = json.load(sys.stdin)
-          gh_env = os.environ.get('GITHUB_ENV', '')
-          if gh_env:
-              with open(gh_env, 'a') as f:
-                  for k, v in env.items():
-                      print(f'  {k}={v}')
-                      f.write(f'{k}={v}\n')
-                      os.environ[k] = str(v)
-          "
-          # Re-source GITHUB_ENV so vars are available in this step too
-          while IFS='=' read -r key value; do
-            [ -n "$key" ] && export "$key=$value"
-          done < "$GITHUB_ENV"
 
           # 1. Base path and environment settings
           export PATH=${CUDA_HOME:-/usr/local/cuda}/bin:$PATH
@@ -164,6 +147,14 @@ jobs:
 
           # 2. Execute hardware-specific initialization (e.g., conda, device paths)
           ${{ inputs.setup_commands }}
+
+          echo "Setting up MACA nvcc symlink..."
+          if [ -f /opt/maca/tools/cu-bridge/bin/cucc ]; then
+            ln -sf /opt/maca/tools/cu-bridge/bin/cucc /opt/maca/tools/cu-bridge/bin/nvcc
+            echo "nvcc -> cucc linked successfully"
+          else
+            echo "WARNING: cucc not found, skip linking"
+          fi
           
           # 3. Install system tools (Crucial: do NOT update Python libraries here)
           apt-get update -qq && apt-get install -y -qq git cmake ninja-build
@@ -209,30 +200,6 @@ jobs:
         # more time needed...
         timeout-minutes: 120
       
-      - name: Build Transformer Engine & Check Version
-        # timeout-minutes: 40
-        run: |
-          # Print environment information for debugging
-          echo "=== Environment Info ==="
-          conda info
-          python --version
-          pip --version
-          gcc --version
-          cmake --version
-
-          # Install dependencies
-          echo "=== Installing Dependencies ==="
-          pip install transformers expecttest pytest
-
-          # Build and install transformer_engine
-          echo "=== Building Transformer Engine ==="
-          pip install --no-build-isolation -vvv . --no-deps
-
-          # Verify installation
-          echo "=== Verifying Installation ==="
-          python3 tests/pytorch/test_sanity_import.py
-          python3 -c "import transformer_engine; print('TE Version:', transformer_engine.__version__)"
-
       - name: Execute Tests
         if: steps.should_run.outputs.should_run == 'true'
         working-directory: ${{ github.workspace }}
