@@ -128,7 +128,10 @@ jobs:
 
       - name: Activate Python environment
         run: |
-          if [ -f /opt/conda/etc/profile.d/conda.sh ]; then
+          if [[ "$PLATFORM" == "cuda" ]] && [ -f /opt/miniconda3/etc/profile.d/conda.sh ]; then
+            source /opt/miniconda3/etc/profile.d/conda.sh
+            conda activate flagscale-train
+          elif [ -f /opt/conda/etc/profile.d/conda.sh ]; then
             source /opt/conda/etc/profile.d/conda.sh
             conda activate base
           fi
