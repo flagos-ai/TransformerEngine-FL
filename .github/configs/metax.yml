@@ -46,8 +46,6 @@ container_options: >-
   --hostname TransformerEngine_cicd
   --user root
   --ulimit nofile=65535:65535
-  # -w /nfs/metax_fs/qwen3_0.6b_pack/FlagScale
-
   -e PLATFORM=metax
   -e TORCH_DISTRIBUTED_BACKEND=mccl
   -e MACA_VISIBLE_DEVICES=all
