@@ -93,10 +93,11 @@ jobs:
           #   test_type: "sh"
 
     name: unit-${{ inputs.device }}-${{ matrix.test_group.name }}
-    container:
-      image: ${{ inputs.image }}
-      volumes: ${{ fromJson(inputs.container_volumes) }}
-      options: --pull never ${{ inputs.container_options }}
+    # container:
+    #   image: ${{ inputs.image }}
+    #   volumes: ${{ fromJson(inputs.container_volumes) }}
+    #   options: --pull never ${{ inputs.container_options }}
+
 
     steps:
       - name: Check if tests should run
@@ -135,64 +136,66 @@ jobs:
           echo "PATH=$PATH" >> $GITHUB_ENV
           echo "Python: $(which python3) ($(python3 --version 2>&1))"
 
-      - name: Environment Setup
+      - name: Run inside Metax container
         if: steps.should_run.outputs.should_run == 'true'
         run: |
           set -euo pipefail
 
-          echo "===== Step 1: Base Environment Setup ====="
-          # Configure MACA toolchain paths
-          export PATH=/opt/maca/bin:$PATH
-          export LD_LIBRARY_PATH=/opt/maca/lib:$LD_LIBRARY_PATH
+          CONTAINER=metax_te
 
-          echo "===== Step 2: Create nvcc Symlink (cucc -> nvcc) ====="
-          # TransformerEngine expects nvcc, but MACA provides cucc
-          ln -sf /opt/maca/tools/cu-bridge/bin/cucc /opt/maca/tools/cu-bridge/bin/nvcc
-          which nvcc || true
+          echo "===== Enter container: $CONTAINER ====="
 
-          echo "===== Step 3: Install Required System Tools ====="
-          # Install essential build tools (avoid modifying Python dependencies)
-          apt-get update -qq && apt-get install -y -qq git cmake ninja-build
+          docker exec $CONTAINER bash -c "
 
-          echo "===== Step 4: Remove Existing TransformerEngine ====="
-          # Prevent conflicts with preinstalled or incompatible versions
-          python3 -m pip uninstall transformer_engine -y || true
+            set -euo pipefail
 
-          echo "===== Step 5: Install Metax Binary Backend ====="
-          # Install prebuilt Metax backend (required for MACA operators)
-          WHL_PATH="/home/muxiuser/transformer_engine_metax-2.9.0-cp312-cp312-linux_x86_64.whl"
-          if [ ! -f "$WHL_PATH" ]; then
-            echo "ERROR: Wheel file not found at $WHL_PATH"
-            echo "Please verify volume mount: -v /home/muxiuser:/home/muxiuser"
-            exit 1
-          fi
+            echo '===== Step 1: Base Environment Setup ====='
+            export PATH=/opt/maca/bin:\$PATH
+            export LD_LIBRARY_PATH=/opt/maca/lib:\$LD_LIBRARY_PATH
 
-          # Use --no-deps to avoid overwriting Metax-optimized PyTorch
-          python3 -m pip install "$WHL_PATH" --no-deps --force-reinstall
+            echo '===== Step 2: Create nvcc Symlink ====='
+            service ssh restart
+            ln -sf /opt/maca/tools/cu-bridge/bin/cucc /opt/maca/tools/cu-bridge/bin/nvcc || true
 
-          echo "===== Step 6: Verify Metax Backend ====="
-          # Ensure transformer_engine_torch is correctly loaded
-          python3 - <<'EOF'
-          import transformer_engine_torch as te
-          print("Backend loaded successfully:", te)
-          EOF
+            echo '===== Step 3: Install System Tools ====='
+            apt-get update -qq && apt-get install -y -qq git cmake ninja-build
 
-          echo "===== Step 7: Install TE-FL Plugin Layer ====="
-          # Install TransformerEngine-FL Python layer (plugin logic)
-          cd /workspace/TransformerEngine-FL
-          TE_FL_SKIP_CUDA=1 python3 setup.py install
+            echo '===== Step 4: Remove Existing TransformerEngine ====='
+            python3 -m pip uninstall transformer_engine -y || true
 
-          echo "===== Step 8: Final Verification ====="
-          # Verify both TE Python API and backend are functional
-          python3 - <<'EOF'
-          import transformer_engine
-          import transformer_engine_torch as te
-          print("transformer_engine:", transformer_engine)
-          print("transformer_engine_torch:", te)
-          EOF
+            echo '===== Step 5: Install Metax Backend ====='
+            # Check if transformer_engine_metax is already installed
+            if pip list | grep -q transformer_engine_metax; then
+              echo "transformer_engine_metax already installed, skip installation"
+            else
+              echo "transformer_engine_metax not found, installing..."
 
-          echo "===== Environment Setup Complete ====="
-      
+              WHL_PATH=/transformer_engine_metax-2.9.0-cp312-cp312-linux_x86_64.whl
+
+              if [ ! -f "$WHL_PATH" ]; then
+                echo "ERROR: wheel not found: $WHL_PATH"
+                exit 1
+              fi
+
+              # Install without dependencies to avoid breaking MACA environment
+              python3 -m pip install "$WHL_PATH" --no-deps
+            fi
+
+            echo '===== Step 7: Install TE-FL ====='
+            cd /home/muxiuser/TransformerEngine-FL
+            TE_FL_SKIP_CUDA=1 python3 setup.py install
+
+            echo '===== Step 8: Final Check ====='
+            python3 - <<'EOF'
+            import torch
+            torch.cuda.is_available()
+
+            import transformer_engine
+            import transformer_engine_torch as te
+            print('transformer_engine:', transformer_engine)
+            print('transformer_engine_torch:', te)
+            EOF
+
       - name: Execute Tests
         if: steps.should_run.outputs.should_run == 'true'
         working-directory: ${{ github.workspace }}
@@ -226,6 +229,7 @@ jobs:
 
           bash ${{ matrix.test_group.path }}
         timeout-minutes: 60
+    
 
       - name: Debug - keep container alive on failure
         if: failure()
