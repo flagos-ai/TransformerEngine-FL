@@ -152,11 +152,14 @@ jobs:
             apt-get update
             apt-get install -y git
             git clone https://github.com/flagos-ai/TransformerEngine-FL.git
+            python3 -m pip install nvdlfw-inspect --no-deps || true
+            python3 -m pip install --upgrade pip setuptools wheel --user
             
             echo '===== 3. Build and Install TransformerEngine-FL ====='
             python3 -m pip uninstall transformer_engine -y || true
+            pip list | grep transformer_engine_metax
             cd TransformerEngine-FL
-            TE_FL_SKIP_CUDA=1 NVTE_WITH_MACA=1 python3 setup.py install
+            TE_FL_SKIP_CUDA=1 python3 setup.py install
             
             echo '===== 4. Verify Backend Library Loading ====='
             export LD_LIBRARY_PATH='${{ env.MACA_LIBS }}:\$LD_LIBRARY_PATH'
@@ -166,7 +169,7 @@ jobs:
       - name: Execute Test Group Inside Container
         if: steps.should_run.outputs.should_run == 'true'
         run: |
-          # Determine command based on matrix test_type
+          # 1. Determine command type
           if [[ "${{ matrix.test_group.test_type }}" == "sh" ]]; then
             TEST_COMMAND="bash ${{ matrix.test_group.path }}"
           else
@@ -178,14 +181,29 @@ jobs:
           docker exec -t \
             -e LD_LIBRARY_PATH='${{ env.MACA_LIBS }}' \
             -e MACA_VISIBLE_DEVICES=all \
-            -e TE_PATH='/workspace/TransformerEngine-FL' \
             -e PLATFORM='metax' \
             ${{ env.CONTAINER_NAME }} /bin/bash -c "
               set -e
               source /opt/conda/etc/profile.d/conda.sh && conda activate base
               cd /workspace/TransformerEngine-FL
+
+              echo '===== 1. Setting Debug Environments ====='
+              # Injecting the environment variables you requested
+              export TE_PATH=/workspace/TransformerEngine-FL
+              export NVTE_TEST_NVINSPECT_FEATURE_DIRS=\$TE_PATH/transformer_engine/debug/features
+              export NVTE_TEST_NVINSPECT_CONFIGS_DIR=\$TE_PATH/tests/pytorch/debug/test_configs
+              export XML_LOG_DIR=/logs
+              mkdir -p \$XML_LOG_DIR
+
+              echo '===== 2. Patching test script to bypass git clone ====='
               
-              # Parse platform-specific build environment variables
+              if [ -f \"${{ matrix.test_group.path }}\" ]; then
+                sed -i 's/pip uninstall -y nvdlfw-inspect/# pip uninstall -y nvdlfw-inspect/g' ${{ matrix.test_group.path }}
+                sed -i 's|pip install git+https://github.com/NVIDIA/nvidia-dlfw-inspect.git|# bypassed by CI|g' ${{ matrix.test_group.path }}
+                echo 'Script patched successfully.'
+              fi
+
+              echo '===== 3. Parsing build_env inputs ====='
               while IFS='=' read -r key value; do
                 [ -n \"\$key\" ] && export \"\$key=\$value\"
               done < <(echo '${{ inputs.build_env }}' | python3 -c \"
@@ -195,7 +213,7 @@ jobs:
                   print(f'{k}={v}')
               \")
 
-              echo '===== Starting Test Execution ====='
+              echo '===== 4. Starting Test Execution ====='
               $TEST_COMMAND
             "
 
