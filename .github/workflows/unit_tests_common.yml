@@ -101,11 +101,11 @@ jobs:
           
           echo "Workspace cleared."
 
-      - name: Checkout source code
-        uses: actions/checkout@v4
-        with:
-          set-safe-directory: true
-          path: TransformerEngine-FL
+      # - name: Checkout source code
+      #   uses: actions/checkout@v4
+      #   with:
+      #     set-safe-directory: true
+      #     path: TransformerEngine-FL
 
       - name: Create and Start Clean Container
         run: |
