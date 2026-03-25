@@ -103,18 +103,18 @@ jobs:
           echo "Launching container: ${{ env.CONTAINER_NAME }}"
           docker run -d --name ${{ env.CONTAINER_NAME }} \
             --net=host \
-            --uts=host \ 
-            --ipc=host \ 
-            --privileged=true \ 
-            --group-add video \ 
-            --shm-size=100gb \ 
-            --ulimit memlock=-1 \ 
-            --security-opt seccomp=unconfined \ 
-            --security-opt apparmor=unconfined \ 
-            --device=/dev/dri \ 
-            --device=/dev/mxcd \ 
-            --device=/dev/infiniband \ 
-            -v /nfs/metax_fs:/nfs/metax_fs \ 
+            --uts=host \
+            --ipc=host \
+            --privileged=true \
+            --group-add video \
+            --shm-size=100gb \
+            --ulimit memlock=-1 \
+            --security-opt seccomp=unconfined \
+            --security-opt apparmor=unconfined \
+            --device=/dev/dri \
+            --device=/dev/mxcd \
+            --device=/dev/infiniband \
+            -v /nfs/metax_fs:/nfs/metax_fs \
             --name metax_flagscale_maca3.3_0.6b \
             ${{ inputs.image }} \
             tail -f /dev/null
