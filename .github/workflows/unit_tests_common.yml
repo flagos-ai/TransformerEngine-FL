@@ -93,12 +93,14 @@ jobs:
      
       - name: Fix Workspace Permissions & Cleanup
         run: |
-          echo "Cleaning up root-owned files from previous runs..."
+          echo "Using a temporary 'bulldozer' container to clean workspace..."
+         
+          docker run --rm \
+            -v ${{ github.workspace }}:/cleanup_dir \
+            busybox sh -c "rm -rf /cleanup_dir/TransformerEngine-FL"
           
-          sudo rm -rf ${{ github.workspace }}/TransformerEngine-FL || true
-          
-          sudo chown -R $USER:$USER ${{ github.workspace }}
-          
+          echo "Workspace cleared."
+
       - name: Checkout source code
         uses: actions/checkout@v4
         with:
