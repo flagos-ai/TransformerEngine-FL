@@ -143,6 +143,7 @@ jobs:
             set -e
 
             echo '===== 1. Setup Metax Toolchain & Paths & Link ====='
+            source /opt/conda/etc/profile.d/conda.sh && conda activate base
             export PATH=/opt/maca/bin:\$PATH
             # Link cucc to nvcc for TransformerEngine build compatibility
             ln -sf /opt/maca/tools/cu-bridge/bin/cucc /opt/maca/tools/cu-bridge/bin/nvcc
