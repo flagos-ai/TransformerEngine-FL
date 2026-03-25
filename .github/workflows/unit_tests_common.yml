@@ -102,7 +102,7 @@ jobs:
         run: |
           docker rm -f ${{ env.CONTAINER_NAME }} || true
           echo "Launching container: ${{ env.CONTAINER_NAME }}"
-          docker run -d -t
+          docker run -d -t --name ${{ env.CONTAINER_NAME }} \
             --net=host \
             --uts=host \
             --ipc=host \
@@ -116,7 +116,6 @@ jobs:
             --device=/dev/mxcd \
             --device=/dev/infiniband \
             -v /nfs/metax_fs:/nfs/metax_fs \
-            --name metax_te_cicd \
             ${{ inputs.image }} \
             /bin/bash
             
