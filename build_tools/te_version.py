@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 
+RAW_TE_VERSION = "te2.9"
 
 def te_version() -> str:
     """Transformer Engine version string
@@ -18,6 +19,7 @@ def te_version() -> str:
     root_path = Path(__file__).resolve().parent
     with open(root_path / "VERSION.txt", "r") as f:
         version = f.readline().strip()
+        version += f"+{RAW_TE_VERSION}"
     if not int(os.getenv("NVTE_NO_LOCAL_VERSION", "0")) and not bool(
         int(os.getenv("NVTE_RELEASE_BUILD", "0"))
     ):
@@ -33,5 +35,5 @@ def te_version() -> str:
             pass
         else:
             commit = output.stdout.strip()
-            version += f"+{commit}"
+            version += f".{commit}"
     return version
