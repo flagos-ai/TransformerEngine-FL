@@ -17,6 +17,7 @@ runner_labels:
 
 # Container volumes
 container_volumes:
+  - /home/flagscale_cicd/flask/static:/workspace/report
   # - .:/opt/transformerengine
   # - ./ci_logs:/logs
   # - /home/flagscale_cicd/data:/opt/data
