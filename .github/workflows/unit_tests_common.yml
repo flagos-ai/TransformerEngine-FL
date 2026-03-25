@@ -149,7 +149,7 @@ jobs:
             
             echo '===== 3. Build and Install TransformerEngine-FL ====='
             python3 -m pip uninstall transformer_engine -y || true
-            cd cd TransformerEngine-FL
+            cd TransformerEngine-FL
             TE_FL_SKIP_CUDA=1 NVTE_WITH_MACA=1 python3 setup.py install
             
             echo '===== 4. Verify Backend Library Loading ====='
