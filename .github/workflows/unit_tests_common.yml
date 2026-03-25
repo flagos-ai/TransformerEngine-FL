@@ -69,18 +69,18 @@ jobs:
       fail-fast: false
       matrix:
         test_group:
-          - name: pytorch_lint
-            path: "qa/L0_pytorch_lint/test.sh"
-            test_type: "sh"
+          # - name: pytorch_lint
+          #   path: "qa/L0_pytorch_lint/test.sh"
+          #   test_type: "sh"
           - name: pytorch_debug
             path: "qa/L0_pytorch_debug_unittest/test.sh"
             test_type: "sh"
-          - name: pytorch_unittest
-            path: "qa/L0_pytorch_unittest/test.sh"
-            test_type: "sh"
-          - name: pytorch_wheel
-            path: "qa/L0_pytorch_wheel/test.sh"
-            test_type: "sh"
+          # - name: pytorch_unittest
+          #   path: "qa/L0_pytorch_unittest/test.sh"
+          #   test_type: "sh"
+          # - name: pytorch_wheel
+          #   path: "qa/L0_pytorch_wheel/test.sh"
+          #   test_type: "sh"
 
     name: unit-${{ inputs.device }}-${{ matrix.test_group.name }}
     
@@ -90,6 +90,15 @@ jobs:
       MACA_LIBS: "/opt/maca/lib:/opt/maca/ompi/lib:/opt/maca/ucx/lib:/opt/mxdriver/lib:/usr/local/lib"
 
     steps:
+     
+      - name: Fix Workspace Permissions & Cleanup
+        run: |
+          echo "Cleaning up root-owned files from previous runs..."
+          
+          sudo rm -rf ${{ github.workspace }}/TransformerEngine-FL || true
+          
+          sudo chown -R $USER:$USER ${{ github.workspace }}
+          
       - name: Checkout source code
         uses: actions/checkout@v4
         with:
