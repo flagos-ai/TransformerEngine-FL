@@ -17,9 +17,9 @@ runner_labels:
 
 # Container volumes
 container_volumes:
-  - .:/opt/transformerengine
-  - ./ci_logs:/logs
-  - /home/flagscale_cicd/data:/opt/data
+  # - .:/opt/transformerengine
+  # - ./ci_logs:/logs
+  # - /home/flagscale_cicd/data:/opt/data
 
 # Container options
 container_options: >-
