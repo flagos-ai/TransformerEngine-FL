@@ -100,8 +100,9 @@ jobs:
 
       - name: Create and Start Clean Container
         run: |
+          docker rm -f ${{ env.CONTAINER_NAME }} || true
           echo "Launching container: ${{ env.CONTAINER_NAME }}"
-          docker run -d --name ${{ env.CONTAINER_NAME }} \
+          docker run -d -t
             --net=host \
             --uts=host \
             --ipc=host \
