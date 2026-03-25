@@ -102,18 +102,23 @@ jobs:
         run: |
           echo "Launching container: ${{ env.CONTAINER_NAME }}"
           docker run -d --name ${{ env.CONTAINER_NAME }} \
-            --privileged \
-            --network host \
-            --ipc host \
-            --uts host \
-            --shm-size 100gb \
-            --group-add video \
-            -v /nfs/metax_fs:/nfs/metax_fs \
-            -v /home/muxiuser:/home/muxiuser \
-            -v /opt/maca:/opt/maca \
-            -v /dev:/dev \
+            -net=host \
+            --uts=host \ 
+            --ipc=host \ 
+            --privileged=true \ 
+            --group-add video \ 
+            --shm-size=100gb \ 
+            --ulimit memlock=-1 \ 
+            --security-opt seccomp=unconfined \ 
+            --security-opt apparmor=unconfined \ 
+            --device=/dev/dri \ 
+            --device=/dev/mxcd \ 
+            --device=/dev/infiniband \ 
+            -v /nfs/metax_fs:/nfs/metax_fs \ 
+            --name metax_flagscale_maca3.3_0.6b \
             ${{ inputs.image }} \
             tail -f /dev/null
+
 
       - name: Check if tests should run
         id: should_run
@@ -133,19 +138,19 @@ jobs:
         if: steps.should_run.outputs.should_run == 'true'
         run: |
           docker exec -t ${{ env.CONTAINER_NAME }} /bin/bash -c "
+            service ssh restart
             set -e
-            echo '===== 1. Activate Conda Environment ====='
-            source /opt/conda/etc/profile.d/conda.sh && conda activate base
-            apt-get update
-            apt-get install -y git
-            git clone https://github.com/flagos-ai/TransformerEngine-FL.git
 
-            
-            echo '===== 2. Setup Metax Toolchain & Paths ====='
+            echo '===== 1. Setup Metax Toolchain & Paths & Link ====='
             export PATH=/opt/maca/bin:\$PATH
             # Link cucc to nvcc for TransformerEngine build compatibility
             ln -sf /opt/maca/tools/cu-bridge/bin/cucc /opt/maca/tools/cu-bridge/bin/nvcc
             apt-get update -qq && apt-get install -y -qq git cmake ninja-build
+
+            echo '===== 2. git clone ====='
+            apt-get update
+            apt-get install -y git
+            git clone https://github.com/flagos-ai/TransformerEngine-FL.git
             
             echo '===== 3. Build and Install TransformerEngine-FL ====='
             python3 -m pip uninstall transformer_engine -y || true
