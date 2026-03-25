@@ -115,9 +115,10 @@ jobs:
             --device=/dev/mxcd \
             --device=/dev/infiniband \
             -v /nfs/metax_fs:/nfs/metax_fs \
-            --name metax_flagscale_maca3.3_0.6b \
+            --name metax_te_cicd \
             ${{ inputs.image }} \
-            tail -f /dev/null
+            /bin/bash
+            
 
 
       - name: Check if tests should run
