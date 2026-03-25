@@ -91,16 +91,7 @@ jobs:
 
     steps:
      
-      - name: Fix Workspace Permissions & Cleanup
-        run: |
-          echo "Using a temporary 'bulldozer' container to clean workspace..."
-         
-          docker run --rm \
-            -v ${{ github.workspace }}:/cleanup_dir \
-            busybox sh -c "rm -rf /cleanup_dir/TransformerEngine-FL"
-          
-          echo "Workspace cleared."
-
+      
       # - name: Checkout source code
       #   uses: actions/checkout@v4
       #   with:
@@ -121,8 +112,6 @@ jobs:
             -v /home/muxiuser:/home/muxiuser \
             -v /opt/maca:/opt/maca \
             -v /dev:/dev \
-            -v ${{ github.workspace }}/TransformerEngine-FL:/workspace/TransformerEngine-FL \
-            -w /workspace/TransformerEngine-FL \
             ${{ inputs.image }} \
             tail -f /dev/null
 
@@ -147,6 +136,9 @@ jobs:
             set -e
             echo '===== 1. Activate Conda Environment ====='
             source /opt/conda/etc/profile.d/conda.sh && conda activate base
+
+            git clone https://github.com/flagos-ai/TransformerEngine-FL.git
+
             
             echo '===== 2. Setup Metax Toolchain & Paths ====='
             export PATH=/opt/maca/bin:\$PATH
@@ -156,6 +148,7 @@ jobs:
             
             echo '===== 3. Build and Install TransformerEngine-FL ====='
             python3 -m pip uninstall transformer_engine -y || true
+            cd cd TransformerEngine-FL
             TE_FL_SKIP_CUDA=1 NVTE_WITH_MACA=1 python3 setup.py install
             
             echo '===== 4. Verify Backend Library Loading ====='
