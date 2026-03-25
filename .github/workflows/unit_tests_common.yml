@@ -249,6 +249,7 @@ jobs:
           ")
 
           export TE_PATH=$GITHUB_WORKSPACE
+          export TE_LIB_PATH=$(python3 -c "from pathlib import Path; import importlib; print(Path(importlib.util.find_spec('transformer_engine').origin).parent.parent)")
           export PYTHONPATH=$GITHUB_WORKSPACE:${PYTHONPATH:-}
           export PATH=${CUDA_HOME:-/usr/local/cuda}/bin:$PATH
           export LD_LIBRARY_PATH=${CUDA_HOME:-/usr/local/cuda}/lib:${LD_LIBRARY_PATH:-}
@@ -257,6 +258,7 @@ jobs:
 
           # check envs before running tests
           echo "TE_PATH=$TE_PATH"
+          echo "TE_LIB_PATH=$TE_LIB_PATH"
           echo "PYTHONPATH=$PYTHONPATH"
           echo "PATH=$PATH"
           echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
