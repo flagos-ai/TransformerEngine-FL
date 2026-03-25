@@ -126,22 +126,12 @@ jobs:
         with:
           set-safe-directory: true
 
-      # - name: Activate Python environment
-      #   run: |
-      #     if [[ "$PLATFORM" == "cuda" ]]; then
-      #       source /opt/miniconda3/etc/profile.d/conda.sh
-      #       conda activate flagscale-train
-      #     elif [ -f /opt/conda/etc/profile.d/conda.sh ]; then
-      #       source /opt/conda/etc/profile.d/conda.sh
-      #       conda activate base
-      #     fi
-      #     echo "PATH=$PATH" >> $GITHUB_ENV
-      #     echo "Python: $(which python3) ($(python3 --version 2>&1))"
-
       - name: Environment Setup
         if: steps.should_run.outputs.should_run == 'true'
         env:
           PLATFORM: ${{ inputs.platform }}
+          TE_PATH: .
+          TE_FL_PREFER: vendor
         run: |
           set -euo pipefail
 
@@ -153,10 +143,11 @@ jobs:
             echo "Python: $(which python3) ($(python3 --version 2>&1))"
 
             echo "===== Step 1: Remove Existing TransformerEngine ====="
-            pip uninstall transformer_engine -y || true
+            pip uninstall transformer_engine transformer_engine_torch -y || true
 
             echo "===== Step 2: Build & Install TransformerEngine ====="
             cd $GITHUB_WORKSPACE
+            pip install nvdlfw-inspect --no-deps
             pip install --no-build-isolation . -v --no-deps
 
             echo "===== Step 3: Verify Installation ====="
@@ -231,6 +222,8 @@ jobs:
         working-directory: ${{ github.workspace }}
         env:
           PLATFORM: ${{ inputs.platform }}
+          TE_PATH: .
+          TE_FL_PREFER: vendor
         run: |
           set -euo pipefail
           
@@ -261,6 +254,12 @@ jobs:
           export LD_LIBRARY_PATH=${CUDA_HOME:-/usr/local/cuda}/lib:${LD_LIBRARY_PATH:-}
           # Ensure log directory exists regardless of volume mount state
           mkdir -p /logs
+
+          # check envs before running tests
+          echo "TE_PATH=$TE_PATH"
+          echo "PYTHONPATH=$PYTHONPATH"
+          echo "PATH=$PATH"
+          echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
 
           if [[ "${{ matrix.test_group.name }}" == *"lint"* ]]; then
             export CPP_ONLY=0
