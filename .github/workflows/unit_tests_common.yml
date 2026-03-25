@@ -136,7 +136,8 @@ jobs:
             set -e
             echo '===== 1. Activate Conda Environment ====='
             source /opt/conda/etc/profile.d/conda.sh && conda activate base
-
+            apt-get update
+            apt-get install -y git
             git clone https://github.com/flagos-ai/TransformerEngine-FL.git
 
             
