@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 import subprocess
 
-RAW_TE_VERSION = "te2.9"
+RAW_TE_VERSION = "te2.9.0"
 
 def te_version() -> str:
     """Transformer Engine version string
