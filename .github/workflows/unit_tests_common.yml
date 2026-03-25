@@ -151,6 +151,9 @@ jobs:
             echo '===== 2. git clone ====='
             apt-get update
             apt-get install -y git
+            #http1.1
+            git config --global http.version HTTP/1.1
+            
             git clone https://github.com/flagos-ai/TransformerEngine-FL.git
             python3 -m pip install nvdlfw-inspect --no-deps || true
             python3 -m pip install --upgrade pip setuptools wheel --user
