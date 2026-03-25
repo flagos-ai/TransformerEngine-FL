@@ -102,7 +102,7 @@ jobs:
         run: |
           echo "Launching container: ${{ env.CONTAINER_NAME }}"
           docker run -d --name ${{ env.CONTAINER_NAME }} \
-            -net=host \
+            --net=host \
             --uts=host \ 
             --ipc=host \ 
             --privileged=true \ 
