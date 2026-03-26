@@ -153,14 +153,14 @@ jobs:
             apt-get update
             apt-get install -y git
             #http1.1
-            git config --global http.version HTTP/1.1
-            git config --global http.postBuffer 524288000
+            # git config --global http.version HTTP/1.1
+            # git config --global http.postBuffer 524288000
 
             git clone https://github.com/flagos-ai/TransformerEngine-FL.git
 
-            source /opt/conda/etc/profile.d/conda.sh && conda activate base
-            python3 -m pip install nvdlfw-inspect --no-deps || true
-            pip install setuptools==69.5.1
+            # source /opt/conda/etc/profile.d/conda.sh && conda activate base
+            # python3 -m pip install nvdlfw-inspect --no-deps || true
+            # pip install setuptools==69.5.1
             
             echo '===== 3. Build and Install TransformerEngine-FL ====='
             python3 -m pip uninstall transformer_engine -y || true
