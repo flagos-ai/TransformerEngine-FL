@@ -73,12 +73,6 @@ jobs:
       fail-fast: false
       matrix:
         test_group:
-          # - name: core
-          #   path: "tests/unit_tests/test_*.py"
-          #   test_type: "pytest"
-          # - name: distributed
-          #   path: "tests/unit_tests/distributed/"
-          #   test_type: "pytest"
           # - name: pytorch_lint
           #   path: "qa/L0_pytorch_lint/test.sh"
           #   test_type: "sh"
@@ -115,9 +109,6 @@ jobs:
             CHANGED='${{ needs.detect_changes.outputs.core }}'
           fi
           # For debugging, you can force this to true
-          # echo "should_run=$CHANGED" >> $GITHUB_OUTPUT
-
-          # Force Run
           echo "should_run=true" >> $GITHUB_OUTPUT
 
       - name: Checkout source code
@@ -249,7 +240,7 @@ jobs:
           ")
 
           export TE_PATH=$GITHUB_WORKSPACE
-          export TE_LIB_PATH=$(python3 -c "from pathlib import Path; import importlib.util; print(Path(importlib.util.find_spec('transformer_engine').origin).parent.parent)")
+          export TE_LIB_PATH=$(python3 -c "import site; print(site.getsitepackages()[0])")
           export PYTHONPATH=$GITHUB_WORKSPACE:${PYTHONPATH:-}
           export PATH=${CUDA_HOME:-/usr/local/cuda}/bin:$PATH
           export LD_LIBRARY_PATH=${CUDA_HOME:-/usr/local/cuda}/lib:${LD_LIBRARY_PATH:-}
