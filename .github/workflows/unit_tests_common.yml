@@ -160,7 +160,7 @@ jobs:
 
             source /opt/conda/etc/profile.d/conda.sh && conda activate base
             python3 -m pip install nvdlfw-inspect --no-deps || true
-            python3 -m pip install --upgrade pip setuptools wheel --user
+            pip install setuptools==69.5.1
             
             echo '===== 3. Build and Install TransformerEngine-FL ====='
             python3 -m pip uninstall transformer_engine -y || true
