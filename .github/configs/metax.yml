@@ -23,7 +23,6 @@ container_volumes:
   - /dev/infiniband:/dev/infiniband
 
 container_options: >-
-  --network host
   --uts=host
   --ipc=host
   --privileged=true
