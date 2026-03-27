@@ -38,7 +38,6 @@ container_options: >-
   --ulimit nofile=65535:65535
   -e PLATFORM=metax
   -e TORCH_DISTRIBUTED_BACKEND=mccl
-  -e MACA_VISIBLE_DEVICES=all
   -e LD_LIBRARY_PATH=/opt/maca/lib:/usr/local/lib:$LD_LIBRARY_PATH
 
 build_env:
