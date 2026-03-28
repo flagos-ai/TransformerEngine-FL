@@ -73,18 +73,12 @@ jobs:
       fail-fast: false
       matrix:
         test_group:
-          # - name: core
-          #   path: "tests/unit_tests/test_*.py"
-          #   test_type: "pytest"
-          # - name: distributed
-          #   path: "tests/unit_tests/distributed/"
-          #   test_type: "pytest"
           - name: pytorch_debug
             path: "qa/L0_pytorch_debug_unittest/test.sh"
             test_type: "sh"
-          # - name: pytorch_unittest
-          #   path: "qa/L0_pytorch_unittest/test.sh"
-          #   test_type: "sh"
+          - name: pytorch_unittest
+            path: "qa/L0_pytorch_unittest/test.sh"
+            test_type: "sh"
           # - name: pytorch_lint
           #   path: "qa/L0_pytorch_lint/test.sh"
           #   test_type: "sh"
