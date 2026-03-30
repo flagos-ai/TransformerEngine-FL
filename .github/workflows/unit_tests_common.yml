@@ -238,10 +238,10 @@ jobs:
           bash ${{ matrix.test_group.path }}
         timeout-minutes: 60
 
-      - name: Debug - keep container alive on failure
-        if: failure()
-        run: |
-          echo "Container sleeping for 200 minutes for debugging..."
-          echo "On host, run: docker ps  then  docker exec -it <container_id> bash"
-          sleep 60000
-        timeout-minutes: 200
+      # - name: Debug - keep container alive on failure
+      #   if: failure()
+      #   run: |
+      #     echo "Container sleeping for 200 minutes for debugging..."
+      #     echo "On host, run: docker ps  then  docker exec -it <container_id> bash"
+      #     sleep 60000
+      #   timeout-minutes: 200
