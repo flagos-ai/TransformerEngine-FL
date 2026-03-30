@@ -73,6 +73,9 @@ jobs:
       fail-fast: false
       matrix:
         test_group:
+          - name: pytorch_lint
+            path: "qa/L0_pytorch_lint/test.sh"
+            test_type: "sh"
           - name: pytorch_debug
             path: "qa/L0_pytorch_debug_unittest/test.sh"
             test_type: "sh"
@@ -109,9 +112,6 @@ jobs:
             CHANGED='${{ needs.detect_changes.outputs.core }}'
           fi
           # For debugging, you can force this to true
-          # echo "should_run=$CHANGED" >> $GITHUB_OUTPUT
-
-          # Force Run
           echo "should_run=true" >> $GITHUB_OUTPUT
 
       - name: Checkout source code
@@ -212,9 +212,19 @@ jobs:
           ")
 
           export TE_PATH=$GITHUB_WORKSPACE
+          export TE_LIB_PATH=$(python3 -c "import site; print(site.getsitepackages()[0])")
           export PYTHONPATH=$GITHUB_WORKSPACE:${PYTHONPATH:-}
           export PATH=${CUDA_HOME:-/usr/local/cuda}/bin:$PATH
           export LD_LIBRARY_PATH=${CUDA_HOME:-/usr/local/cuda}/lib:${LD_LIBRARY_PATH:-}
+          # Ensure log directory exists regardless of volume mount state
+          mkdir -p /logs
+
+          # check envs before running tests
+          echo "TE_PATH=$TE_PATH"
+          echo "TE_LIB_PATH=$TE_LIB_PATH"
+          echo "PYTHONPATH=$PYTHONPATH"
+          echo "PATH=$PATH"
+          echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
 
           if [[ "${{ matrix.test_group.name }}" == *"lint"* ]]; then
             export CPP_ONLY=0
