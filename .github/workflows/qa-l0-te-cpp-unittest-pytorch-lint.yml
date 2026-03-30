@@ -15,7 +15,7 @@ on:
       - 'qa/L0_pytorch_lint/**'
       - 'transformer_engine/**'
       - 'tests/pytorch/**'
-# 新增手动触发器
+
   workflow_dispatch:
 
 concurrency:
@@ -57,7 +57,7 @@ jobs:
           show-progress: true
           lfs: false
           submodules: recursive
-          fetch-depth: 0  #pull所有历史记录
+          fetch-depth: 0  
           set-safe-directory: true
 
       - name: Install Dependencies & Build Transformer Engine
