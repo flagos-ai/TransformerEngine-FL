@@ -36,6 +36,12 @@ on:
         required: false
         type: string
         default: '{}'
+      # Whether to upload coverage report
+      upload_coverage:
+        description: "Whether to upload coverage report"
+        required: false
+        type: boolean
+        default: true
 
 jobs:
   # 1. Change Detection
@@ -82,12 +88,6 @@ jobs:
           - name: pytorch_unittest
             path: "qa/L0_pytorch_unittest/test.sh"
             test_type: "sh"
-          # - name: pytorch_lint
-          #   path: "qa/L0_pytorch_lint/test.sh"
-          #   test_type: "sh"
-          # - name: pytorch_wheel
-          #   path: "qa/L0_pytorch_wheel/test.sh"
-          #   test_type: "sh"
 
     name: unit-${{ inputs.device }}-${{ matrix.test_group.name }}
     container:
@@ -238,6 +238,25 @@ jobs:
 
           bash ${{ matrix.test_group.path }}
         timeout-minutes: 60
+
+      - name: Upload coverage report
+        if: inputs.upload_coverage && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ inputs.platform }}
+          path: |
+            coverage-${{ inputs.platform }}.json
+            report-${{ inputs.platform }}.json
+
+      - name: Upload coverage report to FlagCICD
+        if: inputs.upload_coverage && always()
+        uses: flagos-ai/FlagOps/actions/post-pytest-report@v2
+        continue-on-error: true
+        with:
+          backend_url: 'http://flagcicd-inner.flagos.net:8000/metrics/'
+          user_id: '000000000000000000'
+          report_path: 'coverage-${{ inputs.platform }}.json'
+          fail_on_error: 'false'
 
       # - name: Debug - keep container alive on failure
       #   if: failure()
