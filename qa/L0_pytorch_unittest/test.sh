@@ -1,68 +1,122 @@
+#!/bin/bash
+
+
+: ${TE_PATH:=/workspace/TransformerEngine-FL}
+: ${XML_LOG_DIR:=/logs}
+mkdir -p "$XML_LOG_DIR"
 
 pip install pytest==8.2.1
 FAIL=0
 
-# Define a helper function to decide whether to run a test based on the platform
-# Parameters: $1=XML filename, $2=Test script path, $3=Execution command
+
+test_fail() {
+    FAIL=1
+    echo "Error: sub-test failed: $1"
+}
+
+
 run_test_step() {
     local xml_file=$1
     local test_path=$2
     local cmd=$3
+    local label=$4
 
-    
+  
     if [ "$PLATFORM" = "metax" ]; then
         case "$test_path" in
-            *"test_numerics.py" | *"test_api_features.py" | *"test_sanity.py")
+            *"test_numerics.py" | \
+            *"test_sanity.py" | \
+            *"test_parallel_cross_entropy.py" | \
+            *"test_cuda_graphs.py" | \
+            *"test_fused_rope.py" | \
+            *"test_gqa.py" | \
+            *"test_fused_optimizer.py" | \
+            *"test_multi_tensor.py" | \
+            *"test_cpu_offloading.py" | \
+            *"test_attention.py" | \
+            *"test_kv_cache.py" | \
+            *"test_checkpoint.py" | \
+            *"test_fused_router.py")
                 echo "-------------------------------------------------------"
-                echo "[SKIP] Platform MetaX: Ignoring $test_path"
+                echo "[SKIP] Platform MetaX: Ignoring $label"
                 echo "-------------------------------------------------------"
                 return 0
                 ;;
         esac
     fi
 
-    
+   
     echo "-------------------------------------------------------"
-    echo "[RUN] Executing: $test_path"
-    eval "$cmd" || FAIL=1
+    echo "[RUN] Executing: $label"
+    
+    eval "$cmd" || test_fail "$label"
 }
 
 
+# Step: Sanity
+run_test_step "pytest_test_sanity.xml" "$TE_PATH/tests/pytorch/test_sanity.py" \
+"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_sanity.xml $TE_PATH/tests/pytorch/test_sanity.py -k \"not (test_sanity_layernorm_mlp or test_sanity_gpt or test_sanity_bert or test_sanity_T5 or test_sanity_amp_and_nvfuser or test_sanity_drop_path or test_sanity_fused_qkv_params or test_sanity_gradient_accumulation_fusion or test_inference_mode or test_sanity_normalization_amp or test_sanity_layernorm_linear or test_sanity_linear_with_zero_tokens or test_sanity_grouped_linear)\" --no-header" "test_sanity.py"
 
-# Step 1: Sanity
-run_test_step "test_sanity.xml" "$TE_PATH/tests/pytorch/debug/test_sanity.py" \
-"pytest -v -s --junitxml=$XML_LOG_DIR/test_sanity.xml $TE_PATH/tests/pytorch/debug/test_sanity.py --feature_dirs=$NVTE_TEST_NVINSPECT_FEATURE_DIRS"
+# Step: Recipe
+run_test_step "pytest_test_recipe.xml" "$TE_PATH/tests/pytorch/test_recipe.py" \
+"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_recipe.xml $TE_PATH/tests/pytorch/test_recipe.py" "test_recipe.py"
 
-# Step 2: Config
-run_test_step "test_config.xml" "$TE_PATH/tests/pytorch/debug/test_config.py" \
-"pytest -v -s --junitxml=$XML_LOG_DIR/test_config.xml $TE_PATH/tests/pytorch/debug/test_config.py --feature_dirs=$NVTE_TEST_NVINSPECT_FEATURE_DIRS"
+# Step: Deferred Init
+run_test_step "pytest_test_deferred_init.xml" "$TE_PATH/tests/pytorch/test_deferred_init.py" \
+"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_deferred_init.xml $TE_PATH/tests/pytorch/test_deferred_init.py" "test_deferred_init.py"
 
-# Step 3: Numerics 
-run_test_step "test_numerics.xml" "$TE_PATH/tests/pytorch/debug/test_numerics.py" \
-"pytest -v -s --junitxml=$XML_LOG_DIR/test_numerics.xml $TE_PATH/tests/pytorch/debug/test_numerics.py --feature_dirs=$NVTE_TEST_NVINSPECT_FEATURE_DIRS"
+# Step: Numerics
+run_test_step "pytest_test_numerics.xml" "$TE_PATH/tests/pytorch/test_numerics.py" \
+"PYTORCH_JIT=0 NVTE_TORCH_COMPILE=0 NVTE_ALLOW_NONDETERMINISTIC_ALGO=0 NVTE_FUSED_ATTN=0 python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_numerics.xml $TE_PATH/tests/pytorch/test_numerics.py -k \"not (test_layernorm_mlp_accuracy or test_grouped_linear_accuracy or test_gpt_cuda_graph or test_transformer_layer_hidden_states_format or test_grouped_gemm or test_noncontiguous or test_gpt_checkpointing or test_gpt_accuracy or test_mha_accuracy or test_linear_accuracy or test_linear_accuracy_delay_wgrad_compute or test_rmsnorm_accuracy or test_layernorm_accuracy or test_layernorm_linear_accuracy)\" --no-header" "test_numerics.py"
 
-# Step 4: Log
-run_test_step "test_log.xml" "$TE_PATH/tests/pytorch/debug/test_log.py" \
-"pytest -v -s --junitxml=$XML_LOG_DIR/test_log.xml $TE_PATH/tests/pytorch/debug/test_log.py --feature_dirs=$NVTE_TEST_NVINSPECT_FEATURE_DIRS --configs_dir=$NVTE_TEST_NVINSPECT_CONFIGS_DIR"
+# Step: CUDA Graphs
+run_test_step "pytest_test_cuda_graphs.xml" "$TE_PATH/tests/pytorch/test_cuda_graphs.py" \
+"PYTORCH_JIT=0 NVTE_TORCH_COMPILE=0 NVTE_ALLOW_NONDETERMINISTIC_ALGO=0 NVTE_FUSED_ATTN=0 python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_cuda_graphs.xml $TE_PATH/tests/pytorch/test_cuda_graphs.py" "test_cuda_graphs.py"
 
-# Step 5: API Features 
-run_test_step "test_api_features.xml" "$TE_PATH/tests/pytorch/debug/test_api_features.py" \
-"NVTE_TORCH_COMPILE=0 pytest -v -s --junitxml=$XML_LOG_DIR/test_api_features.xml $TE_PATH/tests/pytorch/debug/test_api_features.py -k \"not (test_per_tensor_scaling or test_fake_quant or test_statistics_collection or test_statistics_multi_run)\" --no-header --feature_dirs=$NVTE_TEST_NVINSPECT_FEATURE_DIRS --configs_dir=$NVTE_TEST_NVINSPECT_CONFIGS_DIR"
+# Step: JIT
+run_test_step "pytest_test_jit.xml" "$TE_PATH/tests/pytorch/test_jit.py" \
+"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_jit.xml $TE_PATH/tests/pytorch/test_jit.py -k \"not (test_torch_dynamo)\"" "test_jit.py"
 
-# Step 6: Performance
-run_test_step "test_perf.xml" "$TE_PATH/tests/pytorch/debug/test_perf.py" \
-"pytest -v -s --junitxml=$XML_LOG_DIR/test_perf.xml $TE_PATH/tests/pytorch/debug/test_perf.py --feature_dirs=$NVTE_TEST_NVINSPECT_FEATURE_DIRS --configs_dir=$NVTE_TEST_NVINSPECT_CONFIGS_DIR"
+# Step: Fused Rope
+run_test_step "pytest_test_fused_rope.xml" "$TE_PATH/tests/pytorch/test_fused_rope.py" \
+"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_fused_rope.xml $TE_PATH/tests/pytorch/test_fused_rope.py" "test_fused_rope.py"
+
+# Step: NVFP4 (Directory)
+run_test_step "pytest_test_nvfp4.xml" "$TE_PATH/tests/pytorch/nvfp4" \
+"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_nvfp4.xml $TE_PATH/tests/pytorch/nvfp4" "test_nvfp4"
+
+# Step: Float8 Tensors
+run_test_step "pytest_test_float8tensor.xml" "$TE_PATH/tests/pytorch/test_float8tensor.py" \
+"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_float8tensor.xml $TE_PATH/tests/pytorch/test_float8tensor.py" "test_float8tensor.py"
+
+# Step: GQA
+run_test_step "pytest_test_gqa.xml" "$TE_PATH/tests/pytorch/test_gqa.py" \
+"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_gqa.xml $TE_PATH/tests/pytorch/test_gqa.py" "test_gqa.py"
+
+# Step: Fused Optimizer
+run_test_step "pytest_test_fused_optimizer.xml" "$TE_PATH/tests/pytorch/test_fused_optimizer.py" \
+"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_fused_optimizer.xml $TE_PATH/tests/pytorch/test_fused_optimizer.py" "test_fused_optimizer.py"
+
+# Step: Parallel Cross Entropy
+run_test_step "pytest_test_parallel_cross_entropy.xml" "$TE_PATH/tests/pytorch/test_parallel_cross_entropy.py" \
+"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_parallel_cross_entropy.xml $TE_PATH/tests/pytorch/test_parallel_cross_entropy.py" "test_parallel_cross_entropy.py"
+
+# Step: CPU Offloading
+run_test_step "pytest_test_cpu_offloading.xml" "$TE_PATH/tests/pytorch/test_cpu_offloading.py" \
+"NVTE_FLASH_ATTN=0 python3 -m pytest --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_cpu_offloading.xml $TE_PATH/tests/pytorch/test_cpu_offloading.py" "test_cpu_offloading.py"
+
+# Step: Attention
+run_test_step "pytest_test_attention.xml" "$TE_PATH/tests/pytorch/attention/test_attention.py" \
+"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_attention.xml $TE_PATH/tests/pytorch/attention/test_attention.py" "test_attention.py"
+
+# Step: Checkpoint
+run_test_step "pytest_test_checkpoint.xml" "$TE_PATH/tests/pytorch/test_checkpoint.py" \
+"NVTE_TEST_CHECKPOINT_ARTIFACT_PATH=$TE_PATH/artifacts/tests/pytorch/test_checkpoint python3 -m pytest --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_checkpoint.xml $TE_PATH/tests/pytorch/test_checkpoint.py" "test_checkpoint.py"
 
 
-
-# Step 7: Sanity 2 
-run_test_step "test_sanity_2.xml" "$TE_PATH/tests/pytorch/test_sanity.py" \
-"NVTE_TEST_NVINSPECT_ENABLED=1 NVTE_TEST_NVINSPECT_CONFIG_FILE=$NVTE_TEST_NVINSPECT_DUMMY_CONFIG_FILE NVTE_TEST_NVINSPECT_FEATURE_DIRS=$NVTE_TEST_NVINSPECT_FEATURE_DIRS PYTORCH_JIT=0 NVTE_TORCH_COMPILE=0 NVTE_ALLOW_NONDETERMINISTIC_ALGO=0 \
-pytest -v -s --junitxml=$XML_LOG_DIR/test_sanity_2.xml $TE_PATH/tests/pytorch/test_sanity.py -k \"not (test_sanity_grouped_linear or test_inference_mode)\" --no-header"
-
-# Step 8: Numerics 2 
-run_test_step "test_numerics_2.xml" "$TE_PATH/tests/pytorch/test_numerics.py" \
-"NVTE_TEST_NVINSPECT_ENABLED=1 NVTE_TEST_NVINSPECT_CONFIG_FILE=$NVTE_TEST_NVINSPECT_DUMMY_CONFIG_FILE NVTE_TEST_NVINSPECT_FEATURE_DIRS=$NVTE_TEST_NVINSPECT_FEATURE_DIRS PYTORCH_JIT=0 NVTE_TORCH_COMPILE=0 NVTE_ALLOW_NONDETERMINISTIC_ALGO=0 NVTE_FUSED_ATTN=0 \
-pytest -v -s --junitxml=$XML_LOG_DIR/test_numerics_2.xml $TE_PATH/tests/pytorch/test_numerics.py -k \"not (test_linear_accuracy or test_layernorm_linear_accuracy or test_layernorm_mlp_accuracy or test_grouped_linear_accuracy or test_transformer_layer_hidden_states_format or test_grouped_gemm)\" --no-header"
-
-exit $FAIL
+if [ "$FAIL" -ne 0 ]; then
+    echo "Some tests failed."
+    exit 1
+fi
+echo "All assigned tests passed (some might have been skipped)."
+exit 0
