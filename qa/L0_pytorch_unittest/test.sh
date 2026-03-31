@@ -21,7 +21,7 @@ run_test_step() {
     local cmd=$3
     local label=$4
 
-  
+
     if [ "$PLATFORM" = "metax" ]; then
         case "$test_path" in
             *"test_numerics.py" | \
@@ -45,10 +45,10 @@ run_test_step() {
         esac
     fi
 
-   
+
     echo "-------------------------------------------------------"
     echo "[RUN] Executing: $label"
-    
+
     eval "$cmd" || test_fail "$label"
 }
 
