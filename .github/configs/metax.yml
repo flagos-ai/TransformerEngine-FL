@@ -16,8 +16,6 @@ runner_labels:
 
 container_volumes:
   - /nfs/metax_fs:/nfs/metax_fs
-  - /home/muxiuser:/home/muxiuser
-  - /home/muxiuser/jinglong/TransformerEngine-FL:/workspace/TransformerEngine-FL
   - /dev/dri:/dev/dri
   - /dev/mxcd:/dev/mxcd
   - /dev/infiniband:/dev/infiniband
