@@ -1,7 +1,7 @@
 #!/bin/bash
 
 
-: ${TE_PATH:=/workspace/TransformerEngine-FL}
+: ${TE_PATH:=/opt/transformerengine}
 : ${XML_LOG_DIR:=/logs}
 mkdir -p "$XML_LOG_DIR"
 

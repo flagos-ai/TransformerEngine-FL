@@ -180,7 +180,8 @@ jobs:
 
           echo "===== Step 7: Install TE-FL Plugin Layer ====="
           # Install TransformerEngine-FL Python layer (plugin logic)
-          cd /workspace/TransformerEngine-FL
+          # cd /workspace/TransformerEngine-FL
+          cd $GITHUB_WORKSPACE
           TE_FL_SKIP_CUDA=1 python3 setup.py install
 
           echo "===== Step 8: Final Verification ====="
