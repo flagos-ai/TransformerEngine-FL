@@ -131,9 +131,33 @@ jobs:
           fi
           echo "PATH=$PATH" >> $GITHUB_ENV
           echo "Python: $(which python3) ($(python3 --version 2>&1))"
+      
+      - name: Environment Setup Cuda-specific
+        if: steps.should_run.outputs.should_run == 'true' && inputs.platform == 'cuda'
+        run: |
+          set -euo pipefail
 
-      - name: Environment Setup
-        if: steps.should_run.outputs.should_run == 'true'
+          echo "===== Step 0: Activate Python environment ====="
+          source /opt/miniconda3/etc/profile.d/conda.sh
+          conda activate flagscale-train
+          echo "PATH=$PATH" >> $GITHUB_ENV
+          echo "Python: $(which python3) ($(python3 --version 2>&1))"
+
+          echo "===== Step 1: Remove Existing TransformerEngine ====="
+          pip uninstall transformer_engine transformer_engine_torch -y || true
+
+          echo "===== Step 2: Build & Install TransformerEngine ====="
+          cd $GITHUB_WORKSPACE
+          pip install nvdlfw-inspect --no-deps
+          pip install --no-build-isolation . -v --no-deps
+
+          echo "===== Step 3: Verify Installation ====="
+          python3 tests/pytorch/test_sanity_import.py
+
+          echo "===== Environment Setup Complete ===== "
+
+      - name: Environment Setup Metax-specific
+        if: steps.should_run.outputs.should_run == 'true' && inputs.platform == 'metax'
         run: |
           set -euo pipefail
 
@@ -239,14 +263,57 @@ jobs:
           bash ${{ matrix.test_group.path }}
         timeout-minutes: 60
 
+      - name: Generate coverage report
+        if: inputs.upload_coverage && always()
+        working-directory: ${{ github.workspace }}
+        env:
+          PLATFORM: ${{ inputs.platform }}
+          DEVICE: ${{ inputs.device }}
+        run: |
+          # Install coverage (may already be present)
+          pip3 install coverage pytest-cov 2>/dev/null || true
+
+          # Merge all .coverage* files produced by sub-processes (torchrun spawns workers)
+          python3 -m coverage combine --keep 2>/dev/null || true
+          # Generate JSON coverage report (requires .coverage data from pytest --cov)
+          python3 -m coverage json -o "coverage-${PLATFORM}-${DEVICE}.json" \
+            --include="transformer_engine/*" 2>/dev/null || echo "WARNING: No coverage data found, skipping coverage-${PLATFORM}-${DEVICE}.json"
+
+          # Generate a JSON test report from JUnit XML logs
+          python3 - <<'PYEOF'
+          import json, glob, os, xml.etree.ElementTree as ET
+          platform = os.environ["PLATFORM"]
+          device = os.environ["DEVICE"]
+          results = {"platform": platform, "device": device, "test_suites": []}
+          for xml_file in sorted(glob.glob("/logs/**/*.xml", recursive=True)):
+              try:
+                  tree = ET.parse(xml_file)
+                  root = tree.getroot()
+                  suite = {
+                      "name": root.get("name", os.path.basename(xml_file)),
+                      "tests": int(root.get("tests", 0)),
+                      "errors": int(root.get("errors", 0)),
+                      "failures": int(root.get("failures", 0)),
+                      "skipped": int(root.get("skipped", 0)),
+                      "time": float(root.get("time", 0)),
+                  }
+                  results["test_suites"].append(suite)
+              except Exception as e:
+                  print(f"WARNING: Failed to parse {xml_file}: {e}")
+          with open(f"report-{platform}-{device}.json", "w") as f:
+              json.dump(results, f, indent=2)
+          print(f"Generated report-{platform}-{device}.json with {len(results['test_suites'])} suites")
+          PYEOF
+        continue-on-error: true
+
       - name: Upload coverage report
         if: inputs.upload_coverage && always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-${{ inputs.platform }}
+          name: coverage-${{ inputs.platform }}-${{ inputs.device }}
           path: |
-            coverage-${{ inputs.platform }}.json
-            report-${{ inputs.platform }}.json
+            coverage-${{ inputs.platform }}-${{ inputs.device }}.json
+            report-${{ inputs.platform }}-${{ inputs.device }}.json
 
       - name: Upload coverage report to FlagCICD
         if: inputs.upload_coverage && always()
@@ -255,7 +322,7 @@ jobs:
         with:
           backend_url: 'http://flagcicd-inner.flagos.net:8000/metrics/'
           user_id: '000000000000000000'
-          report_path: 'coverage-${{ inputs.platform }}.json'
+          report_path: 'coverage-${{ inputs.platform }}-${{ inputs.device }}.json'
           fail_on_error: 'false'
 
       # - name: Debug - keep container alive on failure
