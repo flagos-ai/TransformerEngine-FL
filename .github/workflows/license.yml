@@ -5,7 +5,8 @@
 # A workflow to trigger the TE license check on GitHub
 name: 'License'
 on:
-  pull_request: [__disabled_do_not_remove__]
+  pull_request: 
+    branches: [ "__disabled_do_not_remove__" ]
   workflow_dispatch:
 jobs:
   check:
