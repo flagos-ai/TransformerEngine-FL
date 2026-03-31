@@ -241,15 +241,23 @@ jobs:
           export PYTHONPATH=$GITHUB_WORKSPACE:${PYTHONPATH:-}
           export PATH=${CUDA_HOME:-/usr/local/cuda}/bin:$PATH
           export LD_LIBRARY_PATH=${CUDA_HOME:-/usr/local/cuda}/lib:${LD_LIBRARY_PATH:-}
-          # Ensure log directory exists regardless of volume mount state
-          mkdir -p /logs
-
+          
           # check envs before running tests
           echo "TE_PATH=$TE_PATH"
           echo "TE_LIB_PATH=$TE_LIB_PATH"
           echo "PYTHONPATH=$PYTHONPATH"
           echo "PATH=$PATH"
           echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
+          
+          # Ensure log directory exists regardless of volume mount state
+          mkdir -p /logs
+
+          # Enable coverage collection for all pytest invocations in test.sh
+          # PYTEST_ADDOPTS is automatically appended to every pytest call
+          if [ "${{ inputs.upload_coverage }}" = "true" ]; then
+            pip3 install pytest-cov 2>/dev/null || true
+            export PYTEST_ADDOPTS="--cov=transformer_engine --cov-append --cov-report="
+          fi
 
           if [[ "${{ matrix.test_group.name }}" == *"lint"* ]]; then
             export CPP_ONLY=0
@@ -263,8 +271,8 @@ jobs:
           bash ${{ matrix.test_group.path }}
         timeout-minutes: 60
 
-      - name: Generate coverage report
-        if: inputs.upload_coverage && always()
+      - name: Generate Coverage Report
+        if: inputs.upload_coverage && matrix.test_group.name == 'pytorch_unittest'
         working-directory: ${{ github.workspace }}
         env:
           PLATFORM: ${{ inputs.platform }}
@@ -306,8 +314,8 @@ jobs:
           PYEOF
         continue-on-error: true
 
-      - name: Upload coverage report
-        if: inputs.upload_coverage && always()
+      - name: Upload Coverage Report
+        if: inputs.upload_coverage && matrix.test_group.name == 'pytorch_unittest'
         uses: actions/upload-artifact@v4
         with:
           name: coverage-${{ inputs.platform }}-${{ inputs.device }}
@@ -315,8 +323,8 @@ jobs:
             coverage-${{ inputs.platform }}-${{ inputs.device }}.json
             report-${{ inputs.platform }}-${{ inputs.device }}.json
 
-      - name: Upload coverage report to FlagCICD
-        if: inputs.upload_coverage && always()
+      - name: Upload Coverage Report to FlagCICD
+        if: inputs.upload_coverage && matrix.test_group.name == 'pytorch_unittest'
         uses: flagos-ai/FlagOps/actions/post-pytest-report@v2
         continue-on-error: true
         with:
