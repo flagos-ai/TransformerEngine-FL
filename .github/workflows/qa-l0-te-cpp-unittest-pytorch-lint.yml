@@ -57,7 +57,6 @@ jobs:
           show-progress: true
           lfs: false
           submodules: recursive
-          fetch-depth: 0  
           set-safe-directory: true
 
       - name: Install Dependencies & Build Transformer Engine
