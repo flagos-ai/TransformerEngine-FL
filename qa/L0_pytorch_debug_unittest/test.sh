@@ -18,8 +18,9 @@ FAIL=0
 
 # It is not installed as a requirement,
 # because it is not available on PyPI.
-# pip uninstall -y nvdlfw-inspect
-# pip install git+https://github.com/NVIDIA/nvidia-dlfw-inspect.git
+pip uninstall -y nvdlfw-inspect
+pip install git+https://github.com/NVIDIA/nvidia-dlfw-inspect.git
+pip install pytest==8.2.1
 
 run_test_step() {
     local xml_file=$1
