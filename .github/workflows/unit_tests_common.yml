@@ -79,15 +79,18 @@ jobs:
       fail-fast: false
       matrix:
         test_group:
+          - name: license
+            path: "qa/L0_license/test.sh"
+            test_type: "license"
           - name: pytorch_lint
             path: "qa/L0_pytorch_lint/test.sh"
-            test_type: "sh"
+            test_type: "lint"
           - name: pytorch_debug
             path: "qa/L0_pytorch_debug_unittest/test.sh"
-            test_type: "sh"
+            test_type: "debug"
           - name: pytorch_unittest
             path: "qa/L0_pytorch_unittest/test.sh"
-            test_type: "sh"
+            test_type: "unittest"
 
     name: unit-${{ inputs.device }}-${{ matrix.test_group.name }}
     container:
@@ -120,17 +123,17 @@ jobs:
         with:
           set-safe-directory: true
 
-      - name: Activate Python environment
-        run: |
-          if [[ "$PLATFORM" == "cuda" ]] && [ -f /opt/miniconda3/etc/profile.d/conda.sh ]; then
-            source /opt/miniconda3/etc/profile.d/conda.sh
-            conda activate flagscale-train
-          elif [ -f /opt/conda/etc/profile.d/conda.sh ]; then
-            source /opt/conda/etc/profile.d/conda.sh
-            conda activate base
-          fi
-          echo "PATH=$PATH" >> $GITHUB_ENV
-          echo "Python: $(which python3) ($(python3 --version 2>&1))"
+      # - name: Activate Python environment
+      #   run: |
+      #     if [[ "$PLATFORM" == "cuda" ]] && [ -f /opt/miniconda3/etc/profile.d/conda.sh ]; then
+      #       source /opt/miniconda3/etc/profile.d/conda.sh
+      #       conda activate flagscale-train
+      #     elif [ -f /opt/conda/etc/profile.d/conda.sh ]; then
+      #       source /opt/conda/etc/profile.d/conda.sh
+      #       conda activate base
+      #     fi
+      #     echo "PATH=$PATH" >> $GITHUB_ENV
+      #     echo "Python: $(which python3) ($(python3 --version 2>&1))"
       
       - name: Environment Setup Cuda-specific
         if: steps.should_run.outputs.should_run == 'true' && inputs.platform == 'cuda'
@@ -161,6 +164,12 @@ jobs:
         run: |
           set -euo pipefail
 
+          echo "===== Step 0: Activate Python environment ====="
+          source /opt/conda/etc/profile.d/conda.sh
+          conda activate base
+          echo "PATH=$PATH" >> $GITHUB_ENV
+          echo "Python: $(which python3) ($(python3 --version 2>&1))"
+
           echo "===== Step 1: Base Environment Setup ====="
           # Configure MACA toolchain paths
           export PATH=/opt/maca/bin:$PATH
@@ -174,13 +183,11 @@ jobs:
 
           echo "===== Step 3: Install Required System Tools ====="
           # Install essential build tools (avoid modifying Python dependencies)
-          apt-get update -qq && apt-get install -y -qq git cmake ninja-build
+          apt-get update -qq && apt-get install -y -qq git cmake ninja-build curl
 
           echo "===== Step 4: Remove Existing TransformerEngine ====="
           # Prevent conflicts with preinstalled or incompatible versions
           python3 -m pip uninstall transformer_engine -y || true
-          
-          
           python3 -m pip install nvdlfw-inspect --no-deps || true
 
           # echo "===== Step 5: Install Metax Binary Backend ====="
@@ -272,7 +279,7 @@ jobs:
         timeout-minutes: 60
 
       - name: Generate Coverage Report
-        if: inputs.upload_coverage && matrix.test_group.name == 'pytorch_unittest'
+        if: inputs.upload_coverage && matrix.test_group.test_type == 'unittest'
         working-directory: ${{ github.workspace }}
         env:
           PLATFORM: ${{ inputs.platform }}
@@ -286,45 +293,19 @@ jobs:
           # Generate JSON coverage report (requires .coverage data from pytest --cov)
           python3 -m coverage json -o "coverage-${PLATFORM}-${DEVICE}.json" \
             --include="transformer_engine/*" 2>/dev/null || echo "WARNING: No coverage data found, skipping coverage-${PLATFORM}-${DEVICE}.json"
-
-          # Generate a JSON test report from JUnit XML logs
-          python3 - <<'PYEOF'
-          import json, glob, os, xml.etree.ElementTree as ET
-          platform = os.environ["PLATFORM"]
-          device = os.environ["DEVICE"]
-          results = {"platform": platform, "device": device, "test_suites": []}
-          for xml_file in sorted(glob.glob("/logs/**/*.xml", recursive=True)):
-              try:
-                  tree = ET.parse(xml_file)
-                  root = tree.getroot()
-                  suite = {
-                      "name": root.get("name", os.path.basename(xml_file)),
-                      "tests": int(root.get("tests", 0)),
-                      "errors": int(root.get("errors", 0)),
-                      "failures": int(root.get("failures", 0)),
-                      "skipped": int(root.get("skipped", 0)),
-                      "time": float(root.get("time", 0)),
-                  }
-                  results["test_suites"].append(suite)
-              except Exception as e:
-                  print(f"WARNING: Failed to parse {xml_file}: {e}")
-          with open(f"report-{platform}-{device}.json", "w") as f:
-              json.dump(results, f, indent=2)
-          print(f"Generated report-{platform}-{device}.json with {len(results['test_suites'])} suites")
-          PYEOF
         continue-on-error: true
 
       - name: Upload Coverage Report
-        if: inputs.upload_coverage && matrix.test_group.name == 'pytorch_unittest'
+        if: inputs.upload_coverage && matrix.test_group.test_type == 'unittest'
         uses: actions/upload-artifact@v4
+        continue-on-error: true
         with:
           name: coverage-${{ inputs.platform }}-${{ inputs.device }}
           path: |
             coverage-${{ inputs.platform }}-${{ inputs.device }}.json
-            report-${{ inputs.platform }}-${{ inputs.device }}.json
 
       - name: Upload Coverage Report to FlagCICD
-        if: inputs.upload_coverage && matrix.test_group.name == 'pytorch_unittest'
+        if: inputs.upload_coverage && matrix.test_group.test_type == 'unittest'
         uses: flagos-ai/FlagOps/actions/post-pytest-report@v2
         continue-on-error: true
         with:
