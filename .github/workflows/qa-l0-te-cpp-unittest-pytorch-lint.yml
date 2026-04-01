@@ -90,87 +90,87 @@ jobs:
           wait_for_gpu
 
       # too heavy, disabled for now
-      # - name: Run L0 C++ Unit Tests
-      #   # timeout-minutes: 60
-      #   env:
-      #     TE_PATH: .
-      #   run: |
-      #     # Activate conda environment
-      #     source /opt/miniconda3/etc/profile.d/conda.sh
-      #     conda activate flagscale-train
+      - name: Run L0 C++ Unit Tests
+        # timeout-minutes: 60
+        env:
+          TE_PATH: .
+        run: |
+          # Activate conda environment
+          source /opt/miniconda3/etc/profile.d/conda.sh
+          conda activate flagscale-train
 
-      #     # Get TE library paths with robust detection
-      #     TE_LIB_PATH=$(pip3 show transformer-engine | grep -E "Location:|Editable project location:" | tail -n 1 | awk '{print $NF}')
-      #     TE_CPP_LIB_PATH="${TE_LIB_PATH}/transformer_engine"
+          # Get TE library paths with robust detection
+          TE_LIB_PATH=$(pip3 show transformer-engine | grep -E "Location:|Editable project location:" | tail -n 1 | awk '{print $NF}')
+          TE_CPP_LIB_PATH="${TE_LIB_PATH}/transformer_engine"
 
-      #     # Set environment variables for build
-      #     export CMAKE_PREFIX_PATH="${TE_CPP_LIB_PATH}:${CMAKE_PREFIX_PATH}"
-      #     export LD_LIBRARY_PATH="${TE_CPP_LIB_PATH}:${LD_LIBRARY_PATH}"
-      #     NUM_PHYSICAL_CORES=$(nproc)
-      #     NUM_PARALLEL_JOBS=$(nproc)
+          # Set environment variables for build
+          export CMAKE_PREFIX_PATH="${TE_CPP_LIB_PATH}:${CMAKE_PREFIX_PATH}"
+          export LD_LIBRARY_PATH="${TE_CPP_LIB_PATH}:${LD_LIBRARY_PATH}"
+          NUM_PHYSICAL_CORES=$(nproc)
+          NUM_PARALLEL_JOBS=$(nproc)
 
-      #     # Build and run C++ tests
-      #     cd $TE_PATH/tests/cpp
-      #     cmake -GNinja -Bbuild . -DTE_LIB_PATH="${TE_CPP_LIB_PATH}"
-      #     cmake --build build
-      #     export OMP_NUM_THREADS=$((NUM_PHYSICAL_CORES / NUM_PARALLEL_JOBS))
+          # Build and run C++ tests
+          cd $TE_PATH/tests/cpp
+          cmake -GNinja -Bbuild . -DTE_LIB_PATH="${TE_CPP_LIB_PATH}"
+          cmake --build build
+          export OMP_NUM_THREADS=$((NUM_PHYSICAL_CORES / NUM_PARALLEL_JOBS))
 
-      #     # Run C++ tests with verbose output
-      #     echo "=== Running C++ Unit Tests ==="
-      #     ctest --test-dir build -j$NUM_PARALLEL_JOBS
+          # Run C++ tests with verbose output
+          echo "=== Running C++ Unit Tests ==="
+          ctest --test-dir build -j$NUM_PARALLEL_JOBS
 
-      # - name: PyTorch C++ Lint
-      #   # timeout-minutes: 5
-      #   env:
-      #     CPP_ONLY: 1
-      #     TE_PATH: .
-      #   run: |
-      #     # Activate conda environment
-      #     source /opt/miniconda3/etc/profile.d/conda.sh
-      #     conda activate flagscale-train
+      - name: PyTorch C++ Lint
+        # timeout-minutes: 5
+        env:
+          CPP_ONLY: 1
+          TE_PATH: .
+        run: |
+          # Activate conda environment
+          source /opt/miniconda3/etc/profile.d/conda.sh
+          conda activate flagscale-train
 
-      #     # Run C++ lint checks
-      #     echo "=== Running C++ Lint Checks ==="
-      #     bash ./qa/L0_pytorch_lint/test.sh || true
+          # Run C++ lint checks
+          echo "=== Running C++ Lint Checks ==="
+          bash ./qa/L0_pytorch_lint/test.sh || true
 
-      #     echo ""
-      #     echo "-----------------------------------------------------"
-      #     echo "Note: Pylint check ignores errors C0411 (incorrect import position) and W0611 (unused import), which can be achieved by adding the parameter --disable=C0411,W0611"
-      #     echo "-----------------------------------------------------"
-      #   continue-on-error: true
+          echo ""
+          echo "-----------------------------------------------------"
+          echo "Note: Pylint check ignores errors C0411 (incorrect import position) and W0611 (unused import), which can be achieved by adding the parameter --disable=C0411,W0611"
+          echo "-----------------------------------------------------"
+        continue-on-error: true
 
-      # - name: PyTorch Python Lint
-      #   # timeout-minutes: 5
-      #   env:
-      #     PYTHON_ONLY: 1
-      #     TE_PATH: .
-      #   run: |
-      #     # Activate conda environment
-      #     source /opt/miniconda3/etc/profile.d/conda.sh
-      #     conda activate flagscale-train
+      - name: PyTorch Python Lint
+        # timeout-minutes: 5
+        env:
+          PYTHON_ONLY: 1
+          TE_PATH: .
+        run: |
+          # Activate conda environment
+          source /opt/miniconda3/etc/profile.d/conda.sh
+          conda activate flagscale-train
 
-      #     # Run PyTorch lint checks
-      #     echo "=== Running PyTorch Lint Checks ==="
-      #     bash ./qa/L0_pytorch_lint/test.sh || true
+          # Run PyTorch lint checks
+          echo "=== Running PyTorch Lint Checks ==="
+          bash ./qa/L0_pytorch_lint/test.sh || true
 
-      #     echo ""
-      #     echo "-----------------------------------------------------"
-      #     echo "Note: Pylint check ignores errors C0411 (incorrect import position) and W0611 (unused import), which can be achieved by adding the parameter --disable=C0411,W0611"
-      #     echo "-----------------------------------------------------"
-      #   continue-on-error: true
+          echo ""
+          echo "-----------------------------------------------------"
+          echo "Note: Pylint check ignores errors C0411 (incorrect import position) and W0611 (unused import), which can be achieved by adding the parameter --disable=C0411,W0611"
+          echo "-----------------------------------------------------"
+        continue-on-error: true
 
-      # - name: Run L0 PyTorch Debug Unit Tests
-      #   # timeout-minutes: 10
-      #   env:
-      #     TE_PATH: .
-      #   run: |
-      #     # Activate conda environment
-      #     source /opt/miniconda3/etc/profile.d/conda.sh
-      #     conda activate flagscale-train
+      - name: Run L0 PyTorch Debug Unit Tests
+        # timeout-minutes: 10
+        env:
+          TE_PATH: .
+        run: |
+          # Activate conda environment
+          source /opt/miniconda3/etc/profile.d/conda.sh
+          conda activate flagscale-train
 
-      #     # Run debug unit tests
-      #     echo "=== Running L0 PyTorch Debug Unit Tests ==="
-      #     bash ./qa/L0_pytorch_debug_unittest/test.sh
+          # Run debug unit tests
+          echo "=== Running L0 PyTorch Debug Unit Tests ==="
+          bash ./qa/L0_pytorch_debug_unittest/test.sh
 
       - name: Run L0 PyTorch Core Unit Tests
         # timeout-minutes: 10
