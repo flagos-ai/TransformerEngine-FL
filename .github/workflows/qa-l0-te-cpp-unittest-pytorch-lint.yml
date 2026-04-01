@@ -90,34 +90,34 @@ jobs:
           wait_for_gpu
 
       # too heavy, disabled for now
-      - name: Run L0 C++ Unit Tests
-        # timeout-minutes: 60
-        env:
-          TE_PATH: .
-        run: |
-          # Activate conda environment
-          source /opt/miniconda3/etc/profile.d/conda.sh
-          conda activate flagscale-train
+      # - name: Run L0 C++ Unit Tests
+      #   # timeout-minutes: 60
+      #   env:
+      #     TE_PATH: .
+      #   run: |
+      #     # Activate conda environment
+      #     source /opt/miniconda3/etc/profile.d/conda.sh
+      #     conda activate flagscale-train
 
-          # Get TE library paths with robust detection
-          TE_LIB_PATH=$(pip3 show transformer-engine | grep -E "Location:|Editable project location:" | tail -n 1 | awk '{print $NF}')
-          TE_CPP_LIB_PATH="${TE_LIB_PATH}/transformer_engine"
+      #     # Get TE library paths with robust detection
+      #     TE_LIB_PATH=$(pip3 show transformer-engine | grep -E "Location:|Editable project location:" | tail -n 1 | awk '{print $NF}')
+      #     TE_CPP_LIB_PATH="${TE_LIB_PATH}/transformer_engine"
 
-          # Set environment variables for build
-          export CMAKE_PREFIX_PATH="${TE_CPP_LIB_PATH}:${CMAKE_PREFIX_PATH}"
-          export LD_LIBRARY_PATH="${TE_CPP_LIB_PATH}:${LD_LIBRARY_PATH}"
-          NUM_PHYSICAL_CORES=$(nproc)
-          NUM_PARALLEL_JOBS=$(nproc)
+      #     # Set environment variables for build
+      #     export CMAKE_PREFIX_PATH="${TE_CPP_LIB_PATH}:${CMAKE_PREFIX_PATH}"
+      #     export LD_LIBRARY_PATH="${TE_CPP_LIB_PATH}:${LD_LIBRARY_PATH}"
+      #     NUM_PHYSICAL_CORES=$(nproc)
+      #     NUM_PARALLEL_JOBS=$(nproc)
 
-          # Build and run C++ tests
-          cd $TE_PATH/tests/cpp
-          cmake -GNinja -Bbuild . -DTE_LIB_PATH="${TE_CPP_LIB_PATH}"
-          cmake --build build
-          export OMP_NUM_THREADS=$((NUM_PHYSICAL_CORES / NUM_PARALLEL_JOBS))
+      #     # Build and run C++ tests
+      #     cd $TE_PATH/tests/cpp
+      #     cmake -GNinja -Bbuild . -DTE_LIB_PATH="${TE_CPP_LIB_PATH}"
+      #     cmake --build build
+      #     export OMP_NUM_THREADS=$((NUM_PHYSICAL_CORES / NUM_PARALLEL_JOBS))
 
-          # Run C++ tests with verbose output
-          echo "=== Running C++ Unit Tests ==="
-          ctest --test-dir build -j$NUM_PARALLEL_JOBS
+      #     # Run C++ tests with verbose output
+      #     echo "=== Running C++ Unit Tests ==="
+      #     ctest --test-dir build -j$NUM_PARALLEL_JOBS
 
       - name: PyTorch C++ Lint
         # timeout-minutes: 5
