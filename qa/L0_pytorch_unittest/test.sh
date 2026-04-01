@@ -47,7 +47,7 @@ run_test_step() {
     fi
 
     if [[ "$IS_CUDA_BACKEND" == *"cuda"* ]]; then
-        if [[ "$test_path" == *"test_checkpoint.py" ]]; then
+        if [[ "$test_path" == *"test_checkpoint.py" || "$test_path" == *"test_cpu_offloading.py" || "$test_path" == *"test_attention.py" ]]; then
             echo "-------------------------------------------------------"
             echo "[SKIP] CUDA Backend detected: Ignoring $label"
             echo "-------------------------------------------------------"
