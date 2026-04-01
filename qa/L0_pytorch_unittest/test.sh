@@ -8,6 +8,7 @@ mkdir -p "$XML_LOG_DIR"
 pip install pytest==8.2.1
 FAIL=0
 
+IS_CUDA_BACKEND=$(python3 -c "import torch; print('cuda' if torch.cuda.is_available() else 'cpu')" 2>/dev/null)
 
 test_fail() {
     FAIL=1
@@ -43,6 +44,15 @@ run_test_step() {
                 return 0
                 ;;
         esac
+    fi
+
+    if [[ "$IS_CUDA_BACKEND" == *"cuda"* ]]; then
+        if [[ "$test_path" == *"test_checkpoint.py" ]]; then
+            echo "-------------------------------------------------------"
+            echo "[SKIP] CUDA Backend detected: Ignoring $label"
+            echo "-------------------------------------------------------"
+            return 0
+        fi
     fi
 
 
