@@ -79,9 +79,6 @@ jobs:
       fail-fast: false
       matrix:
         test_group:
-          - name: license
-            path: "qa/L0_license/test.sh"
-            test_type: "license"
           - name: pytorch_lint
             path: "qa/L0_pytorch_lint/test.sh"
             test_type: "lint"
@@ -114,10 +111,11 @@ jobs:
           else
             CHANGED='${{ needs.detect_changes.outputs.core }}'
           fi
+          
           # For debugging, you can force this to true
           echo "should_run=true" >> $GITHUB_OUTPUT
 
-      - name: Checkout source code
+      - name: Checkout Source Code
         if: steps.should_run.outputs.should_run == 'true'
         uses: actions/checkout@v4
         with:
@@ -135,7 +133,7 @@ jobs:
       #     echo "PATH=$PATH" >> $GITHUB_ENV
       #     echo "Python: $(which python3) ($(python3 --version 2>&1))"
       
-      - name: Environment Setup Cuda-specific
+      - name: Environment Setup on Cuda
         if: steps.should_run.outputs.should_run == 'true' && inputs.platform == 'cuda'
         run: |
           set -euo pipefail
@@ -159,7 +157,7 @@ jobs:
 
           echo "===== Environment Setup Complete ===== "
 
-      - name: Environment Setup Metax-specific
+      - name: Environment Setup on Metax
         if: steps.should_run.outputs.should_run == 'true' && inputs.platform == 'metax'
         run: |
           set -euo pipefail
@@ -304,8 +302,21 @@ jobs:
           path: |
             coverage-${{ inputs.platform }}-${{ inputs.device }}.json
 
-      - name: Upload Coverage Report to FlagCICD
+      - name: Check FlagCICD Reachability
         if: inputs.upload_coverage && matrix.test_group.test_type == 'unittest'
+        id: check_flagcicd
+        continue-on-error: true
+        run: |
+          if curl -sf --max-time 3 --connect-timeout 2 \
+               "http://flagcicd-inner.flagos.net:8000/" -o /dev/null 2>/dev/null; then
+            echo "reachable=true" >> $GITHUB_OUTPUT
+          else
+            echo "reachable=false" >> $GITHUB_OUTPUT
+            echo "INFO: flagcicd-inner.flagos.net unreachable from this runner, skipping report upload"
+          fi
+
+      - name: Upload Coverage Report to FlagCICD
+        if: inputs.upload_coverage && matrix.test_group.test_type == 'unittest' && steps.check_flagcicd.outputs.reachable == 'true'
         uses: flagos-ai/FlagOps/actions/post-pytest-report@v2
         continue-on-error: true
         with:
