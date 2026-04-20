@@ -707,6 +707,133 @@ class ReferenceBackend(TEFLBackendBase):
             wd_after_momentum,
             scale,
         )
+ 
+    ##NOTE(malin) add Begin
+    def multi_tensor_compute_scale_and_scale_inv(
+        self,
+        chunk_size: int,
+        noop_flag: torch.Tensor,
+        tensor_lists: List[List[torch.Tensor]],
+        max_fp8: float,
+        force_pow_2_scales: bool,
+        epsilon: float,
+    ) -> None:
+        return multi_tensor_compute_scale_and_scale_inv_torch(
+            chunk_size,
+            noop_flag,
+            tensor_lists,
+            max_fp8,
+            force_pow_2_scales,
+            amax_epsilon=epsilon,
+        )
+
+
+    def multi_tensor_adam_fp8(
+        self,
+        chunk_size: int,
+        noop_flag: torch.Tensor,
+        tensor_lists: List[List[torch.Tensor]],
+        lr: float,
+        beta1: float,
+        beta2: float,
+        epsilon: float,
+        step: int,
+        mode: int,
+        bias_correction: int,
+        weight_decay: float,
+        fp8_dtype: Any,
+    ) -> None:
+        return multi_tensor_adam_fp8_torch(
+            chunk_size,
+            noop_flag,
+            tensor_lists,
+            lr,
+            beta1,
+            beta2,
+            epsilon,
+            step,
+            mode,
+            bias_correction,
+            weight_decay,
+            int(fp8_dtype),
+        )
+
+
+    def multi_tensor_adam_capturable(
+        self,
+        chunk_size: int,
+        noop_flag: torch.Tensor,
+        tensor_lists: List[List[torch.Tensor]],
+        lr: torch.Tensor,
+        beta1: float,
+        beta2: float,
+        epsilon: float,
+        step: torch.Tensor,
+        mode: int,
+        bias_correction: int,
+        weight_decay: float,
+        inv_scale: torch.Tensor,
+    ) -> None:
+        return multi_tensor_adam_capturable_torch(
+            chunk_size,
+            noop_flag,
+            tensor_lists,
+            lr,
+            beta1,
+            beta2,
+            epsilon,
+            step,
+            mode,
+            bias_correction,
+            weight_decay,
+            inv_scale,
+        )
+
+
+    def multi_tensor_adam_capturable_master(
+        self,
+        chunk_size: int,
+        noop_flag: torch.Tensor,
+        tensor_lists: List[List[torch.Tensor]],
+        lr: torch.Tensor,
+        beta1: float,
+        beta2: float,
+        epsilon: float,
+        step: torch.Tensor,
+        mode: int,
+        bias_correction: int,
+        weight_decay: float,
+        inv_scale: torch.Tensor,
+    ) -> None:
+        return multi_tensor_adam_capturable_master_torch(
+            chunk_size,
+            noop_flag,
+            tensor_lists,
+            lr,
+            beta1,
+            beta2,
+            epsilon,
+            step,
+            mode,
+            bias_correction,
+            weight_decay,
+            inv_scale,
+        )
+    
+
+    def bulk_overlap_ag_with_external_gemm(
+        self,
+        allgather_communicator: CommOverlap,
+        send_stream: Any,
+        recv_stream: Any,
+    ) -> None:
+        raise RuntimeError(
+            "bulk_overlap_ag_with_external_gemm requires Transformer Engine CUDA extensions "
+            "(userbuffers / comm-GEMM overlap via transformer_engine_torch_nv). "
+            "It is not available in TE-FL skip-CUDA builds. "
+            "Disable Userbuffers overlap (UB) / related options, or install TE with CUDA."
+        )
+    ##NOTE(malin) add End
 
     def multi_tensor_compute_scale_and_scale_inv(
         self,

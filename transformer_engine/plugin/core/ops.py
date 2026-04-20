@@ -1917,6 +1917,12 @@ class TEFLModule:
         return instance
 
     def __repr__(self) -> str:
+        ##NOTE(malin) add Begin
+        try:
+            self._manager.ensure_initialized()
+        except Exception:
+            pass
+        ##NOTE(malin) add End
         op_count = len(self._manager.registry.list_operators())
         return f"TEFLModule(operators={op_count}, manager={self._manager.__class__.__name__})"
 

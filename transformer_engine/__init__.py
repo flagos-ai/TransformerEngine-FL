@@ -19,15 +19,22 @@ TE_PLATFORM = torch.cuda
 # Apply MUSA (VENDOR) Patches, such as torch.cuda.device -> torch.musa.device
 try:
     from .plugin.core.backends.vendor.musa.patches import apply_patch as _musa_apply_patch
-
     _musa_apply_patch()
+except Exception as e:
+    pass
+
+# Apply TXDA (VENDOR) such as torch.cuda.device -> torch.txda.device
+try:
+    TE_DEVICE_TYPE = "txda"
+    TE_PLATFORM = torch.txda
+    from .plugin.core.backends.vendor.tsingmicro.patches import apply_patch as _txda_apply_patch
+    _txda_apply_patch()
 except Exception as e:
     pass
 
 # Apply NPU (VENDOR) Patches, such as torch.cuda.device -> torch_npu.npu.device
 try:
     from .plugin.core.backends.vendor.npu.patches import apply_patch as _npu_apply_patch
-
     _npu_apply_patch()
 except Exception as e:
     pass
@@ -101,4 +108,4 @@ except FileNotFoundError as e:
                 category=RuntimeWarning,
             )
 
-__version__ = str(metadata.version("transformer_engine"))
+#__version__ = str(metadata.version("transformer_engine"))  ##NOTE(malin) commented out
