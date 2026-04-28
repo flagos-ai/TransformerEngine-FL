@@ -95,3 +95,11 @@ def register_builtins(registry: OpRegistry) -> None:
     except Exception as e:
         # MUSA may not be available, this is expected
         pass
+    # Register enflame (VENDOR) implementations
+    try:
+        from .backends.vendor.enflame.register_ops import register_builtins as register_enflame
+
+        register_enflame(registry)
+    except Exception as e:
+        # enflame may not be available, this is expected
+        pass
