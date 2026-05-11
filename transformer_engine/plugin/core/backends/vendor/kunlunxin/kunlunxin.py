@@ -1,3 +1,7 @@
+# Copyright (c) 2025, BAAI. All rights reserved.
+#
+# See LICENSE for license information.
+
 import os
 import subprocess
 from typing import Any, Dict, List, Optional, Tuple, Union
