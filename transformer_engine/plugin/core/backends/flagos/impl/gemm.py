@@ -72,7 +72,6 @@ def generic_gemm_fl(
     assert not gelu and gelu_in is None, "Triton-Based General Gemm do not support gelu now"
     assert quantizer is None, "Triton-Based General Gemm do not support quantization now"
 
-
     alpha = validate_gemm_scale(alpha, True)
     beta = validate_gemm_scale(beta, accumulate)
 
