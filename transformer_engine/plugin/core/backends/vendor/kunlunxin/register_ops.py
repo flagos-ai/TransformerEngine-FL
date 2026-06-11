@@ -173,6 +173,14 @@ def register_builtins(registry) -> None:
             vendor="KUNLUNXIN",
             priority=100,
         ),
+        OpImpl(
+            op_name="multi_tensor_compute_scale_inv_e8m0",
+            impl_id="vendor.kunlunxin",
+            kind=BackendImplKind.VENDOR,
+            fn=_bind_is_available(backend.multi_tensor_compute_scale_inv_e8m0, is_avail),
+            vendor="KUNLUNXIN",
+            priority=100,
+        ),
     ]
 
     registry.register_many(impls)
