@@ -43,6 +43,22 @@ def register_builtins(registry) -> None:
 
     impls = [
         OpImpl(
+            op_name="layernorm_fwd",
+            impl_id="default.flagos",
+            kind=BackendImplKind.DEFAULT,
+            fn=_bind_is_available(backend.layernorm_fwd, is_avail),
+            vendor=None,
+            priority=150,
+        ),
+        OpImpl(
+            op_name="layernorm_bwd",
+            impl_id="default.flagos",
+            kind=BackendImplKind.DEFAULT,
+            fn=_bind_is_available(backend.layernorm_bwd, is_avail),
+            vendor=None,
+            priority=150,
+        ),
+        OpImpl(
             op_name="rmsnorm_fwd",
             impl_id="default.flagos",
             kind=BackendImplKind.DEFAULT,

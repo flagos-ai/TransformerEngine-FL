@@ -7,3 +7,4 @@ from .rmsnorm import *
 from .fused_adam import *
 from .multi_tensor import *
 from .softmax import *
+from .normalization import *

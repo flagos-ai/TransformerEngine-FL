@@ -10,6 +10,8 @@ import torch
 from ...ops import *
 
 from .impl import (
+    layernorm_fwd_fl,
+    layernorm_bwd_fl,
     rmsnorm_fwd_fl,
     rmsnorm_bwd_fl,
     multi_tensor_scale_fl,
@@ -160,6 +162,50 @@ class FlagOSBackend(TEFLBackendBase):
         )
 
     # Other granular functions
+    def layernorm_fwd(
+        self,
+        input: torch.Tensor,
+        weight: torch.Tensor,
+        bias: Optional[torch.Tensor],
+        eps: float,
+        ln_out: Any,
+        quantizer: Any,
+        otype: DType,
+        sm_margin: int,
+        zero_centered_gamma: bool,
+    ) -> List[Any]:
+        return layernorm_fwd_fl(
+            input=input,
+            weight=weight,
+            bias=bias,
+            eps=eps,
+            ln_out=ln_out,
+            quantizer=quantizer,
+            odtype=otype,
+            sm_margin=sm_margin,
+            zero_centered_gamma=zero_centered_gamma,
+        )
+
+    def layernorm_bwd(
+        self,
+        dz: torch.Tensor,
+        x: torch.Tensor,
+        mu: torch.Tensor,
+        rsigma: torch.Tensor,
+        gamma: torch.Tensor,
+        sm_margin: int,
+        zero_centered_gamma: bool,
+    ) -> List[Any]:
+        return layernorm_bwd_fl(
+            dy=dz,
+            x=x,
+            mu=mu,
+            rsigma=rsigma,
+            gamma=gamma,
+            sm_margin=sm_margin,
+            zero_centered_gamma=zero_centered_gamma,
+        )
+
     def rmsnorm_fwd(
         self,
         input: Any,
