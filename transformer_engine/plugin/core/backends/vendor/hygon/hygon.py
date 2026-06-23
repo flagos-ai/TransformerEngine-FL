@@ -37,7 +37,15 @@ def _load_hygon_libs():
         hygon_spec = importlib.util.find_spec("transformer_engine_hygon")
         if hygon_spec is None:
             return False
-        hygon_path = Path(hygon_spec.origin).parent
+        
+        if hygon_spec.origin is not None:
+            hygon_path = Path(hygon_spec.origin).parent
+        elif hygon_spec.submodule_search_locations:
+            hygon_path = Path(hygon_spec.submodule_search_locations[0])
+        else:
+            print("[ERROR _load_hygon_libs] cannot determine package path, origin is None and submodule_search_locations is empty")
+            return False
+        
         for file_path in hygon_path.iterdir():
             if file_path.name.startswith(common_prefix) and file_path.suffix == ext:
                 common_files.append(file_path)
