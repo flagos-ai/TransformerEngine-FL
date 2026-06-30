@@ -1637,8 +1637,11 @@ class HygonBackend(TEFLBackendBase):
         tensor_lists: List[List[torch.Tensor]],
         scale: torch.Tensor,
     ) -> None:
+        # transform_engine_hygon does not support multi_tensor_scale_tensor
+        # (from upstream Nvidia TE v2.14). Use multi_tensor_scale as a workaround.
         tex = self._get_tex()
-        return tex.multi_tensor_scale_tensor(chunk_size, noop_flag, tensor_lists, scale)
+        scale_value = scale.item()
+        return tex.multi_tensor_scale(chunk_size, noop_flag, tensor_lists, scale_value)
 
     def multi_tensor_l2norm(
         self,
