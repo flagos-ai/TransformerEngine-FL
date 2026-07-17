@@ -425,9 +425,8 @@ def test_gemm_backward_with_gelu():
     sqrt_2_over_pi = 0.7978845608028654
     u = sqrt_2_over_pi * (x + 0.044715 * x.pow(3))
     tanh_u = torch.tanh(u)
-    gelu_deriv = (
-        0.5 * (1.0 + tanh_u)
-        + 0.5 * x * (1.0 - tanh_u.pow(2)) * sqrt_2_over_pi * (1.0 + 3.0 * 0.044715 * x.pow(2))
+    gelu_deriv = 0.5 * (1.0 + tanh_u) + 0.5 * x * (1.0 - tanh_u.pow(2)) * sqrt_2_over_pi * (
+        1.0 + 3.0 * 0.044715 * x.pow(2)
     )
     expected_out = dY * gelu_deriv
 
