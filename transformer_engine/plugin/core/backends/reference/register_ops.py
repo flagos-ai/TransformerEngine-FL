@@ -516,6 +516,23 @@ def register_builtins(registry) -> None:
             vendor=None,
             priority=50,
         ),
+        # THD <-> BSHD format conversion
+        OpImpl(
+            op_name="convert_thd_to_bshd",
+            impl_id="reference.torch",
+            kind=BackendImplKind.REFERENCE,
+            fn=_bind_is_available(backend.convert_thd_to_bshd, is_avail),
+            vendor=None,
+            priority=50,
+        ),
+        OpImpl(
+            op_name="convert_bshd_to_thd",
+            impl_id="reference.torch",
+            kind=BackendImplKind.REFERENCE,
+            fn=_bind_is_available(backend.convert_bshd_to_thd, is_avail),
+            vendor=None,
+            priority=50,
+        ),
         # FlashAttention class getter
         OpImpl(
             op_name="get_flash_attention_class",

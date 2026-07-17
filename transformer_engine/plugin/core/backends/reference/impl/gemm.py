@@ -5,6 +5,8 @@
 from typing import Any, Optional, Tuple, Union
 import torch
 
+from .activation import dgelu_torch
+
 __all__ = [
     "general_gemm_torch",
 ]
@@ -84,25 +86,33 @@ def general_gemm_torch(
     if alpha != 1.0:
         out = out * alpha
 
-    if original_B_shape is not None:
+    # A non-transposed B contributes its outer dimensions to the output. A
+    # transposed B does not, so its flattened shape must not be restored (the
+    # latter is the layout normally used by weight-gradient GEMMs).
+    if original_B_shape is not None and not transB:
         out = out.view(original_B_shape[0], original_B_shape[1], -1)
 
     gelu_input_ret = None
-    if gelu and gelu_in is not None:
-        pass
 
-    if bias is not None:
+    # In a backward GEMM, `bias` only requests the fused BGRAD epilogue. Its
+    # value is not added to the GEMM result.
+    if bias is not None and not grad:
         if bias.device != target_device:
             bias = bias.to(target_device)
         out = out + bias
 
     if gelu:
-        if gelu_in is not None:
-            gelu_in.copy_(out)
-            gelu_input_ret = gelu_in
+        if grad:
+            if gelu_in is None:
+                raise ValueError("gelu_in must be provided for a backward GELU GEMM")
+            out = dgelu_torch(out, gelu_in, quantizer=None)
         else:
-            gelu_input_ret = out.clone()
-        out = F.gelu(out, approximate="tanh")
+            if gelu_in is not None:
+                gelu_in.copy_(out)
+                gelu_input_ret = gelu_in
+            else:
+                gelu_input_ret = out.clone()
+            out = F.gelu(out, approximate="tanh")
 
     torch_out_dtype = _convert_dtype(output_dtype)
     if torch_out_dtype is not None and out.dtype != torch_out_dtype:
@@ -121,7 +131,9 @@ def general_gemm_torch(
 
     bias_grad = None
     if grad and bias is not None:
-        pass
+        # cuBLASLt's BGRADB epilogue always reduces GEMM input B. Flattening
+        # all leading dimensions also handles sequence-shaped gradient input.
+        bias_grad = B.sum(dim=0).to(dtype=out.dtype)
 
     extra_output_ret = None
 

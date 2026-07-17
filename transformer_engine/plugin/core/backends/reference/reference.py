@@ -740,6 +740,52 @@ class ReferenceBackend(TEFLBackendBase):
             block_len,
         )
 
+    def convert_thd_to_bshd(
+        self,
+        tensor: torch.Tensor,
+        cu_seqlens: torch.Tensor,
+        b: int,
+        max_seq_len: int,
+    ) -> torch.Tensor:
+        """Convert THD (packed tokens) format to BSHD (batched, padded) format."""
+        # tensor shape: [total_tokens, num_heads, head_dim]
+        # output shape: [b, max_seq_len, num_heads, head_dim]
+        remaining_dims = tensor.shape[1:]
+        output = torch.zeros(
+            (b, max_seq_len) + remaining_dims,
+            dtype=tensor.dtype,
+            device=tensor.device,
+        )
+        for i in range(b):
+            start = cu_seqlens[i].item()
+            end = cu_seqlens[i + 1].item()
+            seq_len = end - start
+            output[i, :seq_len] = tensor[start:end]
+        return output
+
+    def convert_bshd_to_thd(
+        self,
+        tensor: torch.Tensor,
+        cu_seqlens: torch.Tensor,
+        t: int,
+    ) -> torch.Tensor:
+        """Convert BSHD (batched, padded) format to THD (packed tokens) format."""
+        # tensor shape: [b, max_seq_len, num_heads, head_dim]
+        # output shape: [t, num_heads, head_dim]
+        b = tensor.shape[0]
+        remaining_dims = tensor.shape[2:]
+        output = torch.zeros(
+            (t,) + remaining_dims,
+            dtype=tensor.dtype,
+            device=tensor.device,
+        )
+        for i in range(b):
+            start = cu_seqlens[i].item()
+            end = cu_seqlens[i + 1].item()
+            seq_len = end - start
+            output[start:end] = tensor[i, :seq_len]
+        return output
+
     def get_flash_attention_class(self):
         from .flash_attention import FlashAttentionTorch
 
