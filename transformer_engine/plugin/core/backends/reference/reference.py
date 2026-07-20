@@ -707,7 +707,6 @@ class ReferenceBackend(TEFLBackendBase):
             wd_after_momentum,
             scale,
         )
- 
 
     def multi_tensor_compute_scale_and_scale_inv(
         self,
