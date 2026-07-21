@@ -74,32 +74,6 @@ def assert_close(npu_out, ref_out, dtype, msg=""):
 # Mock tests (no NPU required)
 # ===========================================================================
 
-
-class TestAvailability:
-    def test_get_cudnn_version_returns_zero(self):
-        from transformer_engine.plugin.core.backends.vendor.npu.npu import NPUBackend
-
-        b = NPUBackend.__new__(NPUBackend)
-        assert b.get_cudnn_version() == 0
-
-
-class TestQuantize:
-    def test_quantize_with_quantizer(self):
-        from transformer_engine.plugin.core.backends.vendor.npu.npu import NPUBackend
-
-        b = NPUBackend.__new__(NPUBackend)
-        quantizer = MagicMock()
-        quantizer.quantize.return_value = "quantized"
-        assert b.quantize(torch.randn(4, 4), quantizer) == "quantized"
-
-    def test_quantize_without_quantizer(self):
-        from transformer_engine.plugin.core.backends.vendor.npu.npu import NPUBackend
-
-        b = NPUBackend.__new__(NPUBackend)
-        inp = torch.randn(4, 4)
-        assert b.quantize(inp, None) is inp
-
-
 class TestNPUFlashAttentionValidation:
     def test_window_size_sliding_raises(self):
         from transformer_engine.plugin.core.backends.vendor.npu.flash_attention import (
@@ -130,306 +104,6 @@ class TestNPUFlashAttentionValidation:
         q = torch.randn(1, 4, 2, 64)
         with pytest.raises(NotImplementedError, match="[Cc]ontext"):
             fa.forward(q, q, q, qkv_layout="bshd_bshd_bshd", cp_group="group")
-
-
-# ===========================================================================
-# Real NPU: Activations Forward — precision vs reference
-# ===========================================================================
-@requires_npu
-class TestNPUActivationsFwdAccuracy:
-    """Forward activations: NPU vs reference backend."""
-
-    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-    @pytest.mark.parametrize("act_fn", ["gelu", "relu", "silu"])
-    def test_basic_activations(self, npu_backend, ref_backend, act_fn, dtype):
-        torch.manual_seed(42)
-        x = torch.randn(8, 128, dtype=dtype)
-        npu_out = getattr(npu_backend, act_fn)(x.to("npu"), None)
-        ref_out = getattr(ref_backend, act_fn)(x, None)
-        assert_close(npu_out, ref_out, dtype, msg=f"{act_fn}")
-
-    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-    @pytest.mark.parametrize("act_fn", ["geglu", "reglu", "swiglu"])
-    def test_gated_activations(self, npu_backend, ref_backend, act_fn, dtype):
-        torch.manual_seed(42)
-        x = torch.randn(8, 256, dtype=dtype)
-        npu_out = getattr(npu_backend, act_fn)(x.to("npu"), None)
-        ref_out = getattr(ref_backend, act_fn)(x, None)
-        assert_close(npu_out, ref_out, dtype, msg=f"{act_fn}")
-
-    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-    @pytest.mark.parametrize("act_fn", ["srelu", "qgelu"])
-    def test_extended_activations(self, npu_backend, ref_backend, act_fn, dtype):
-        torch.manual_seed(42)
-        x = torch.randn(8, 128, dtype=dtype)
-        npu_out = getattr(npu_backend, act_fn)(x.to("npu"), None)
-        ref_out = getattr(ref_backend, act_fn)(x, None)
-        assert_close(npu_out, ref_out, dtype, msg=f"{act_fn}")
-
-    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-    @pytest.mark.parametrize("act_fn", ["qgeglu", "sreglu"])
-    def test_extended_gated_activations(self, npu_backend, ref_backend, act_fn, dtype):
-        torch.manual_seed(42)
-        x = torch.randn(8, 256, dtype=dtype)
-        npu_out = getattr(npu_backend, act_fn)(x.to("npu"), None)
-        ref_out = getattr(ref_backend, act_fn)(x, None)
-        assert_close(npu_out, ref_out, dtype, msg=f"{act_fn}")
-
-    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-    def test_glu(self, npu_backend, dtype):
-        """GLU: second_half * sigmoid(first_half) — manual reference."""
-        torch.manual_seed(42)
-        x = torch.randn(8, 256, dtype=dtype)
-        npu_out = npu_backend.glu(x.to("npu"), None)
-        # Manual reference
-        a, b = x.chunk(2, dim=-1)
-        ref_out = b * torch.sigmoid(a)
-        assert_close(npu_out, ref_out, dtype, msg="glu")
-
-    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-    def test_clamped_swiglu(self, npu_backend, dtype):
-        """Clamped SwiGLU — NPU kernel-specific reference.
-        NPU kernel behavior may differ from CUDA reference in clamp details.
-        We verify: output is bounded, finite, and structurally correct (gated shape)."""
-        torch.manual_seed(42)
-        x = torch.randn(8, 256, dtype=dtype)
-        npu_out = npu_backend.clamped_swiglu(x.to("npu"), None)
-        # Structural checks
-        assert npu_out.shape == (8, 128), f"Expected (8,128), got {npu_out.shape}"
-        assert not torch.isnan(npu_out).any()
-        assert not torch.isinf(npu_out).any()
-        # Output should be bounded due to clamping
-        assert npu_out.abs().max().item() < 100, "Clamped output should be bounded"
-
-
-# ===========================================================================
-# Real NPU: Activations Forward — precision vs reference
-# ===========================================================================
-@requires_npu
-class TestNPUActivationsFwdAccuracy:
-    """Forward activations: NPU vs reference backend."""
-
-    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-    @pytest.mark.parametrize("act_fn", ["gelu", "relu", "silu"])
-    def test_basic_activations(self, npu_backend, ref_backend, act_fn, dtype):
-        torch.manual_seed(42)
-        x = torch.randn(8, 128, dtype=dtype)
-        x_npu = x.to("npu")
-        npu_out = getattr(npu_backend, act_fn)(x_npu, None)
-        ref_out = getattr(ref_backend, act_fn)(x, None)
-        assert_close(npu_out, ref_out, dtype, msg=f"{act_fn}")
-
-    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-    @pytest.mark.parametrize("act_fn", ["geglu", "reglu", "swiglu"])
-    def test_gated_activations(self, npu_backend, ref_backend, act_fn, dtype):
-        torch.manual_seed(42)
-        x = torch.randn(8, 256, dtype=dtype)
-        x_npu = x.to("npu")
-        npu_out = getattr(npu_backend, act_fn)(x_npu, None)
-        ref_out = getattr(ref_backend, act_fn)(x, None)
-        assert_close(npu_out, ref_out, dtype, msg=f"{act_fn}")
-
-    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-    @pytest.mark.parametrize("act_fn", ["srelu", "qgelu"])
-    def test_extended_activations(self, npu_backend, ref_backend, act_fn, dtype):
-        torch.manual_seed(42)
-        x = torch.randn(8, 128, dtype=dtype)
-        x_npu = x.to("npu")
-        npu_out = getattr(npu_backend, act_fn)(x_npu, None)
-        ref_out = getattr(ref_backend, act_fn)(x, None)
-        assert_close(npu_out, ref_out, dtype, msg=f"{act_fn}")
-
-    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-    @pytest.mark.parametrize("act_fn", ["qgeglu", "sreglu"])
-    def test_extended_gated_activations(self, npu_backend, ref_backend, act_fn, dtype):
-        torch.manual_seed(42)
-        x = torch.randn(8, 256, dtype=dtype)
-        x_npu = x.to("npu")
-        npu_out = getattr(npu_backend, act_fn)(x_npu, None)
-        ref_out = getattr(ref_backend, act_fn)(x, None)
-        assert_close(npu_out, ref_out, dtype, msg=f"{act_fn}")
-
-    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-    def test_glu(self, npu_backend, dtype):
-        """GLU: reference doesn't implement, verify against manual PyTorch."""
-        torch.manual_seed(42)
-        x = torch.randn(8, 256, dtype=dtype)
-        x_npu = x.to("npu")
-        npu_out = npu_backend.glu(x_npu, None)
-        # Manual: second_half * sigmoid(first_half)
-        a, b = x.chunk(2, dim=-1)
-        ref_out = b * torch.sigmoid(a)
-        assert_close(npu_out, ref_out, dtype, msg="glu")
-
-    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-    def test_clamped_swiglu(self, npu_backend, dtype):
-        """clamped_swiglu: NPU kernel uses its own formula, verify basic properties."""
-        torch.manual_seed(42)
-        x = torch.randn(8, 256, dtype=dtype)
-        x_npu = x.to("npu")
-        npu_out = npu_backend.clamped_swiglu(x_npu, None)
-        # Verify shape and finiteness
-        assert npu_out.shape == (8, 128)
-        assert not torch.isnan(npu_out).any()
-        # Output should be bounded due to clamping
-        assert npu_out.abs().max().item() < 100, "Clamped output should be bounded"
-        # With zero input, output should be zero (silu(0)*gate = 0)
-        x_zero = torch.zeros(4, 256, dtype=dtype, device="npu")
-        out_zero = npu_backend.clamped_swiglu(x_zero, None)
-        assert out_zero.abs().max().item() < 1e-5, "clamped_swiglu(0) should be ~0"
-
-
-# ===========================================================================
-# Real NPU: Activations Forward — precision vs reference
-# ===========================================================================
-@requires_npu
-class TestNPUActivationsFwdAccuracy:
-    """Forward activations: NPU vs reference backend."""
-
-    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-    @pytest.mark.parametrize("act_fn", ["gelu", "relu", "silu"])
-    def test_basic_activations(self, npu_backend, ref_backend, act_fn, dtype):
-        torch.manual_seed(42)
-        x = torch.randn(8, 128, dtype=dtype)
-        x_npu = x.to("npu")
-        npu_out = getattr(npu_backend, act_fn)(x_npu, None)
-        ref_out = getattr(ref_backend, act_fn)(x, None)
-        assert_close(npu_out, ref_out, dtype, msg=f"{act_fn}")
-
-    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-    @pytest.mark.parametrize("act_fn", ["geglu", "reglu", "swiglu"])
-    def test_gated_activations(self, npu_backend, ref_backend, act_fn, dtype):
-        torch.manual_seed(42)
-        x = torch.randn(8, 256, dtype=dtype)
-        x_npu = x.to("npu")
-        npu_out = getattr(npu_backend, act_fn)(x_npu, None)
-        ref_out = getattr(ref_backend, act_fn)(x, None)
-        assert_close(npu_out, ref_out, dtype, msg=f"{act_fn}")
-
-    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-    @pytest.mark.parametrize("act_fn", ["srelu", "qgelu"])
-    def test_extended_activations(self, npu_backend, ref_backend, act_fn, dtype):
-        torch.manual_seed(42)
-        x = torch.randn(8, 128, dtype=dtype)
-        x_npu = x.to("npu")
-        npu_out = getattr(npu_backend, act_fn)(x_npu, None)
-        ref_out = getattr(ref_backend, act_fn)(x, None)
-        assert_close(npu_out, ref_out, dtype, msg=f"{act_fn}")
-
-    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-    @pytest.mark.parametrize("act_fn", ["qgeglu", "sreglu"])
-    def test_extended_gated_activations(self, npu_backend, ref_backend, act_fn, dtype):
-        torch.manual_seed(42)
-        x = torch.randn(8, 256, dtype=dtype)
-        x_npu = x.to("npu")
-        npu_out = getattr(npu_backend, act_fn)(x_npu, None)
-        ref_out = getattr(ref_backend, act_fn)(x, None)
-        assert_close(npu_out, ref_out, dtype, msg=f"{act_fn}")
-
-    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-    def test_glu(self, npu_backend, dtype):
-        """GLU: reference doesn't implement, use manual: sigmoid(a) * b."""
-        torch.manual_seed(42)
-        x = torch.randn(8, 256, dtype=dtype)
-        x_npu = x.to("npu")
-        npu_out = npu_backend.glu(x_npu, None)
-        # Manual reference: split in half, output = sigmoid(first) * second
-        a, b = x.chunk(2, dim=-1)
-        ref_out = torch.sigmoid(a) * b
-        assert_close(npu_out, ref_out.to(dtype), dtype, msg="glu")
-
-    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-    def test_clamped_swiglu(self, npu_backend, dtype):
-        """clamped_swiglu: NPU kernel may differ from reference. Verify vs self-consistency."""
-        torch.manual_seed(42)
-        x = torch.randn(8, 256, dtype=dtype)
-        x_npu = x.to("npu")
-        npu_out = npu_backend.clamped_swiglu(x_npu, None)
-        # Basic sanity: output is finite, correct shape, bounded
-        assert npu_out.shape == (8, 128)
-        assert not torch.isnan(npu_out).any()
-        # clamped_swiglu should be bounded (clamp_val=7.0 limits magnitude)
-        assert npu_out.abs().max().item() < 100, "Output magnitude too large for clamped op"
-
-
-# ===========================================================================
-# Real NPU: Activations Backward — precision vs reference
-# ===========================================================================
-@requires_npu
-class TestNPUActivationsBwdAccuracy:
-    """Backward activations: NPU vs reference backend."""
-
-    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-    @pytest.mark.parametrize("act_fn", ["dgelu", "drelu", "dsilu"])
-    def test_basic_bwd(self, npu_backend, ref_backend, act_fn, dtype):
-        torch.manual_seed(42)
-        x = torch.randn(8, 128, dtype=dtype)
-        grad = torch.randn(8, 128, dtype=dtype)
-        x_npu, grad_npu = x.to("npu"), grad.to("npu")
-        npu_out = getattr(npu_backend, act_fn)(grad_npu, x_npu, None)
-        ref_out = getattr(ref_backend, act_fn)(grad, x, None)
-        assert_close(npu_out, ref_out, dtype, msg=f"{act_fn}")
-
-    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-    @pytest.mark.parametrize("act_fn", ["dswiglu", "dgeglu", "dreglu"])
-    def test_gated_bwd(self, npu_backend, ref_backend, act_fn, dtype):
-        torch.manual_seed(42)
-        x = torch.randn(8, 256, dtype=dtype)
-        grad = torch.randn(8, 128, dtype=dtype)
-        x_npu, grad_npu = x.to("npu"), grad.to("npu")
-        npu_out = getattr(npu_backend, act_fn)(grad_npu, x_npu, None)
-        ref_out = getattr(ref_backend, act_fn)(grad, x, None)
-        assert_close(npu_out, ref_out, dtype, msg=f"{act_fn}")
-
-    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-    @pytest.mark.parametrize("act_fn", ["dqgelu", "dsrelu"])
-    def test_extended_bwd(self, npu_backend, ref_backend, act_fn, dtype):
-        torch.manual_seed(42)
-        x = torch.randn(8, 128, dtype=dtype)
-        grad = torch.randn(8, 128, dtype=dtype)
-        x_npu, grad_npu = x.to("npu"), grad.to("npu")
-        npu_out = getattr(npu_backend, act_fn)(grad_npu, x_npu, None)
-        ref_out = getattr(ref_backend, act_fn)(grad, x, None)
-        assert_close(npu_out, ref_out, dtype, msg=f"{act_fn}")
-
-    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-    @pytest.mark.parametrize("act_fn", ["dqgeglu", "dsreglu"])
-    def test_extended_gated_bwd(self, npu_backend, ref_backend, act_fn, dtype):
-        torch.manual_seed(42)
-        x = torch.randn(8, 256, dtype=dtype)
-        grad = torch.randn(8, 128, dtype=dtype)
-        x_npu, grad_npu = x.to("npu"), grad.to("npu")
-        npu_out = getattr(npu_backend, act_fn)(grad_npu, x_npu, None)
-        ref_out = getattr(ref_backend, act_fn)(grad, x, None)
-        assert_close(npu_out, ref_out, dtype, msg=f"{act_fn}")
-
-    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-    def test_dglu(self, npu_backend, dtype):
-        """dglu: reference doesn't implement. Use autograd as reference."""
-        torch.manual_seed(42)
-        x = torch.randn(8, 256, dtype=torch.float32, requires_grad=True)
-        # Forward: glu = sigmoid(a) * b
-        a, b = x.chunk(2, dim=-1)
-        out = torch.sigmoid(a) * b
-        grad = torch.randn(8, 128, dtype=torch.float32)
-        out.backward(grad)
-        ref_dx = x.grad.clone().to(dtype)
-
-        x_npu = x.detach().to(dtype).to("npu")
-        grad_npu = grad.to(dtype).to("npu")
-        npu_out = npu_backend.dglu(grad_npu, x_npu, None)
-        assert_close(npu_out, ref_dx, dtype, msg="dglu")
-
-    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
-    def test_clamped_dswiglu(self, npu_backend, dtype):
-        """clamped_dswiglu: verify gradient is finite and correct shape."""
-        torch.manual_seed(42)
-        x = torch.randn(8, 256, dtype=dtype, device="npu")
-        grad = torch.randn(8, 128, dtype=dtype, device="npu")
-        npu_out = npu_backend.clamped_dswiglu(grad, x, None)
-        assert npu_out.shape == (8, 256)
-        assert not torch.isnan(npu_out).any()
-        assert not torch.isinf(npu_out).any()
 
 
 # ===========================================================================
@@ -522,39 +196,6 @@ class TestNPURMSNormAccuracy:
 
 
 # ===========================================================================
-# Real NPU: Softmax — NPU doesn't implement standalone softmax ops
-# (flash attention handles softmax internally via kernel)
-# ===========================================================================
-@requires_npu
-class TestNPUSoftmaxAccuracy:
-    """Softmax: NPU backend raises NotImplementedError for standalone softmax.
-    Verify that it properly signals non-support."""
-
-    def test_scaled_softmax_not_implemented(self, npu_backend):
-        x = torch.randn(2, 4, 16, 16, dtype=torch.float32, device="npu")
-        with pytest.raises(NotImplementedError):
-            npu_backend.scaled_softmax_forward(x, 0.125)
-
-    def test_scaled_masked_softmax_fwd(self, npu_backend):
-        """scaled_masked_softmax IS implemented — verify against manual reference."""
-        torch.manual_seed(42)
-        x = torch.randn(2, 4, 16, 16, dtype=torch.float32, device="npu")
-        mask = torch.zeros(1, 1, 16, 16, dtype=torch.bool, device="npu")
-        mask[:, :, :, 8:] = True
-        scale = 0.125
-
-        npu_out = npu_backend.scaled_masked_softmax_forward(x, mask, scale)
-
-        # Manual reference
-        x_cpu = x.cpu().float() * scale
-        mask_cpu = mask.cpu()
-        x_cpu.masked_fill_(mask_cpu, float("-inf"))
-        ref_out = torch.softmax(x_cpu, dim=-1)
-
-        assert_close(npu_out, ref_out, torch.float32, msg="scaled_masked_softmax_fwd")
-
-
-# ===========================================================================
 # Real NPU: GEMM — precision vs matmul reference
 # ===========================================================================
 @requires_npu
@@ -569,7 +210,7 @@ class TestNPUGEMMAccuracy:
         B = torch.randn(K, N, dtype=dtype)
         A_npu, B_npu = A.to("npu"), B.to("npu")
 
-        npu_out, _, _ = npu_backend.gemm(A_npu, B_npu, dtype, torch.empty(0), accumulate=False)
+        npu_out, _, _ = npu_backend.generic_gemm(A_npu, B_npu, dtype, torch.empty(0), accumulate=False)
         ref_out = (A.float() @ B.float()).to(dtype)
         assert_close(npu_out, ref_out, dtype, msg="gemm_basic")
 
@@ -580,7 +221,7 @@ class TestNPUGEMMAccuracy:
         A = torch.randn(M, K, dtype=dtype, device="npu")
         B = torch.randn(K, N, dtype=dtype, device="npu")
 
-        npu_out, _, _ = npu_backend.gemm(A, B, dtype, torch.empty(0), accumulate=False)
+        npu_out, _, _ = npu_backend.generic_gemm(A, B, dtype, torch.empty(0), accumulate=False)
         ref_out = (A.cpu().float() @ B.cpu().float()).to(dtype)
         assert_close(npu_out, ref_out, dtype, msg="gemm_large")
 
@@ -591,11 +232,11 @@ class TestNPUGEMMAccuracy:
         B = torch.randn(K, N, dtype=torch.bfloat16, device="npu")
         C_init = torch.ones(M, N, dtype=torch.bfloat16, device="npu")
 
-        result, _, _ = npu_backend.gemm(
+        result, _, _ = npu_backend.generic_gemm(
             A, B, torch.bfloat16, torch.empty(0), accumulate=True, out=C_init
         )
         # Result = C_init + A@B
-        fresh, _, _ = npu_backend.gemm(A, B, torch.bfloat16, torch.empty(0), accumulate=False)
+        fresh, _, _ = npu_backend.generic_gemm(A, B, torch.bfloat16, torch.empty(0), accumulate=False)
         expected = fresh.cpu().float() + 1.0  # C_init was all-ones
         assert_close(result, expected.to(torch.bfloat16), torch.bfloat16, msg="gemm_accum")
 
@@ -642,12 +283,6 @@ class TestNPUFlashAttentionAccuracy:
         max_diff = (out_4d.float() - expected.float()).abs().max().item()
         assert max_diff < atol, f"Constant V test: max_diff={max_diff:.4e}, expected < {atol}"
 
-    @pytest.mark.xfail(
-        reason=(
-            "BUG: TransformerEngineNPU FlashAttention ignores attn_mask_type='causal' — "
-            "causal mask has zero effect on output. Root cause in upstream kernel."
-        )
-    )
     @pytest.mark.parametrize("dtype", [torch.bfloat16])
     def test_flash_attn_causal_mask_effect(self, fa, dtype):
         """Causal mask should make output differ from non-causal for early tokens."""
@@ -692,6 +327,254 @@ class TestNPUFlashAttentionAccuracy:
 
 
 # ===========================================================================
+# Real NPU: Flash Attention — numerical precision vs reference backend
+# ===========================================================================
+@requires_npu
+class TestNPUFlashAttentionVsReference:
+    """Flash attention: NPU vs reference backend (FlashAttentionTorch) numerical comparison."""
+
+    @pytest.fixture
+    def ref_fa(self):
+        from transformer_engine.plugin.core.backends.reference.flash_attention import (
+            FlashAttentionTorch,
+        )
+
+        fa = FlashAttentionTorch(softmax_scale=0.125, attention_dropout=0.0)
+        fa.eval()
+        return fa
+
+    @pytest.fixture
+    def npu_fa(self):
+        from transformer_engine.plugin.core.backends.vendor.npu.flash_attention import (
+            NPUFlashAttention,
+        )
+
+        fa = NPUFlashAttention(softmax_scale=0.125, attention_dropout=0.0)
+        fa.eval()
+        return fa
+
+    @pytest.mark.parametrize("dtype", [torch.bfloat16])
+    @pytest.mark.parametrize(
+        "B,S,H,D", [(1, 32, 4, 64), (2, 64, 8, 64), (1, 128, 2, 128)]
+    )
+    def test_flash_attn_fwd_no_mask(self, npu_fa, ref_fa, dtype, B, S, H, D):
+        """Forward pass without mask: NPU vs reference SDPA."""
+        torch.manual_seed(42)
+        q = torch.randn(B, S, H, D, dtype=dtype)
+        k = torch.randn(B, S, H, D, dtype=dtype)
+        v = torch.randn(B, S, H, D, dtype=dtype)
+
+        q_npu, k_npu, v_npu = q.to("npu"), k.to("npu"), v.to("npu")
+
+        npu_out = npu_fa.forward(
+            q_npu, k_npu, v_npu,
+            qkv_layout="bshd_bshd_bshd",
+            attn_mask_type="no_mask",
+        )
+        ref_out = ref_fa.forward(
+            q, k, v,
+            qkv_layout="bshd_bshd_bshd",
+            attn_mask_type="no_mask",
+        )
+
+        # Both return shape [B, S, H*D]
+        assert npu_out.shape == ref_out.shape, (
+            f"Shape mismatch: npu={npu_out.shape}, ref={ref_out.shape}"
+        )
+        # Flash attention uses online softmax tiling — allow slightly larger tolerance
+        atol, rtol = 5e-2, 5e-2
+        npu_cpu = npu_out.detach().cpu().float()
+        ref_cpu = ref_out.detach().cpu().float()
+        max_diff = (npu_cpu - ref_cpu).abs().max().item()
+        assert torch.allclose(npu_cpu, ref_cpu, atol=atol, rtol=rtol), (
+            f"flash_attn fwd no_mask B={B},S={S},H={H},D={D}: "
+            f"max_diff={max_diff:.6e}, atol={atol}"
+        )
+
+    @pytest.mark.parametrize("dtype", [torch.bfloat16])
+    def test_flash_attn_fwd_causal(self, npu_fa, ref_fa, dtype):
+        """Forward pass with causal mask: NPU vs reference SDPA."""
+        torch.manual_seed(42)
+        B, S, H, D = 2, 64, 4, 64
+        q = torch.randn(B, S, H, D, dtype=dtype)
+        k = torch.randn(B, S, H, D, dtype=dtype)
+        v = torch.randn(B, S, H, D, dtype=dtype)
+
+        q_npu, k_npu, v_npu = q.to("npu"), k.to("npu"), v.to("npu")
+
+        npu_out = npu_fa.forward(
+            q_npu, k_npu, v_npu,
+            qkv_layout="bshd_bshd_bshd",
+            attn_mask_type="causal",
+        )
+        ref_out = ref_fa.forward(
+            q, k, v,
+            qkv_layout="bshd_bshd_bshd",
+            attn_mask_type="causal",
+        )
+
+        assert npu_out.shape == ref_out.shape
+        atol, rtol = 5e-2, 5e-2
+        npu_cpu = npu_out.detach().cpu().float()
+        ref_cpu = ref_out.detach().cpu().float()
+        max_diff = (npu_cpu - ref_cpu).abs().max().item()
+        assert torch.allclose(npu_cpu, ref_cpu, atol=atol, rtol=rtol), (
+            f"flash_attn fwd causal: max_diff={max_diff:.6e}, atol={atol}"
+        )
+
+    @pytest.mark.parametrize("dtype", [torch.bfloat16])
+    @pytest.mark.parametrize(
+        "B,S,H,D", [(1, 32, 4, 64), (2, 64, 4, 64)]
+    )
+    def test_flash_attn_bwd_no_mask(self, npu_fa, ref_fa, dtype, B, S, H, D):
+        """Backward pass without mask: NPU vs reference gradient comparison."""
+        torch.manual_seed(42)
+        # Create inputs that require grad
+        q = torch.randn(B, S, H, D, dtype=dtype, requires_grad=True)
+        k = torch.randn(B, S, H, D, dtype=dtype, requires_grad=True)
+        v = torch.randn(B, S, H, D, dtype=dtype, requires_grad=True)
+
+        # Reference forward + backward (CPU)
+        ref_fa.train()
+        ref_out = ref_fa.forward(
+            q, k, v,
+            qkv_layout="bshd_bshd_bshd",
+            attn_mask_type="no_mask",
+        )
+        grad_out = torch.randn_like(ref_out)
+        ref_out.backward(grad_out)
+        ref_dq = q.grad.clone()
+        ref_dk = k.grad.clone()
+        ref_dv = v.grad.clone()
+
+        # NPU forward + backward
+        q_npu = q.detach().to("npu").requires_grad_(True)
+        k_npu = k.detach().to("npu").requires_grad_(True)
+        v_npu = v.detach().to("npu").requires_grad_(True)
+
+        npu_fa.train()
+        npu_out = npu_fa.forward(
+            q_npu, k_npu, v_npu,
+            qkv_layout="bshd_bshd_bshd",
+            attn_mask_type="no_mask",
+        )
+        npu_out.backward(grad_out.to("npu"))
+        npu_dq = q_npu.grad
+        npu_dk = k_npu.grad
+        npu_dv = v_npu.grad
+
+        # Backward tolerances are larger than forward (error accumulates)
+        atol, rtol = 1e-1, 1e-1
+        for name, npu_g, ref_g in [
+            ("dQ", npu_dq, ref_dq),
+            ("dK", npu_dk, ref_dk),
+            ("dV", npu_dv, ref_dv),
+        ]:
+            npu_cpu = npu_g.detach().cpu().float()
+            ref_cpu = ref_g.float()
+            max_diff = (npu_cpu - ref_cpu).abs().max().item()
+            # Use cosine similarity as additional check — direction should be consistent
+            cos_sim = torch.nn.functional.cosine_similarity(
+                npu_cpu.flatten().unsqueeze(0),
+                ref_cpu.flatten().unsqueeze(0),
+            ).item()
+            assert cos_sim > 0.95, (
+                f"flash_attn bwd {name}: cosine_sim={cos_sim:.4f} < 0.95, "
+                f"max_diff={max_diff:.6e}"
+            )
+            assert torch.allclose(npu_cpu, ref_cpu, atol=atol, rtol=rtol), (
+                f"flash_attn bwd {name}: max_diff={max_diff:.6e}, atol={atol}, "
+                f"cos_sim={cos_sim:.4f}"
+            )
+
+    @pytest.mark.parametrize("dtype", [torch.bfloat16])
+    def test_flash_attn_bwd_causal(self, npu_fa, ref_fa, dtype):
+        """Backward pass with causal mask: NPU vs reference gradient comparison."""
+        torch.manual_seed(42)
+        B, S, H, D = 1, 32, 4, 64
+
+        q = torch.randn(B, S, H, D, dtype=dtype, requires_grad=True)
+        k = torch.randn(B, S, H, D, dtype=dtype, requires_grad=True)
+        v = torch.randn(B, S, H, D, dtype=dtype, requires_grad=True)
+
+        ref_fa.train()
+        ref_out = ref_fa.forward(
+            q, k, v,
+            qkv_layout="bshd_bshd_bshd",
+            attn_mask_type="causal",
+        )
+        grad_out = torch.randn_like(ref_out)
+        ref_out.backward(grad_out)
+        ref_dq = q.grad.clone()
+        ref_dk = k.grad.clone()
+        ref_dv = v.grad.clone()
+
+        q_npu = q.detach().to("npu").requires_grad_(True)
+        k_npu = k.detach().to("npu").requires_grad_(True)
+        v_npu = v.detach().to("npu").requires_grad_(True)
+
+        npu_fa.train()
+        npu_out = npu_fa.forward(
+            q_npu, k_npu, v_npu,
+            qkv_layout="bshd_bshd_bshd",
+            attn_mask_type="causal",
+        )
+        npu_out.backward(grad_out.to("npu"))
+
+        atol, rtol = 1e-1, 1e-1
+        for name, npu_g, ref_g in [
+            ("dQ", q_npu.grad, ref_dq),
+            ("dK", k_npu.grad, ref_dk),
+            ("dV", v_npu.grad, ref_dv),
+        ]:
+            npu_cpu = npu_g.detach().cpu().float()
+            ref_cpu = ref_g.float()
+            max_diff = (npu_cpu - ref_cpu).abs().max().item()
+            cos_sim = torch.nn.functional.cosine_similarity(
+                npu_cpu.flatten().unsqueeze(0),
+                ref_cpu.flatten().unsqueeze(0),
+            ).item()
+            assert cos_sim > 0.95, (
+                f"flash_attn bwd causal {name}: cos_sim={cos_sim:.4f} < 0.95"
+            )
+            assert torch.allclose(npu_cpu, ref_cpu, atol=atol, rtol=rtol), (
+                f"flash_attn bwd causal {name}: max_diff={max_diff:.6e}, atol={atol}"
+            )
+
+
+# ===========================================================================
+# Real NPU: Activations Backward — precision vs reference (extended)
+# ===========================================================================
+@requires_npu
+class TestNPUActivationsBwdVsReference:
+    """Backward activations extended: cases that were only smoke-tested before."""
+
+    @pytest.mark.xfail(
+        reason=(
+            "BUG: NPU clamped_dswiglu computes plain dswiglu instead of "
+            "actual clamped version — tenpu kernel ignores clamping/alpha."
+        )
+    )
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+    def test_clamped_dswiglu_vs_reference(self, npu_backend, ref_backend, dtype):
+        """clamped_dswiglu: NPU vs reference backend numerical comparison."""
+        torch.manual_seed(42)
+        x = torch.randn(8, 256, dtype=dtype)
+        grad = torch.randn(8, 128, dtype=dtype)
+        x_npu, grad_npu = x.to("npu"), grad.to("npu")
+
+        npu_out = npu_backend.clamped_dswiglu(grad_npu, x_npu, None)
+        ref_out = ref_backend.clamped_dswiglu(grad, x, None)
+
+        # NOTE: NPU clamped_dswiglu is known to be broken (computes plain dswiglu
+        # instead of actual clamped version). This test documents the discrepancy.
+        npu_cpu = npu_out.detach().cpu().float()
+        ref_cpu = ref_out.float()
+        max_diff = (npu_cpu - ref_cpu).abs().max().item()
+        assert_close(npu_out, ref_out, dtype, msg=f"clamped_dswiglu max_diff={max_diff:.6e}")
+
+
+# ===========================================================================
 # Real NPU: Multi-tensor ops — exact value verification
 # ===========================================================================
 @requires_npu
@@ -726,17 +609,6 @@ class TestNPUMultiTensorAccuracy:
         got = norm_val.item() if hasattr(norm_val, "item") else float(norm_val)
         assert abs(got - 2.0) < 1e-4, f"Expected 2.0, got {got}"
 
-    def test_multi_tensor_scale_tensor(self, npu_backend):
-        t1 = torch.tensor([2.0, 3.0, 4.0], device="npu")
-        t_out = torch.zeros(3, device="npu")
-        scale_t = torch.tensor([3.0], device="npu")
-        noop = torch.zeros(1, device="npu", dtype=torch.int32)
-        npu_backend.multi_tensor_scale_tensor(65536, noop, [[t1], [t_out]], scale_t)
-        expected = torch.tensor([6.0, 9.0, 12.0])
-        assert torch.allclose(
-            t_out.cpu(), expected, atol=1e-5
-        ), f"Expected {expected}, got {t_out.cpu()}"
-
     def test_multi_tensor_unscale_l2norm(self, npu_backend):
         t1 = torch.tensor([6.0, 8.0], device="npu")
         inv_scale = torch.tensor([2.0], device="npu")
@@ -751,109 +623,305 @@ class TestNPUMultiTensorAccuracy:
 
 
 # ===========================================================================
-# Real NPU: Known bugs (xfail)
+# Real NPU: FP8 scale computation — precision vs reference
 # ===========================================================================
 @requires_npu
-class TestNPUKnownBugs:
-    """Tests for known NPU backend bugs — marked xfail."""
+class TestNPUComputeScaleAccuracy:
+    """multi_tensor_compute_scale_and_scale_inv: NPU vs reference backend."""
 
-    @pytest.mark.xfail(reason="NPU wrapper missing force_pow_2_scales arg for tenpu")
-    def test_multi_tensor_compute_scale_and_scale_inv(self, npu_backend):
-        amax = torch.tensor([8.0], device="npu")
-        scale = torch.ones(1, device="npu")
-        scale_inv = torch.ones(1, device="npu")
-        noop = torch.zeros(1, device="npu", dtype=torch.int32)
+    @pytest.mark.parametrize(
+        "amax_vals,max_fp8",
+        [
+            ([8.0], 448.0),
+            ([1.0, 16.0, 0.5], 448.0),
+            ([100.0, 200.0], 240.0),
+            ([0.001], 448.0),  # very small amax
+        ],
+    )
+    def test_compute_scale_vs_reference(self, npu_backend, ref_backend, amax_vals, max_fp8):
+        """NPU scale/scale_inv matches reference for various amax values."""
+        n = len(amax_vals)
+        epsilon = 1e-12
+
+        # NPU tensors
+        amaxes_npu = [torch.tensor([v], device="npu") for v in amax_vals]
+        scales_npu = [torch.ones(1, device="npu") for _ in range(n)]
+        scale_invs_npu = [torch.ones(1, device="npu") for _ in range(n)]
+        noop_npu = torch.zeros(1, device="npu", dtype=torch.int32)
+
+        # Reference tensors (CPU)
+        amaxes_ref = [torch.tensor([v]) for v in amax_vals]
+        scales_ref = [torch.ones(1) for _ in range(n)]
+        scale_invs_ref = [torch.ones(1) for _ in range(n)]
+        noop_ref = torch.zeros(1, dtype=torch.int32)
+
         npu_backend.multi_tensor_compute_scale_and_scale_inv(
-            65536, noop, [[amax], [scale], [scale_inv]], 448.0, 1e-12
+            65536, noop_npu,
+            [amaxes_npu, scales_npu, scale_invs_npu],
+            max_fp8, False, epsilon,
+        )
+        ref_backend.multi_tensor_compute_scale_and_scale_inv(
+            65536, noop_ref,
+            [amaxes_ref, scales_ref, scale_invs_ref],
+            max_fp8, False, epsilon,
         )
 
-    @pytest.mark.xfail(reason="NPU grouped_gemm wrapper has dtype arg mismatch with tenpu")
-    def test_grouped_gemm(self, npu_backend):
-        A = torch.randn(8, 4, device="npu", dtype=torch.bfloat16)
-        B = torch.randn(4, 16, device="npu", dtype=torch.bfloat16)
-        npu_backend.grouped_gemm([A], [B], torch.bfloat16, [torch.empty(0)], [8], accumulate=False)
+        for i in range(n):
+            npu_scale = scales_npu[i].cpu()
+            ref_scale = scales_ref[i]
+            npu_sinv = scale_invs_npu[i].cpu()
+            ref_sinv = scale_invs_ref[i]
 
+            assert torch.allclose(npu_scale, ref_scale, atol=1e-5, rtol=1e-5), (
+                f"scale[{i}]: npu={npu_scale.item():.6e}, ref={ref_scale.item():.6e}"
+            )
+            assert torch.allclose(npu_sinv, ref_sinv, atol=1e-5, rtol=1e-5), (
+                f"scale_inv[{i}]: npu={npu_sinv.item():.6e}, ref={ref_sinv.item():.6e}"
+            )
 
-# ===========================================================================
-# Real NPU: Multi-tensor ops — exact value verification
-# ===========================================================================
-@requires_npu
-class TestNPUMultiTensorAccuracy:
-    """Multi-tensor operations with exact expected values."""
+    @pytest.mark.parametrize("force_pow_2", [True, False])
+    def test_compute_scale_pow2(self, npu_backend, ref_backend, force_pow_2):
+        """Verify force_pow_2_scales flag produces matching results."""
+        amax_vals = [7.0, 13.0, 100.0]
+        max_fp8 = 448.0
+        epsilon = 1e-12
+        n = len(amax_vals)
 
-    def test_multi_tensor_scale(self, npu_backend):
-        t1 = torch.tensor([2.0, 4.0, 6.0], device="npu")
-        t_out = torch.zeros(3, device="npu")
-        noop = torch.zeros(1, device="npu", dtype=torch.int32)
-        npu_backend.multi_tensor_scale(65536, noop, [[t1], [t_out]], 0.5)
-        expected = torch.tensor([1.0, 2.0, 3.0])
-        assert torch.allclose(
-            t_out.cpu(), expected, atol=1e-5
-        ), f"Expected {expected}, got {t_out.cpu()}"
+        amaxes_npu = [torch.tensor([v], device="npu") for v in amax_vals]
+        scales_npu = [torch.ones(1, device="npu") for _ in range(n)]
+        scale_invs_npu = [torch.ones(1, device="npu") for _ in range(n)]
+        noop_npu = torch.zeros(1, device="npu", dtype=torch.int32)
 
-    def test_multi_tensor_l2norm(self, npu_backend):
-        t1 = torch.tensor([3.0, 4.0], device="npu")
-        noop = torch.zeros(1, device="npu", dtype=torch.int32)
-        result = npu_backend.multi_tensor_l2norm(65536, noop, [[t1]], False)
-        norm_val = result[0] if isinstance(result, tuple) else result
-        got = norm_val.item() if hasattr(norm_val, "item") else float(norm_val)
-        expected = 5.0  # sqrt(9+16)
-        assert abs(got - expected) < 1e-4, f"Expected {expected}, got {got}"
+        amaxes_ref = [torch.tensor([v]) for v in amax_vals]
+        scales_ref = [torch.ones(1) for _ in range(n)]
+        scale_invs_ref = [torch.ones(1) for _ in range(n)]
+        noop_ref = torch.zeros(1, dtype=torch.int32)
 
-    def test_multi_tensor_l2norm_multi_tensor(self, npu_backend):
-        """L2 norm across multiple tensors."""
-        t1 = torch.tensor([3.0, 0.0], device="npu")
-        t2 = torch.tensor([0.0, 4.0], device="npu")
-        noop = torch.zeros(1, device="npu", dtype=torch.int32)
-        result = npu_backend.multi_tensor_l2norm(65536, noop, [[t1, t2]], False)
-        norm_val = result[0] if isinstance(result, tuple) else result
-        got = norm_val.item() if hasattr(norm_val, "item") else float(norm_val)
-        expected = 5.0  # sqrt(9+16) across both tensors
-        assert abs(got - expected) < 1e-4, f"Expected {expected}, got {got}"
-
-    def test_multi_tensor_scale_tensor(self, npu_backend):
-        t1 = torch.tensor([2.0, 4.0, 6.0], device="npu")
-        t_out = torch.zeros(3, device="npu")
-        scale_t = torch.tensor([3.0], device="npu")
-        noop = torch.zeros(1, device="npu", dtype=torch.int32)
-        npu_backend.multi_tensor_scale_tensor(65536, noop, [[t1], [t_out]], scale_t)
-        expected = torch.tensor([6.0, 12.0, 18.0])
-        assert torch.allclose(
-            t_out.cpu(), expected, atol=1e-5
-        ), f"Expected {expected}, got {t_out.cpu()}"
-
-    def test_multi_tensor_unscale_l2norm(self, npu_backend):
-        """L2 norm with inverse scale applied."""
-        t1 = torch.ones(16, device="npu") * 4.0
-        inv_scale = torch.tensor([0.5], device="npu")
-        noop = torch.zeros(1, device="npu", dtype=torch.int32)
-        result = npu_backend.multi_tensor_unscale_l2norm(
-            65536, noop, [[t1], [inv_scale]], inv_scale
-        )
-        norm_val = result[0] if isinstance(result, tuple) else result
-        got = norm_val.item() if hasattr(norm_val, "item") else float(norm_val)
-        # Implementation-dependent — just verify finite and positive
-        assert got > 0 and math.isfinite(got), f"Got {got}"
-
-
-# ===========================================================================
-# Real NPU: Known bugs (xfail)
-# ===========================================================================
-@requires_npu
-class TestNPUKnownBugs:
-
-    @pytest.mark.xfail(reason="NPU wrapper missing force_pow_2_scales arg for tenpu")
-    def test_multi_tensor_compute_scale_and_scale_inv(self, npu_backend):
-        amax = torch.tensor([8.0], device="npu")
-        scale = torch.ones(1, device="npu")
-        scale_inv = torch.ones(1, device="npu")
-        noop = torch.zeros(1, device="npu", dtype=torch.int32)
         npu_backend.multi_tensor_compute_scale_and_scale_inv(
-            65536, noop, [[amax], [scale], [scale_inv]], 448.0, 1e-12
+            65536, noop_npu,
+            [amaxes_npu, scales_npu, scale_invs_npu],
+            max_fp8, force_pow_2, epsilon,
+        )
+        ref_backend.multi_tensor_compute_scale_and_scale_inv(
+            65536, noop_ref,
+            [amaxes_ref, scales_ref, scale_invs_ref],
+            max_fp8, force_pow_2, epsilon,
         )
 
-    @pytest.mark.xfail(reason="NPU grouped_gemm wrapper has dtype arg mismatch with tenpu")
-    def test_grouped_gemm(self, npu_backend):
-        A = torch.randn(8, 4, device="npu", dtype=torch.bfloat16)
-        B = torch.randn(4, 16, device="npu", dtype=torch.bfloat16)
-        npu_backend.grouped_gemm([A], [B], torch.bfloat16, [torch.empty(0)], [8], accumulate=False)
+        for i in range(n):
+            npu_scale = scales_npu[i].cpu()
+            ref_scale = scales_ref[i]
+            assert torch.allclose(npu_scale, ref_scale, atol=1e-5, rtol=1e-5), (
+                f"scale[{i}] pow2={force_pow_2}: "
+                f"npu={npu_scale.item():.6e}, ref={ref_scale.item():.6e}"
+            )
+            if force_pow_2:
+                # Verify it's actually a power of 2
+                log2_val = torch.log2(npu_scale)
+                assert torch.allclose(log2_val, log2_val.round(), atol=1e-5), (
+                    f"scale[{i}] not power of 2: {npu_scale.item()}"
+                )
+
+    @pytest.mark.xfail(
+        reason="NPU tenpu kernel ignores noop_flag — computes scale regardless."
+    )
+    def test_compute_scale_noop_flag(self, npu_backend):
+        """When noop_flag is non-zero, scales should remain unchanged."""
+        amax = torch.tensor([8.0], device="npu")
+        scale = torch.tensor([999.0], device="npu")
+        scale_inv = torch.tensor([888.0], device="npu")
+        noop = torch.ones(1, device="npu", dtype=torch.int32)  # non-zero => skip
+
+        npu_backend.multi_tensor_compute_scale_and_scale_inv(
+            65536, noop,
+            [[amax], [scale], [scale_inv]],
+            448.0, False, 1e-12,
+        )
+
+        assert scale.item() == 999.0, f"scale changed to {scale.item()} despite noop"
+        assert scale_inv.item() == 888.0, f"scale_inv changed to {scale_inv.item()} despite noop"
+
+
+
+# ===========================================================================
+# Real NPU: Grouped GEMM — precision vs manual matmul
+# ===========================================================================
+@requires_npu
+class TestNPUGroupedGEMMAccuracy:
+    """te_general_grouped_gemm: NPU vs torch.matmul reference.
+
+    TE-FL semantics: D[i] = op(B[i], transb) @ op(A[i], transa)
+
+    We use transa=False, transb=False (simplest case):
+      D[i] = B[i] @ A[i]
+      B[i] shape: (N, K), A[i] shape: (K, M) => D[i]: (N, M)
+      matrix_shape(A, False) => (K, M), a_rows=K, a_cols=M
+      matrix_shape(B, False) => (N, K), b_rows=N, b_cols=K
+      Check: b_cols(K) == a_rows(K) ✓
+      Output: (b_rows, a_cols) = (N, M)
+    """
+
+    @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float32])
+    def test_grouped_gemm_basic(self, npu_backend, dtype):
+        """Basic grouped GEMM with 2 groups, no transpose."""
+        from transformer_engine.plugin.core.ops import DType
+
+        torch.manual_seed(42)
+
+        # Group 0: N=16, K=4, M=8 => B0:(N,K)=(16,4), A0:(K,M)=(4,8), D0:(N,M)=(16,8)
+        # Group 1: N=16, K=4, M=6 => B1:(N,K)=(16,4), A1:(K,M)=(4,6), D1:(N,M)=(16,6)
+        A0 = torch.randn(4, 8, device="npu", dtype=dtype)
+        A1 = torch.randn(4, 6, device="npu", dtype=dtype)
+        B0 = torch.randn(16, 4, device="npu", dtype=dtype)
+        B1 = torch.randn(16, 4, device="npu", dtype=dtype)
+        D0 = torch.zeros(16, 8, device="npu", dtype=dtype)
+        D1 = torch.zeros(16, 6, device="npu", dtype=dtype)
+
+        dtype_map = {torch.bfloat16: DType.kBFloat16, torch.float32: DType.kFloat32}
+        d_type = dtype_map[dtype]
+
+        workspace = [torch.empty(0, dtype=torch.uint8, device="npu")]
+
+        npu_backend.te_general_grouped_gemm(
+            A=[A0, A1],
+            transa=False,
+            B=[B0, B1],
+            transb=False,
+            D=[D0, D1],
+            D_type=d_type,
+            m_splits=[16, 16],
+            bias=[torch.empty(0, device="npu"), torch.empty(0, device="npu")],
+            bias_type=d_type,
+            single_output=False,
+            pre_gelu_out=[torch.empty(0, device="npu"), torch.empty(0, device="npu")],
+            grad=False,
+            workspace=workspace,
+            workspaceSizes=0,
+            accumulate=False,
+            use_split_accumulator=False,
+            math_sm_count=0,
+        )
+
+        # Reference: D[i] = B[i] @ A[i]
+        ref_D0 = (B0 @ A0).cpu().float()
+        ref_D1 = (B1 @ A1).cpu().float()
+
+        npu_D0 = D0.cpu().float()
+        npu_D1 = D1.cpu().float()
+
+        atol = 1e-2 if dtype == torch.bfloat16 else 1e-5
+        rtol = 1e-2 if dtype == torch.bfloat16 else 1e-5
+
+        max_diff_0 = (npu_D0 - ref_D0).abs().max().item()
+        max_diff_1 = (npu_D1 - ref_D1).abs().max().item()
+
+        assert torch.allclose(npu_D0, ref_D0, atol=atol, rtol=rtol), (
+            f"Group 0: max_diff={max_diff_0:.6e}"
+        )
+        assert torch.allclose(npu_D1, ref_D1, atol=atol, rtol=rtol), (
+            f"Group 1: max_diff={max_diff_1:.6e}"
+        )
+
+    @pytest.mark.parametrize("dtype", [torch.bfloat16])
+    def test_grouped_gemm_single_output(self, npu_backend, dtype):
+        """Grouped GEMM with single packed output buffer."""
+        from transformer_engine.plugin.core.ops import DType
+
+        torch.manual_seed(42)
+
+        # single_output requires all groups to have the same output width (a_cols = M)
+        # Two groups: same N=16, same K=4, same M=8
+        # B0:(16,4), A0:(4,8) => D0:(16,8)
+        # B1:(16,4), A1:(4,8) => D1:(16,8)
+        A0 = torch.randn(4, 8, device="npu", dtype=dtype)
+        A1 = torch.randn(4, 8, device="npu", dtype=dtype)
+        B0 = torch.randn(16, 4, device="npu", dtype=dtype)
+        B1 = torch.randn(16, 4, device="npu", dtype=dtype)
+
+        # Single output: packed along N dimension: [N0+N1, M] = [32, 8]
+        D_packed = torch.zeros(32, 8, device="npu", dtype=dtype)
+
+        workspace = [torch.empty(0, dtype=torch.uint8, device="npu")]
+
+        npu_backend.te_general_grouped_gemm(
+            A=[A0, A1],
+            transa=False,
+            B=[B0, B1],
+            transb=False,
+            D=[D_packed],
+            D_type=DType.kBFloat16,
+            m_splits=[16, 16],
+            bias=[torch.empty(0, device="npu"), torch.empty(0, device="npu")],
+            bias_type=DType.kBFloat16,
+            single_output=True,
+            pre_gelu_out=[torch.empty(0, device="npu"), torch.empty(0, device="npu")],
+            grad=False,
+            workspace=workspace,
+            workspaceSizes=0,
+            accumulate=False,
+            use_split_accumulator=False,
+            math_sm_count=0,
+        )
+
+        # Reference
+        ref_D0 = (B0 @ A0).cpu().float()   # [16, 8]
+        ref_D1 = (B1 @ A1).cpu().float()   # [16, 8]
+        ref_packed = torch.cat([ref_D0, ref_D1], dim=0)  # [32, 8]
+
+        npu_packed = D_packed.cpu().float()
+        max_diff = (npu_packed - ref_packed).abs().max().item()
+
+        assert torch.allclose(npu_packed, ref_packed, atol=1e-2, rtol=1e-2), (
+            f"single_output grouped gemm: max_diff={max_diff:.6e}"
+        )
+
+    @pytest.mark.xfail(
+        reason="NPU aclnnGroupedMatmulV5 requires 3D tensors for accumulate mode."
+    )
+    @pytest.mark.xfail(
+        reason="NPU npu_grouped_matmul requires 3D tensors for accumulate path — kernel limitation."
+    )
+    @pytest.mark.parametrize("dtype", [torch.bfloat16])
+    def test_grouped_gemm_accumulate(self, npu_backend, dtype):
+        """Grouped GEMM with accumulate=True adds to existing D."""
+        from transformer_engine.plugin.core.ops import DType
+
+        torch.manual_seed(42)
+        # B0:(16,4), A0:(4,8) => D0:(16,8)
+        A0 = torch.randn(4, 8, device="npu", dtype=dtype)
+        B0 = torch.randn(16, 4, device="npu", dtype=dtype)
+
+        # Pre-fill D with known values
+        D0_init = torch.ones(16, 8, device="npu", dtype=dtype)
+        D0 = D0_init.clone()
+
+        workspace = [torch.empty(0, dtype=torch.uint8, device="npu")]
+
+        npu_backend.te_general_grouped_gemm(
+            A=[A0],
+            transa=False,
+            B=[B0],
+            transb=False,
+            D=[D0],
+            D_type=DType.kBFloat16,
+            m_splits=[16],
+            bias=[torch.empty(0, device="npu")],
+            bias_type=DType.kBFloat16,
+            single_output=False,
+            pre_gelu_out=[torch.empty(0, device="npu")],
+            grad=False,
+            workspace=workspace,
+            workspaceSizes=0,
+            accumulate=True,
+            use_split_accumulator=False,
+            math_sm_count=0,
+        )
+
+        # Reference: D0 = D0_init + B0 @ A0
+        ref_D0 = (D0_init.float() + (B0 @ A0).float()).cpu()
+        npu_D0 = D0.cpu().float()
+        max_diff = (npu_D0 - ref_D0).abs().max().item()
+
+        assert torch.allclose(npu_D0, ref_D0, atol=1e-2, rtol=1e-2), (
+            f"accumulate grouped gemm: max_diff={max_diff:.6e}"
+        )

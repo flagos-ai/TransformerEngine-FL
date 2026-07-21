@@ -19,6 +19,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import torch
 
+from transformer_engine.plugin.core.ops import FlashAttentionBase
+
 
 _COMPRESSED_MASK_SIZE = 2048
 
@@ -39,7 +41,7 @@ def get_compressed_causal_mask(device="npu"):
     return _COMPRESSED_CAUSAL_MASK
 
 
-class NPUFlashAttention(torch.nn.Module):
+class NPUFlashAttention(FlashAttentionBase):
     """FlashAttention adapter for NPU (Ascend) hardware.
 
     Wraps transformer_engine_npu's FlashAttention, which calls
@@ -71,7 +73,14 @@ class NPUFlashAttention(torch.nn.Module):
         deterministic: bool = False,
         **kwargs,
     ) -> None:
-        super().__init__()
+        super().__init__(
+            softmax_scale=softmax_scale,
+            attention_dropout=attention_dropout,
+            attention_dropout_ctx=attention_dropout_ctx,
+            attention_type=attention_type,
+            layer_number=layer_number,
+            deterministic=deterministic,
+        )
         self.softmax_scale = softmax_scale
         self.attention_dropout = attention_dropout
         self.attention_type = attention_type
@@ -106,7 +115,7 @@ class NPUFlashAttention(torch.nn.Module):
         # the NPU FlashAttention internally handles sbhd only.
         return "sbhd"
 
-    def forward(
+    def _forward_impl(
         self,
         query_layer: torch.Tensor,
         key_layer: torch.Tensor,
@@ -131,8 +140,6 @@ class NPUFlashAttention(torch.nn.Module):
         flash_attention_backend: Optional[Any] = None,
         fp8_output: bool = False,
         num_splits: Optional[int] = 1,
-        fast_zero_fill: bool = True,
-        **kwargs,
     ) -> torch.Tensor:
         """Forward pass — adapts TE-FL args to NPU FlashAttention interface.
 

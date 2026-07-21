@@ -15,8 +15,32 @@ import os
 
 import torch
 
-from ....ops import TEFLBackendBase, NVTE_Fused_Attn_Backend
+from ....ops import TEFLBackendBase, NVTE_Fused_Attn_Backend, DType
 from .flash_attention import NPUFlashAttention
+
+
+_DTYPE_TO_TORCH = {
+    0: torch.uint8,
+    2: torch.int32,
+    4: torch.float32,
+    5: torch.float16,
+    6: torch.bfloat16,
+    7: torch.float8_e4m3fn,
+    8: torch.float8_e5m2,
+}
+
+
+def _to_torch_dtype(dtype: Any) -> Optional[torch.dtype]:
+    if dtype is None:
+        return None
+    if isinstance(dtype, torch.dtype):
+        return dtype
+
+    value = getattr(dtype, "value", dtype)
+    try:
+        return _DTYPE_TO_TORCH.get(int(value))
+    except (TypeError, ValueError):
+        return None
 
 
 def _check_npu_available() -> bool:
@@ -132,7 +156,7 @@ class NPUBackend(TEFLBackendBase):
         otype: Any,
         sm_margin: int,
         zero_centered_gamma: bool,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, None, torch.Tensor]:
         """RMSNorm forward using torch_npu.npu_rms_norm.
 
         TE-FL calls with: (input, weight, eps, ln_out, quantizer, otype, sm_margin, zero_centered_gamma)
@@ -245,13 +269,14 @@ class NPUBackend(TEFLBackendBase):
         chunk_size: int,
         noop_flag: torch.Tensor,
         tensor_lists: List[List[torch.Tensor]],
-        scale: float,
+        max_fp8: float,
+        force_pow_2_scales: bool,
         epsilon: float,
     ):
         """Compute per-tensor FP8 scale and scale_inv."""
         opt = _get_tenpu_optimizers()
         opt.multi_tensor_compute_scale_and_scale_inv(
-            chunk_size, noop_flag, tensor_lists, scale, epsilon
+            chunk_size, noop_flag, tensor_lists, max_fp8, force_pow_2_scales, epsilon
         )
 
     def multi_tensor_compute_scale_inv_e8m0(
@@ -259,6 +284,7 @@ class NPUBackend(TEFLBackendBase):
         chunk_size: int,
         noop_flag: torch.Tensor,
         tensor_lists: List[List[torch.Tensor]],
+        block_len: int,
     ):
         """Compute scale_inv in e8m0 format for MXFP8."""
         opt = _get_tenpu_optimizers()
@@ -413,235 +439,501 @@ class NPUBackend(TEFLBackendBase):
 
         return out, bias_grad, gelu_input_ret, extra_output_ret
 
-    def grouped_gemm(
+    def te_general_grouped_gemm(
         self,
-        A: List[torch.Tensor],
-        B: List[torch.Tensor],
-        dtype: Any,
-        workspaces: List[torch.Tensor],
+        A: List[Any],
+        transa: bool,
+        B: List[Any],
+        transb: bool,
+        D: Optional[List[torch.Tensor]],
+        D_type: DType,
         m_splits: List[int],
-        accumulate: bool = False,
-        out: Optional[torch.Tensor] = None,
-        bias: Optional[List[torch.Tensor]] = None,
-        ub_algo: Optional[Any] = None,
-        ub: Optional[Any] = None,
-    ) -> Tuple[Optional[torch.Tensor], ...]:
-        """Grouped GEMM."""
-        gemm_mod = _get_tenpu_gemm()
-        result = gemm_mod.general_grouped_gemm(A, B, "forward", "forward", dtype, biases=bias)
-        return result, None, None
+        bias: List[torch.Tensor],
+        bias_type: DType,
+        single_output: bool,
+        pre_gelu_out: List[torch.Tensor],
+        grad: bool,
+        workspace: List[torch.Tensor],
+        workspaceSizes: int,
+        accumulate: bool,
+        use_split_accumulator: bool,
+        math_sm_count: int,
+    ) -> Optional[List[torch.Tensor]]:
+        """Grouped GEMM adapter for TransformerEngineNPU.
 
-    # ===================== Activation Functions =====================
-    # Delegates to transformer_engine_npu NPU-optimized kernels (npu_gelu, npu_swiglu, etc.)
+        TE-FL semantics for every group:
 
-    def gelu(self, input: torch.Tensor, quantizer: Any = None) -> Any:
-        act = _get_tenpu_activations()
-        out = act.gelu_fwd(input)
-        if quantizer is not None and hasattr(quantizer, "quantize"):
-            out = quantizer.quantize(out)
-        return out
+            D[i] = op(B[i], transb) @ op(A[i], transa)
 
-    def relu(self, input: torch.Tensor, quantizer: Any = None) -> Any:
-        act = _get_tenpu_activations()
-        out = act.relu_fwd(input)
-        if quantizer is not None and hasattr(quantizer, "quantize"):
-            out = quantizer.quantize(out)
-        return out
+        Native NPU mappings:
 
-    def silu(self, input: torch.Tensor, quantizer: Any = None) -> Any:
-        act = _get_tenpu_activations()
-        out = act.silu_fwd(input)
-        if quantizer is not None and hasattr(quantizer, "quantize"):
-            out = quantizer.quantize(out)
-        return out
+            Forward:
+                layout="TN", group_type=0
 
-    def swiglu(self, input: torch.Tensor, quantizer: Any = None) -> Any:
-        act = _get_tenpu_activations()
-        out = act.swiglu_fwd(input)
-        if quantizer is not None and hasattr(quantizer, "quantize"):
-            out = quantizer.quantize(out)
-        return out
+            dgrad:
+                layout="NN", group_type=0
 
-    def geglu(self, input: torch.Tensor, quantizer: Any = None) -> Any:
-        act = _get_tenpu_activations()
-        out = act.geglu_fwd(input)
-        if quantizer is not None and hasattr(quantizer, "quantize"):
-            out = quantizer.quantize(out)
-        return out
+            wgrad:
+                layout="NT", group_type=2
 
-    def reglu(self, input: torch.Tensor, quantizer: Any = None) -> Any:
-        act = _get_tenpu_activations()
-        out = act.reglu_fwd(input)
-        if quantizer is not None and hasattr(quantizer, "quantize"):
-            out = quantizer.quantize(out)
-        return out
+        The group_type=2 path requires an Ascend A2/A3 device. Operations that
+        require bgrad, GELU/dGELU, mixed per-group epilogues, unsupported dtypes,
+        or non-standard transpose layouts fall back to per-group generic_gemm.
+        """
 
-    def srelu(self, input: torch.Tensor, quantizer: Any = None) -> Any:
-        act = _get_tenpu_activations()
-        out = act.srelu_fwd(input)
-        if quantizer is not None and hasattr(quantizer, "quantize"):
-            out = quantizer.quantize(out)
-        return out
+        num_gemms = len(A)
 
-    def glu(self, input: torch.Tensor, quantizer: Any = None) -> Any:
-        act = _get_tenpu_activations()
-        out = act.glu_fwd(input)
-        if quantizer is not None and hasattr(quantizer, "quantize"):
-            out = quantizer.quantize(out)
-        return out
+        if len(B) != num_gemms:
+            raise ValueError(
+                "A and B must contain the same number of groups, "
+                f"got len(A)={len(A)} and len(B)={len(B)}"
+            )
 
-    def qgelu(self, input: torch.Tensor, quantizer: Any = None) -> Any:
-        act = _get_tenpu_activations()
-        out = act.qgelu_fwd(input)
-        if quantizer is not None and hasattr(quantizer, "quantize"):
-            out = quantizer.quantize(out)
-        return out
+        if num_gemms == 0:
+            return bias
 
-    def qgeglu(self, input: torch.Tensor, quantizer: Any = None) -> Any:
-        act = _get_tenpu_activations()
-        out = act.qgeglu_fwd(input)
-        if quantizer is not None and hasattr(quantizer, "quantize"):
-            out = quantizer.quantize(out)
-        return out
+        if single_output and D is None:
+            raise ValueError(
+                "D must be provided when single_output=True"
+            )
 
-    def sreglu(self, input: torch.Tensor, quantizer: Any = None) -> Any:
-        act = _get_tenpu_activations()
-        out = act.sreglu_fwd(input)
-        if quantizer is not None and hasattr(quantizer, "quantize"):
-            out = quantizer.quantize(out)
-        return out
+        def has_tensor(tensors, index: int) -> bool:
+            return (
+                tensors is not None
+                and index < len(tensors)
+                and tensors[index] is not None
+                and tensors[index].numel() > 0
+            )
 
-    # bug
-    # def clamped_swiglu(
-    #     self, input: torch.Tensor, quantizer: Any = None,
-    #     limit: float = 7.0, alpha: float = 1.702,
-    # ) -> Any:
-    #     act = _get_tenpu_activations()
-    #     out = act.clamped_swiglu_fwd(input, clamp_val=limit)
-    #     if quantizer is not None and hasattr(quantizer, "quantize"):
-    #         out = quantizer.quantize(out)
-    #     return out
+        def matrix_shape(
+            tensor: Any,
+            transpose: bool,
+        ) -> Tuple[int, int]:
+            if tensor.ndim != 2:
+                raise ValueError(
+                    "te_general_grouped_gemm currently requires 2D tensors, "
+                    f"got shape={tuple(tensor.shape)}"
+                )
 
-    # ===================== Activation Backward =====================
-    # Delegates to transformer_engine_npu's backward kernels
+            if transpose:
+                return int(tensor.shape[1]), int(tensor.shape[0])
 
-    def dgelu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any = None) -> Any:
-        act = _get_tenpu_activations()
-        out = act.gelu_bwd(fwd_input, grad)
-        if quantizer is not None and hasattr(quantizer, "quantize"):
-            out = quantizer.quantize(out)
-        return out
+            return int(tensor.shape[0]), int(tensor.shape[1])
 
-    def dgeglu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any = None) -> Any:
-        act = _get_tenpu_activations()
-        out = act.geglu_bwd(fwd_input, grad)
-        if quantizer is not None and hasattr(quantizer, "quantize"):
-            out = quantizer.quantize(out)
-        return out
+        # TE-FL computes:
+        #
+        #     op(B, transb) @ op(A, transa)
+        #
+        # Calculate and validate each output shape first.
+        output_shapes: List[Tuple[int, int]] = []
 
-    def dqgelu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any = None) -> Any:
-        act = _get_tenpu_activations()
-        out = act.qgelu_bwd(fwd_input, grad)
-        if quantizer is not None and hasattr(quantizer, "quantize"):
-            out = quantizer.quantize(out)
-        return out
+        for index in range(num_gemms):
+            a_rows, a_cols = matrix_shape(A[index], transa)
+            b_rows, b_cols = matrix_shape(B[index], transb)
 
-    def dqgeglu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any = None) -> Any:
-        act = _get_tenpu_activations()
-        out = act.qgeglu_bwd(fwd_input, grad)
-        if quantizer is not None and hasattr(quantizer, "quantize"):
-            out = quantizer.quantize(out)
-        return out
+            if b_cols != a_rows:
+                raise ValueError(
+                    f"Incompatible GEMM shapes for group {index}: "
+                    f"B_comp=({b_rows}, {b_cols}), "
+                    f"A_comp=({a_rows}, {a_cols})"
+                )
 
-    def drelu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any = None) -> Any:
-        act = _get_tenpu_activations()
-        out = act.relu_bwd(fwd_input, grad)
-        if quantizer is not None and hasattr(quantizer, "quantize"):
-            out = quantizer.quantize(out)
-        return out
+            output_shapes.append((b_rows, a_cols))
 
-    def dreglu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any = None) -> Any:
-        act = _get_tenpu_activations()
-        out = act.reglu_bwd(fwd_input, grad)
-        if quantizer is not None and hasattr(quantizer, "quantize"):
-            out = quantizer.quantize(out)
-        return out
+        torch_out_dtype = _to_torch_dtype(D_type)
 
-    def dsrelu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any = None) -> Any:
-        act = _get_tenpu_activations()
-        out = act.srelu_bwd(fwd_input, grad)
-        if quantizer is not None and hasattr(quantizer, "quantize"):
-            out = quantizer.quantize(out)
-        return out
+        if torch_out_dtype is None:
+            if D is not None and len(D) > 0:
+                torch_out_dtype = D[0].dtype
+            else:
+                torch_out_dtype = B[0].dtype
 
-    def dsreglu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any = None) -> Any:
-        act = _get_tenpu_activations()
-        out = act.sreglu_bwd(fwd_input, grad)
-        if quantizer is not None and hasattr(quantizer, "quantize"):
-            out = quantizer.quantize(out)
-        return out
+                if torch_out_dtype in (
+                    torch.float8_e4m3fn,
+                    torch.float8_e5m2,
+                ):
+                    torch_out_dtype = torch.bfloat16
 
-    def dsilu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any = None) -> Any:
-        act = _get_tenpu_activations()
-        out = act.silu_bwd(fwd_input, grad)
-        if quantizer is not None and hasattr(quantizer, "quantize"):
-            out = quantizer.quantize(out)
-        return out
+        # Allocate per-group output buffers when D is not provided.
+        # single_output=True requires the caller-provided packed buffer.
+        if D is None:
+            D = [
+                torch.empty(
+                    shape,
+                    dtype=torch_out_dtype,
+                    device=B[index].device,
+                )
+                for index, shape in enumerate(output_shapes)
+            ]
 
-    def dswiglu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any = None) -> Any:
-        act = _get_tenpu_activations()
-        out = act.swiglu_bwd(fwd_input, grad)
-        if quantizer is not None and hasattr(quantizer, "quantize"):
-            out = quantizer.quantize(out)
-        return out
+        if single_output:
+            if len(D) != 1:
+                raise ValueError(
+                    "single_output=True requires exactly one D tensor, "
+                    f"got {len(D)}"
+                )
 
-    def dglu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any = None) -> Any:
-        act = _get_tenpu_activations()
-        out = act.glu_bwd(fwd_input, grad)
-        if quantizer is not None and hasattr(quantizer, "quantize"):
-            out = quantizer.quantize(out)
-        return out
+            output_widths = {
+                shape[1]
+                for shape in output_shapes
+            }
 
-    # bug
-    # def clamped_dswiglu(
-    #     self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any = None,
-    #     limit: float = 7.0, alpha: float = 1.702,
-    # ) -> Any:
-    #     act = _get_tenpu_activations()
-    #     out = act.clamped_swiglu_bwd(fwd_input, grad, clamp_val=limit)
-    #     if quantizer is not None and hasattr(quantizer, "quantize"):
-    #         out = quantizer.quantize(out)
-    #     return out
+            if len(output_widths) != 1:
+                raise ValueError(
+                    "single_output=True requires all grouped GEMMs "
+                    "to have the same output width"
+                )
 
-    # ===================== Multi-tensor (additional) =====================
+            expected_shape = (
+                sum(shape[0] for shape in output_shapes),
+                output_shapes[0][1],
+            )
 
-    def multi_tensor_scale_tensor(
-        self,
-        chunk_size: int,
-        noop_flag: torch.Tensor,
-        tensor_lists: List[List[torch.Tensor]],
-        scale: torch.Tensor,
-    ) -> None:
-        """Overflow check + scale with tensor scale factor."""
-        opt = _get_tenpu_optimizers()
-        opt.multi_tensor_scale_tensor(chunk_size, noop_flag, tensor_lists, scale)
+            if tuple(D[0].shape) != expected_shape:
+                raise ValueError(
+                    "Invalid single output shape: "
+                    f"expected {expected_shape}, "
+                    f"got {tuple(D[0].shape)}"
+                )
+        else:
+            if len(D) != num_gemms:
+                raise ValueError(
+                    f"Expected {num_gemms} output tensors, got {len(D)}"
+                )
 
-    # ===================== Quantization =====================
+            for index, (destination, expected_shape) in enumerate(
+                zip(D, output_shapes)
+            ):
+                if tuple(destination.shape) != expected_shape:
+                    raise ValueError(
+                        f"Invalid output shape for group {index}: "
+                        f"expected {expected_shape}, "
+                        f"got {tuple(destination.shape)}"
+                    )
 
-    def quantize(
-        self,
-        tensor: torch.Tensor,
-        quantizer: Any,
-        output: Optional[torch.Tensor] = None,
-        noop: Optional[torch.Tensor] = None,
-    ) -> Any:
-        """Quantize tensor using quantizer."""
-        if quantizer is not None and hasattr(quantizer, "quantize"):
-            return quantizer.quantize(tensor)
-        return tensor
+        bias_flags = [
+            has_tensor(bias, index)
+            for index in range(num_gemms)
+        ]
+        gelu_flags = [
+            has_tensor(pre_gelu_out, index)
+            for index in range(num_gemms)
+        ]
 
-    # ===================== Utility =====================
+        has_any_bias = any(bias_flags)
+        has_all_bias = all(bias_flags)
+        has_any_gelu = any(gelu_flags)
 
-    def get_cudnn_version(self) -> int:
-        """NPU does not use cuDNN; return 0."""
-        return 0
+        all_dense_tensors = all(
+            isinstance(tensor, torch.Tensor)
+            for tensor in list(A) + list(B)
+        )
+
+        same_output_width = (
+            len({shape[1] for shape in output_shapes}) == 1
+        )
+
+        # This dense wrapper does not pass quantization parameters to
+        # npu_grouped_matmul, so only use the non-quantized floating-point path.
+        native_dense_dtypes = {
+            torch.float16,
+            torch.bfloat16,
+            torch.float32,
+        }
+
+        native_dtype_supported = False
+        native_device_supported = False
+
+        if all_dense_tensors:
+            input_dtypes = {
+                tensor.dtype
+                for tensor in list(A) + list(B)
+            }
+
+            native_dtype_supported = (
+                len(input_dtypes) == 1
+                and next(iter(input_dtypes)) in native_dense_dtypes
+                and torch_out_dtype in native_dense_dtypes
+            )
+
+            input_devices = {
+                tensor.device
+                for tensor in list(A) + list(B)
+            }
+            native_device_supported = len(input_devices) == 1
+
+        # group_type=0:
+        #   The packed B input is not transposed. This covers forward and dgrad.
+        #
+        # group_type=2:
+        #   The packed B input is transposed and split along its K dimension.
+        #   This covers the standard TE wgrad layout="NT".
+        regular_native_layout = not transb
+        native_wgrad_layout = transb and not transa
+
+        native_layout_supported = (
+            regular_native_layout
+            or native_wgrad_layout
+        )
+
+        # Forward bias can use the current TransformerEngineNPU wrapper.
+        #
+        # In backward mode the bias argument represents a bgrad destination,
+        # not a forward bias tensor, so it must not be passed to the native
+        # grouped GEMM as bias.
+        native_bias_supported = (
+            not has_any_bias
+            or (
+                regular_native_layout
+                and not grad
+                and has_all_bias
+            )
+        )
+
+        # npu_grouped_matmul does not implement the TE dGELU/pre_gelu_out
+        # contract. All GELU-related paths therefore use generic_gemm.
+        native_epilogue_supported = (
+            native_bias_supported
+            and not has_any_gelu
+        )
+
+        use_native_path = (
+            all_dense_tensors
+            and native_dtype_supported
+            and native_device_supported
+            and native_layout_supported
+            and native_epilogue_supported
+            and same_output_width
+        )
+
+        if use_native_path:
+            if m_splits:
+                split_sizes = [
+                    int(size)
+                    for size in m_splits
+                ]
+
+                if len(split_sizes) != num_gemms:
+                    raise ValueError(
+                        f"Expected {num_gemms} m_splits, "
+                        f"got {len(split_sizes)}"
+                    )
+            else:
+                split_sizes = [
+                    int(tensor.shape[0])
+                    for tensor in B
+                ]
+
+            # For both group_type=0 and the standard group_type=2 wgrad
+            # mapping, m_splits describe the original row count of B[i].
+            expected_splits = [
+                int(tensor.shape[0])
+                for tensor in B
+            ]
+
+            if split_sizes != expected_splits:
+                raise ValueError(
+                    "m_splits must match the row counts of B for the "
+                    "native NPU grouped GEMM path: "
+                    f"expected {expected_splits}, "
+                    f"got {split_sizes}"
+                )
+
+            # group_list_type=1 means group_split contains per-group sizes,
+            # rather than cumulative offsets.
+            group_split = torch.tensor(
+                split_sizes,
+                dtype=torch.int64,
+                device=B[0].device,
+            )
+
+            packed_input = torch.cat(
+                B,
+                dim=0,
+            )
+
+            layout = (
+                ("T" if transa else "N")
+                + ("T" if transb else "N")
+            )
+
+            group_type = (
+                2 if native_wgrad_layout else 0
+            )
+
+            # Bias is only a forward group_type=0 epilogue here.
+            native_use_bias = (
+                regular_native_layout
+                and not grad
+                and has_all_bias
+            )
+
+            gemm_mod = _get_tenpu_gemm()
+
+            packed_output = gemm_mod.general_grouped_gemm(
+                A,                  # NPU B: RHS/weight tensor list
+                packed_input,       # NPU A: packed LHS/input tensor
+                group_split,
+                layout=layout,
+                use_bias=native_use_bias,
+                biases=bias if native_use_bias else None,
+                group_type=group_type,
+                group_list_type=1,
+                split_item=3,
+                out_dtype=torch_out_dtype,
+            )
+
+            if packed_output is None:
+                raise RuntimeError(
+                    "TransformerEngineNPU general_grouped_gemm "
+                    "returned None"
+                )
+
+            if not isinstance(packed_output, torch.Tensor):
+                raise TypeError(
+                    "TransformerEngineNPU general_grouped_gemm must "
+                    "return a Tensor for split_item=3, "
+                    f"got {type(packed_output)}"
+                )
+
+            expected_packed_shape = (
+                sum(shape[0] for shape in output_shapes),
+                output_shapes[0][1],
+            )
+            expected_packed_numel = (
+                expected_packed_shape[0]
+                * expected_packed_shape[1]
+            )
+
+            if packed_output.numel() != expected_packed_numel:
+                raise RuntimeError(
+                    "Unexpected native grouped GEMM output size: "
+                    f"expected shape compatible with "
+                    f"{expected_packed_shape} "
+                    f"({expected_packed_numel} elements), "
+                    f"got shape={tuple(packed_output.shape)} "
+                    f"({packed_output.numel()} elements)"
+                )
+
+            # group_type=0 normally returns [sum(M_i), N].
+            #
+            # group_type=2 may return [num_groups, N, K] when all group
+            # shapes are equal. Flattening the leading group dimensions
+            # converts both cases to TE-FL's packed [sum(rows_i), width]
+            # representation while preserving group order.
+            packed_output = packed_output.reshape(
+                expected_packed_shape
+            )
+
+            if single_output:
+                source = packed_output.to(D[0].dtype)
+
+                if accumulate:
+                    D[0].add_(source)
+                else:
+                    D[0].copy_(source)
+            else:
+                output_chunks = torch.split(
+                    packed_output,
+                    [shape[0] for shape in output_shapes],
+                    dim=0,
+                )
+
+                for destination, source in zip(D, output_chunks):
+                    source = source.to(destination.dtype)
+
+                    if accumulate:
+                        destination.add_(source)
+                    else:
+                        destination.copy_(source)
+
+            # TE-FL expects this function to return the bias/bgrad buffers;
+            # GEMM results have already been written into D.
+            return bias
+
+        # Correctness fallback for:
+        #
+        #   - bgrad
+        #   - GELU/dGELU
+        #   - mixed per-group bias/GELU epilogues
+        #   - transa=True and transb=True
+        #   - unsupported dense dtypes
+        #   - quantized/GroupedTensor inputs
+        #   - heterogeneous output widths
+        single_output_offset = 0
+
+        for index in range(num_gemms):
+            if single_output:
+                output_rows = output_shapes[index][0]
+
+                destination = D[0][
+                    single_output_offset:
+                    single_output_offset + output_rows
+                ]
+
+                single_output_offset += output_rows
+            else:
+                destination = D[index]
+
+            bias_tensor = (
+                bias[index]
+                if bias_flags[index]
+                else None
+            )
+            gelu_input = (
+                pre_gelu_out[index]
+                if gelu_flags[index]
+                else None
+            )
+
+            if workspace:
+                gemm_workspace = workspace[
+                    min(index, len(workspace) - 1)
+                ]
+            else:
+                gemm_workspace = torch.empty(
+                    0,
+                    dtype=torch.uint8,
+                    device=B[index].device,
+                )
+
+            _, bias_grad, _, _ = self.generic_gemm(
+                A=A[index],
+                transA=transa,
+                B=B[index],
+                transB=transb,
+                D=destination,
+                quantizer=None,
+                output_dtype=D_type,
+                bias=bias_tensor,
+                bias_type=bias_type,
+                gelu=gelu_flags[index],
+                gelu_in=gelu_input,
+                grad=grad,
+                workspace=gemm_workspace,
+                workspace_size=workspaceSizes,
+                accumulate=accumulate,
+                use_split_accumulator=use_split_accumulator,
+            )
+
+            # generic_gemm returns the bias gradient, but does not necessarily
+            # write it into the grouped GEMM bias/bgrad destination.
+            if (
+                grad
+                and bias_flags[index]
+                and bias_grad is not None
+            ):
+                bias_grad = bias_grad.to(
+                    bias[index].dtype
+                )
+
+                if accumulate:
+                    bias[index].add_(bias_grad)
+                else:
+                    bias[index].copy_(bias_grad)
+
+        # math_sm_count is a CUDA-specific tuning parameter and has no
+        # corresponding control in torch_npu.npu_grouped_matmul.
+        _ = math_sm_count
+
+        return bias
