@@ -13,7 +13,7 @@ def _noop(*args, **kwargs):
 
 # Patches: (parent_object, attribute_name, replacement_callable)
 _PATCH_CALLS: list[tuple[object, str, Callable[..., object]]] = [
-    (torch.cuda, "is_available", torch.txda.is_available),   
+    (torch.cuda, "is_available", torch.txda.is_available),
     (torch.cuda, "get_device_properties", torch.txda.get_device_properties),
     (torch.cuda, "device", torch.txda.device),
     (torch.cuda, "current_device", torch.txda.current_device),
@@ -42,7 +42,7 @@ def apply_patch() -> None:
             return
     except Exception as e:
         return
-    
+
     try:
         import transformer_engine
 
