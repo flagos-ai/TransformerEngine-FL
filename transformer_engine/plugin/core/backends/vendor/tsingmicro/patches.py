@@ -40,8 +40,17 @@ def apply_patch() -> None:
     try:
         if not torch.txda.is_available():
             return
-    except Exception:
+    except Exception as e:
         return
+    
+    try:
+        import transformer_engine
+
+        transformer_engine.TE_DEVICE_TYPE = "txda"
+        transformer_engine.TE_PLATFORM = torch.txda
+    except Exception as e:
+        print(f"[TE-FL TXDA Patches] Error setting TE device type or platform: {e}")
+        pass
 
     for parent, attr, replacement in _PATCH_CALLS:
         if not hasattr(parent, attr):

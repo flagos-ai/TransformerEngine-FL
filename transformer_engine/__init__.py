@@ -26,9 +26,6 @@ except Exception as e:
 
 # Apply TXDA (VENDOR) such as torch.cuda.device -> torch.txda.device
 try:
-    TE_DEVICE_TYPE = "txda"
-    TE_PLATFORM = torch.txda
-
     from .plugin.core.backends.vendor.tsingmicro.patches import apply_patch as _txda_apply_patch
 
     _txda_apply_patch()
