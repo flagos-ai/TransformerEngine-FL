@@ -303,3 +303,208 @@ def test_gemm_accumulator_destinations():
     )
     assert res_c is D_c
     assert D_c.item() == 2.0
+
+
+# ==============================================================================
+# Part 4: Backward Pass (grad=True) Tests
+# ==============================================================================
+
+
+def test_gemm_backward_bias_grad():
+    """Verify bias gradient computation when grad=True and bias is provided.
+
+    In backward mode the function should:
+    - NOT add bias to the output
+    - Return bias_grad = B.sum(dim=0) (gradient w.r.t. bias)
+    """
+    # A (K, N) = (3, 2), B (M, K) = (4, 3)
+    # transA=False, transB=False -> out = mm(B_comp, A_comp) = mm((4,3),(3,2)) = (4,2)
+    A = torch.randn(3, 2, dtype=torch.float32)
+    B = torch.randn(4, 3, dtype=torch.float32)
+    bias = torch.ones(2, dtype=torch.float32)  # shape matches output columns
+
+    res, bias_grad, _, _ = general_gemm_torch(
+        A=A,
+        transA=False,
+        B=B,
+        transB=False,
+        D=None,
+        quantizer=None,
+        output_dtype=None,
+        bias=bias,
+        bias_type=None,
+        gelu=False,
+        gelu_in=None,
+        grad=True,
+        workspace=torch.empty(1),
+        workspace_size=0,
+        accumulate=False,
+        use_split_accumulator=False,
+    )
+
+    # bias_grad should equal B.sum(dim=0)
+    expected_bias_grad = B.sum(dim=0)
+    assert bias_grad is not None
+    assert torch.allclose(bias_grad, expected_bias_grad)
+
+    # Output should NOT include bias (compare with plain matmul)
+    expected_out = torch.mm(B, A)
+    assert torch.allclose(res, expected_out)
+
+
+def test_gemm_backward_no_bias():
+    """Verify that grad=True with bias=None returns bias_grad=None and computes normally."""
+    A = torch.randn(3, 2, dtype=torch.float32)
+    B = torch.randn(4, 3, dtype=torch.float32)
+
+    res, bias_grad, _, _ = general_gemm_torch(
+        A=A,
+        transA=False,
+        B=B,
+        transB=False,
+        D=None,
+        quantizer=None,
+        output_dtype=None,
+        bias=None,
+        bias_type=None,
+        gelu=False,
+        gelu_in=None,
+        grad=True,
+        workspace=torch.empty(1),
+        workspace_size=0,
+        accumulate=False,
+        use_split_accumulator=False,
+    )
+
+    assert bias_grad is None
+    expected_out = torch.mm(B, A)
+    assert torch.allclose(res, expected_out)
+
+
+def test_gemm_backward_with_gelu():
+    """Verify backward behavior when both grad=True and gelu=True.
+
+    In backward pass, out = dY (upstream gradient) and gelu_in holds the
+    pre-activation from forward. The result should be dY * GeLU'(gelu_in).
+
+    GeLU(x) = 0.5 * x * (1 + tanh(u)),  u = sqrt(2/pi) * (x + 0.044715 * x^3)
+    GeLU'(x) = 0.5*(1+tanh(u)) + 0.5*x*(1-tanh(u)^2)*sqrt(2/pi)*(1+3*0.044715*x^2)
+    """
+    A = torch.randn(3, 2, dtype=torch.float32)
+    B = torch.randn(4, 3, dtype=torch.float32)
+
+    # Simulate: gelu_in was saved during forward with some known values
+    gelu_buffer = torch.randn(4, 2, dtype=torch.float32)
+    saved_gelu_in = gelu_buffer.clone()  # preserve original values
+
+    res, bias_grad, gelu_in_ret, _ = general_gemm_torch(
+        A=A,
+        transA=False,
+        B=B,
+        transB=False,
+        D=None,
+        quantizer=None,
+        output_dtype=None,
+        bias=None,
+        bias_type=None,
+        gelu=True,
+        gelu_in=gelu_buffer,
+        grad=True,
+        workspace=torch.empty(1),
+        workspace_size=0,
+        accumulate=False,
+        use_split_accumulator=False,
+    )
+
+    # gelu_in_ret should be None when backward
+    assert gelu_in_ret is None
+
+    # Compute expected: dY * GeLU'(saved_gelu_in)
+    dY = torch.mm(B, A)  # the matmul result before gelu backward
+    x = saved_gelu_in
+    sqrt_2_over_pi = 0.7978845608028654
+    u = sqrt_2_over_pi * (x + 0.044715 * x.pow(3))
+    tanh_u = torch.tanh(u)
+    gelu_deriv = 0.5 * (1.0 + tanh_u) + 0.5 * x * (1.0 - tanh_u.pow(2)) * sqrt_2_over_pi * (
+        1.0 + 3.0 * 0.044715 * x.pow(2)
+    )
+    expected_out = dY * gelu_deriv
+
+    assert torch.allclose(res, expected_out, atol=1e-6)
+
+
+def test_gemm_backward_bias_grad_with_alpha():
+    """Verify bias gradient is independent of alpha scaling.
+
+    The bias_grad = B.sum(dim=0) should not be affected by alpha, since alpha
+    only scales the matmul output.
+    """
+    A = torch.randn(3, 2, dtype=torch.float32)
+    B = torch.randn(4, 3, dtype=torch.float32)
+    bias = torch.ones(2, dtype=torch.float32)
+
+    res, bias_grad, _, _ = general_gemm_torch(
+        A=A,
+        transA=False,
+        B=B,
+        transB=False,
+        D=None,
+        quantizer=None,
+        output_dtype=None,
+        bias=bias,
+        bias_type=None,
+        gelu=False,
+        gelu_in=None,
+        grad=True,
+        workspace=torch.empty(1),
+        workspace_size=0,
+        accumulate=False,
+        use_split_accumulator=False,
+        alpha=0.5,
+    )
+
+    # bias_grad = B.sum(dim=0), unaffected by alpha
+    expected_bias_grad = B.sum(dim=0)
+    assert torch.allclose(bias_grad, expected_bias_grad)
+
+    # Output should be scaled by alpha
+    expected_out = torch.mm(B, A) * 0.5
+    assert torch.allclose(res, expected_out)
+
+
+def test_gemm_backward_bias_grad_3d_input():
+    """Verify bias gradient computation with 3D B tensor (batch dimension)."""
+    # B is 3D: (2, 3, 4) -> reshaped to (6, 4)
+    # A is 2D: (4, 2), transA=False
+    # out = mm((6,4), (4,2)) = (6,2), then reshaped to (2, 3, 2)
+    A = torch.randn(4, 2, dtype=torch.float32)
+    B = torch.randn(2, 3, 4, dtype=torch.float32)
+    bias = torch.ones(2, dtype=torch.float32)
+
+    res, bias_grad, _, _ = general_gemm_torch(
+        A=A,
+        transA=False,
+        B=B,
+        transB=False,
+        D=None,
+        quantizer=None,
+        output_dtype=None,
+        bias=bias,
+        bias_type=None,
+        gelu=False,
+        gelu_in=None,
+        grad=True,
+        workspace=torch.empty(1),
+        workspace_size=0,
+        accumulate=False,
+        use_split_accumulator=False,
+    )
+
+    # B is reshaped to (6, 4) before bias_grad = B.sum(dim=0) -> shape (4,)
+    B_reshaped = B.reshape(-1, B.shape[-1])
+    expected_bias_grad = B_reshaped.sum(dim=0)
+    assert bias_grad is not None
+    assert torch.allclose(bias_grad, expected_bias_grad)
+
+    # Output should be reshaped back to (2, 3, 2)
+    assert res.shape == (2, 3, 2)

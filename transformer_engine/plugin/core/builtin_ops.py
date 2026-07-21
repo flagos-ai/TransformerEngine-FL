@@ -103,3 +103,12 @@ def register_builtins(registry: OpRegistry) -> None:
     except Exception as e:
         # enflame may not be available, this is expected
         pass
+
+    # Register NPU (VENDOR) implementations
+    try:
+        from .backends.vendor.npu.register_ops import register_builtins as register_npu
+
+        register_npu(registry)
+    except Exception as e:
+        # NPU may not be available, this is expected
+        pass
