@@ -274,6 +274,9 @@ class NPUBackend(TEFLBackendBase):
         epsilon: float,
     ):
         """Compute per-tensor FP8 scale and scale_inv."""
+        if noop_flag.numel() > 0 and bool(noop_flag.item()):
+            return
+
         opt = _get_tenpu_optimizers()
         opt.multi_tensor_compute_scale_and_scale_inv(
             chunk_size, noop_flag, tensor_lists, max_fp8, force_pow_2_scales, epsilon
@@ -698,7 +701,8 @@ class NPUBackend(TEFLBackendBase):
         )
 
         use_native_path = (
-            all_dense_tensors
+            num_gemms > 1
+            and all_dense_tensors
             and native_dtype_supported
             and native_device_supported
             and native_layout_supported
@@ -935,5 +939,4 @@ class NPUBackend(TEFLBackendBase):
         # math_sm_count is a CUDA-specific tuning parameter and has no
         # corresponding control in torch_npu.npu_grouped_matmul.
         _ = math_sm_count
-
         return bias

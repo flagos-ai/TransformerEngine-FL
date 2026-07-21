@@ -48,13 +48,12 @@ class NPUFlashAttention(FlashAttentionBase):
     torch_npu.npu_fusion_attention under the hood.
 
     Supported features:
-      - sbhd and thd formats
+      - sbhd, bshd (via transpose), and thd formats
       - causal / padding mask types
       - Variable-length sequences (cu_seqlens)
       - Sparse mask optimization (via NPU's get_fa_config)
 
     Not supported (silently ignored):
-      - bshd format (NPU only supports sbhd/thd)
       - Sliding window attention (window_size)
       - ALiBi slopes
       - Context Parallelism (cp_group, cp_stream, etc.)
@@ -99,21 +98,22 @@ class NPUFlashAttention(FlashAttentionBase):
 
     @staticmethod
     def _layout_to_format(qkv_layout: Optional[str]) -> str:
-        """Map TE-FL qkv_layout string to NPU qkv_format.
-
-        TE-FL layouts: sb3hd, sbhd_sb2hd, sbhd_sbhd_sbhd, bs3hd, bshd_bshd_bshd,
-                       t3hd, thd_thd_thd, etc.
-        NPU formats:  sbhd, thd (bshd not supported by NPU kernel)
-        """
+        """Map TE-FL qkv_layout string to NPU qkv_format."""
         if qkv_layout is None:
             return "sbhd"
         layout = qkv_layout.lower()
         if "thd" in layout or layout.startswith("t"):
             return "thd"
-        # sb3hd, sbhd_sbhd_sbhd, bs3hd, bshd_bshd_bshd → all use sbhd
-        # NPU npu_fusion_attention doesn't support bshd natively;
-        # the NPU FlashAttention internally handles sbhd only.
         return "sbhd"
+
+    @staticmethod
+    def _is_bshd_layout(qkv_layout: Optional[str]) -> bool:
+        """Whether the separate Q/K/V tensors use batch-major BSHD layout."""
+        if qkv_layout is None:
+            return False
+        layout = qkv_layout.lower()
+        # Covers bs3hd, bsh3d, and bshd_bshd_bshd.
+        return layout.startswith("bs")
 
     def _forward_impl(
         self,
@@ -154,7 +154,6 @@ class NPUFlashAttention(FlashAttentionBase):
             For features that don't affect correctness but differ from user
             expectation (fp8, inference_params).
         """
-        self._ensure_backend()
         # --- Validate: features that would silently produce wrong results ---
         if window_size is not None and window_size not in ((-1, -1), (-1, 0)):
             raise NotImplementedError(
@@ -199,10 +198,21 @@ class NPUFlashAttention(FlashAttentionBase):
                 stacklevel=2,
             )
 
+        # TransformerEngineNPU only accepts sequence-major SBHD or packed THD.
+        # Convert batch-major BSHD inputs explicitly instead of only relabeling
+        # their layout, which would swap the semantic batch and sequence axes.
+        input_is_bshd = self._is_bshd_layout(qkv_layout)
+        if input_is_bshd:
+            query_layer = query_layer.transpose(0, 1).contiguous()
+            key_layer = key_layer.transpose(0, 1).contiguous()
+            value_layer = value_layer.transpose(0, 1).contiguous()
+
         qkv_format = self._layout_to_format(qkv_layout)
         if attn_mask_type in ("causal", "padding_causal", "padding,causal", "causal,padding"):
-            attention_mask = get_compressed_causal_mask()
-        return self._npu_flash(
+            attention_mask = get_compressed_causal_mask(query_layer.device)
+
+        self._ensure_backend()
+        output = self._npu_flash(
             query_layer,
             key_layer,
             value_layer,
@@ -212,3 +222,8 @@ class NPUFlashAttention(FlashAttentionBase):
             cu_seqlens_kv=cu_seqlens_kv,
             attn_mask_type=attn_mask_type,
         )
+
+        if input_is_bshd:
+            output = output.transpose(0, 1).contiguous()
+
+        return output
