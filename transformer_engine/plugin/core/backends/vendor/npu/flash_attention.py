@@ -85,6 +85,7 @@ class NPUFlashAttention(torch.nn.Module):
         from transformer_engine_npu.pytorch.attention.dot_product_attention.backends import (
             FlashAttention as _NPUFlashAttention,
         )
+
         self._npu_flash = _NPUFlashAttention(self.softmax_scale)
 
     @staticmethod
@@ -150,10 +151,10 @@ class NPUFlashAttention(torch.nn.Module):
         # --- Validate: features that would silently produce wrong results ---
         if window_size is not None and window_size not in ((-1, -1), (-1, 0)):
             raise NotImplementedError(
-                f"NPU FlashAttention does not support sliding window attention "
+                "NPU FlashAttention does not support sliding window attention "
                 f"(window_size={window_size}). npu_fusion_attention only computes "
-                f"full causal/padding attention. Either disable sliding window or "
-                f"use UnfusedDotProductAttention as fallback."
+                "full causal/padding attention. Either disable sliding window or "
+                "use UnfusedDotProductAttention as fallback."
             )
 
         if alibi_slopes is not None:
@@ -173,6 +174,7 @@ class NPUFlashAttention(torch.nn.Module):
         # --- Warn: features that don't break correctness but differ from expectation ---
         if fp8:
             import warnings
+
             warnings.warn(
                 "NPU FlashAttention does not support FP8 attention computation. "
                 "Falling back to BF16/FP16 precision. Results are correct but "
@@ -182,6 +184,7 @@ class NPUFlashAttention(torch.nn.Module):
 
         if inference_params is not None:
             import warnings
+
             warnings.warn(
                 "NPU FlashAttention does not support KV cache (inference_params). "
                 "Full recomputation will be used. This is correct but slower for "
@@ -190,7 +193,7 @@ class NPUFlashAttention(torch.nn.Module):
             )
 
         qkv_format = self._layout_to_format(qkv_layout)
-        if attn_mask_type in ('causal', 'padding_causal', 'padding,causal', 'causal,padding'):
+        if attn_mask_type in ("causal", "padding_causal", "padding,causal", "causal,padding"):
             attention_mask = get_compressed_causal_mask()
         return self._npu_flash(
             query_layer,

@@ -24,6 +24,7 @@ def _check_npu_available() -> bool:
     try:
         import torch_npu  # noqa: F401
         import transformer_engine_npu
+
         return torch.npu.is_available()
     except (ImportError, AttributeError):
         return False
@@ -38,6 +39,7 @@ def _get_torch_npu():
     """Lazy import of torch_npu."""
     _ensure_npu_libs()
     import torch_npu
+
     return torch_npu
 
 
@@ -45,6 +47,7 @@ def _get_tenpu_optimizers():
     """Get optimizers subpackage directly, bypassing transformer_engine_npu/__init__.py
     which triggers circular imports via pytorch/__init__.py -> module -> ops."""
     import transformer_engine_npu
+
     return transformer_engine_npu.pytorch.optimizers
 
 
@@ -52,6 +55,7 @@ def _get_tenpu_gemm():
     """Get GEMM ops subpackage."""
     _ensure_npu_libs()
     import transformer_engine_npu
+
     return transformer_engine_npu.pytorch.ops.gemm
 
 
@@ -59,6 +63,7 @@ def _get_tenpu_activations():
     """Get NPU activation functions (uses NPU-optimized kernels like npu_gelu, npu_swiglu)."""
     _ensure_npu_libs()
     from transformer_engine_npu.pytorch.ops.basic import npu_activation
+
     return npu_activation
 
 
@@ -92,8 +97,8 @@ class NPUBackend(TEFLBackendBase):
         # Log disabled backends
         logger.info_once("TransformerEngineNPU only supports FlashAttentionNPU backend")
 
-        # Only Ascend's FlashAttention impl is supported, and the FlashAttention version cannot be specified.
-        flash_attention_backend = 0         
+        # Ascend only supports FlashAttention backend, and the FlashAttention version cannot be specified.
+        flash_attention_backend = 0
         fused_attention_backend = NVTE_Fused_Attn_Backend.NVTE_No_Backend
 
         available_backends = [use_flash_attention, use_fused_attention, use_unfused_attention]
@@ -190,9 +195,7 @@ class NPUBackend(TEFLBackendBase):
         # NPU kernel requires rstd in float32
         rsigma_fp32 = rsigma.float() if rsigma.dtype != torch.float32 else rsigma
 
-        dx_2d, dw = torch_npu.npu_rms_norm_backward(
-            dz_2d, x_2d, gamma, rsigma_fp32
-        )
+        dx_2d, dw = torch_npu.npu_rms_norm_backward(dz_2d, x_2d, gamma, rsigma_fp32)
 
         # Reshape dx back to original input shape
         dx = dx_2d.reshape(input_shape)
@@ -233,7 +236,9 @@ class NPUBackend(TEFLBackendBase):
     ) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
         """Multi-tensor unscale + L2 norm."""
         opt = _get_tenpu_optimizers()
-        return opt.multi_tensor_unscale_l2norm(chunk_size, noop_flag, tensor_lists, inv_scale, per_tensor)
+        return opt.multi_tensor_unscale_l2norm(
+            chunk_size, noop_flag, tensor_lists, inv_scale, per_tensor
+        )
 
     def multi_tensor_compute_scale_and_scale_inv(
         self,
@@ -245,7 +250,9 @@ class NPUBackend(TEFLBackendBase):
     ):
         """Compute per-tensor FP8 scale and scale_inv."""
         opt = _get_tenpu_optimizers()
-        opt.multi_tensor_compute_scale_and_scale_inv(chunk_size, noop_flag, tensor_lists, scale, epsilon)
+        opt.multi_tensor_compute_scale_and_scale_inv(
+            chunk_size, noop_flag, tensor_lists, scale, epsilon
+        )
 
     def multi_tensor_compute_scale_inv_e8m0(
         self,
@@ -307,6 +314,7 @@ class NPUBackend(TEFLBackendBase):
 
         # Determine output dtype
         from ....ops import DType
+
         _DTYPE_TO_TORCH = {
             0: torch.uint8,
             2: torch.int32,
@@ -327,7 +335,11 @@ class NPUBackend(TEFLBackendBase):
 
         # Use the activation dtype of B as fallback for out_dtype
         if torch_out_dtype is None:
-            torch_out_dtype = B.dtype if B.dtype not in (torch.float8_e4m3fn, torch.float8_e5m2) else torch.bfloat16
+            torch_out_dtype = (
+                B.dtype
+                if B.dtype not in (torch.float8_e4m3fn, torch.float8_e5m2)
+                else torch.bfloat16
+            )
 
         # Handle 3D tensors by flattening to 2D (matching reference semantics)
         original_B_shape = None

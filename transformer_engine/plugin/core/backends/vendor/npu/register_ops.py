@@ -350,7 +350,6 @@ def register_builtins(registry) -> None:
             vendor="NPU",
             priority=100,
         ),
-
         OpImpl(
             op_name="generic_gemm",
             impl_id="vendor.npu",
@@ -358,7 +357,7 @@ def register_builtins(registry) -> None:
             fn=_bind_is_available(backend.generic_gemm, is_avail),
             vendor="NPU",
             priority=100,
-        )
+        ),
     ]
 
     registry.register_many(impls)

@@ -12,6 +12,7 @@ import torch
 # Check NPU availability
 try:
     import torch_npu
+
     _HAS_NPU = torch.npu.is_available()
 except ImportError:
     _HAS_NPU = False
@@ -23,27 +24,32 @@ requires_npu = pytest.mark.skipif(not _HAS_NPU, reason="NPU not available")
 # Fixtures
 # ===========================================================================
 
+
 @pytest.fixture
 def npu_backend():
     from transformer_engine.plugin.core.backends.vendor.npu.npu import NPUBackend
+
     return NPUBackend()
 
 
 @pytest.fixture
 def ref_backend():
     from transformer_engine.plugin.core.backends.reference.reference import ReferenceBackend
+
     return ReferenceBackend()
 
 
 @pytest.fixture
 def fa():
     from transformer_engine.plugin.core.backends.vendor.npu.flash_attention import NPUFlashAttention
+
     return NPUFlashAttention(softmax_scale=0.125)
 
 
 # ===========================================================================
 # Tolerance helpers
 # ===========================================================================
+
 
 def _tol(dtype):
     if dtype == torch.bfloat16:
@@ -59,17 +65,20 @@ def assert_close(npu_out, ref_out, dtype, msg=""):
     npu_cpu = npu_out.detach().cpu().float()
     ref_cpu = ref_out.detach().cpu().float()
     max_diff = (npu_cpu - ref_cpu).abs().max().item()
-    assert torch.allclose(npu_cpu, ref_cpu, atol=atol, rtol=rtol), \
-        f"{msg} max_diff={max_diff:.6e}, atol={atol}, dtype={dtype}"
+    assert torch.allclose(
+        npu_cpu, ref_cpu, atol=atol, rtol=rtol
+    ), f"{msg} max_diff={max_diff:.6e}, atol={atol}, dtype={dtype}"
 
 
 # ===========================================================================
 # Mock tests (no NPU required)
 # ===========================================================================
 
+
 class TestAvailability:
     def test_get_cudnn_version_returns_zero(self):
         from transformer_engine.plugin.core.backends.vendor.npu.npu import NPUBackend
+
         b = NPUBackend.__new__(NPUBackend)
         assert b.get_cudnn_version() == 0
 
@@ -77,6 +86,7 @@ class TestAvailability:
 class TestQuantize:
     def test_quantize_with_quantizer(self):
         from transformer_engine.plugin.core.backends.vendor.npu.npu import NPUBackend
+
         b = NPUBackend.__new__(NPUBackend)
         quantizer = MagicMock()
         quantizer.quantize.return_value = "quantized"
@@ -84,6 +94,7 @@ class TestQuantize:
 
     def test_quantize_without_quantizer(self):
         from transformer_engine.plugin.core.backends.vendor.npu.npu import NPUBackend
+
         b = NPUBackend.__new__(NPUBackend)
         inp = torch.randn(4, 4)
         assert b.quantize(inp, None) is inp
@@ -91,25 +102,34 @@ class TestQuantize:
 
 class TestNPUFlashAttentionValidation:
     def test_window_size_sliding_raises(self):
-        from transformer_engine.plugin.core.backends.vendor.npu.flash_attention import NPUFlashAttention
+        from transformer_engine.plugin.core.backends.vendor.npu.flash_attention import (
+            NPUFlashAttention,
+        )
+
         fa = NPUFlashAttention(softmax_scale=0.125)
         q = torch.randn(1, 4, 2, 64)
         with pytest.raises(NotImplementedError, match="[Ss]liding"):
-            fa.forward(q, q, q, qkv_layout='bshd_bshd_bshd', window_size=(128, 0))
+            fa.forward(q, q, q, qkv_layout="bshd_bshd_bshd", window_size=(128, 0))
 
     def test_alibi_slopes_raises(self):
-        from transformer_engine.plugin.core.backends.vendor.npu.flash_attention import NPUFlashAttention
+        from transformer_engine.plugin.core.backends.vendor.npu.flash_attention import (
+            NPUFlashAttention,
+        )
+
         fa = NPUFlashAttention(softmax_scale=0.125)
         q = torch.randn(1, 4, 2, 64)
         with pytest.raises(NotImplementedError, match="[Aa]libi"):
-            fa.forward(q, q, q, qkv_layout='bshd_bshd_bshd', alibi_slopes=torch.ones(2))
+            fa.forward(q, q, q, qkv_layout="bshd_bshd_bshd", alibi_slopes=torch.ones(2))
 
     def test_cp_group_raises(self):
-        from transformer_engine.plugin.core.backends.vendor.npu.flash_attention import NPUFlashAttention
+        from transformer_engine.plugin.core.backends.vendor.npu.flash_attention import (
+            NPUFlashAttention,
+        )
+
         fa = NPUFlashAttention(softmax_scale=0.125)
         q = torch.randn(1, 4, 2, 64)
         with pytest.raises(NotImplementedError, match="[Cc]ontext"):
-            fa.forward(q, q, q, qkv_layout='bshd_bshd_bshd', cp_group="group")
+            fa.forward(q, q, q, qkv_layout="bshd_bshd_bshd", cp_group="group")
 
 
 # ===========================================================================
@@ -440,13 +460,14 @@ class TestNPURMSNormAccuracy:
             x_f32 = x.float()
             w_f32 = w.float()
             rms = torch.sqrt(x_f32.pow(2).mean(-1, keepdim=True) + 1e-5)
-            gt = (x_f32 / rms * w_f32)
+            gt = x_f32 / rms * w_f32
             # Both NPU and ref should be close to FP32 ground truth
             npu_diff = (npu_out.cpu().float() - gt).abs().max().item()
             ref_diff = (ref_out.float() - gt).abs().max().item()
             # NPU should not be worse than 2x reference's error from ground truth
-            assert npu_diff < max(ref_diff * 3, 0.1), \
-                f"rmsnorm {shape}: npu_diff={npu_diff:.4f} >> ref_diff={ref_diff:.4f}"
+            assert npu_diff < max(
+                ref_diff * 3, 0.1
+            ), f"rmsnorm {shape}: npu_diff={npu_diff:.4f} >> ref_diff={ref_diff:.4f}"
         else:
             assert_close(npu_out, ref_out, dtype, msg=f"rmsnorm_fwd out {shape}")
 
@@ -456,8 +477,7 @@ class TestNPURMSNormAccuracy:
         # rsigma tolerance: allow larger diff for bf16 since internal precision differs
         rs_atol = 0.01 if dtype == torch.bfloat16 else 1e-4
         rs_diff = (npu_rsigma.cpu().float() - ref_rsigma.float()).abs().max().item()
-        assert rs_diff < rs_atol, \
-            f"rmsnorm_fwd rsigma {shape}: diff={rs_diff:.6f}, atol={rs_atol}"
+        assert rs_diff < rs_atol, f"rmsnorm_fwd rsigma {shape}: diff={rs_diff:.6f}, atol={rs_atol}"
 
     @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
     def test_rmsnorm_fwd_zero_centered_gamma(self, npu_backend, ref_backend, dtype):
@@ -528,7 +548,7 @@ class TestNPUSoftmaxAccuracy:
         # Manual reference
         x_cpu = x.cpu().float() * scale
         mask_cpu = mask.cpu()
-        x_cpu.masked_fill_(mask_cpu, float('-inf'))
+        x_cpu.masked_fill_(mask_cpu, float("-inf"))
         ref_out = torch.softmax(x_cpu, dim=-1)
 
         assert_close(npu_out, ref_out, torch.float32, msg="scaled_masked_softmax_fwd")
@@ -571,8 +591,9 @@ class TestNPUGEMMAccuracy:
         B = torch.randn(K, N, dtype=torch.bfloat16, device="npu")
         C_init = torch.ones(M, N, dtype=torch.bfloat16, device="npu")
 
-        result, _, _ = npu_backend.gemm(A, B, torch.bfloat16, torch.empty(0),
-                                        accumulate=True, out=C_init)
+        result, _, _ = npu_backend.gemm(
+            A, B, torch.bfloat16, torch.empty(0), accumulate=True, out=C_init
+        )
         # Result = C_init + A@B
         fresh, _, _ = npu_backend.gemm(A, B, torch.bfloat16, torch.empty(0), accumulate=False)
         expected = fresh.cpu().float() + 1.0  # C_init was all-ones
@@ -597,8 +618,8 @@ class TestNPUFlashAttentionAccuracy:
         k = torch.randn(B, S, H, D, dtype=dtype, device="npu")
         v = torch.randn(B, S, H, D, dtype=dtype, device="npu")
 
-        out1 = fa.forward(q, k, v, qkv_layout='bshd_bshd_bshd')
-        out2 = fa.forward(q, k, v, qkv_layout='bshd_bshd_bshd')
+        out1 = fa.forward(q, k, v, qkv_layout="bshd_bshd_bshd")
+        out2 = fa.forward(q, k, v, qkv_layout="bshd_bshd_bshd")
         assert torch.equal(out1, out2), "Flash attention should be deterministic"
 
     @pytest.mark.parametrize("dtype", [torch.bfloat16])
@@ -611,7 +632,7 @@ class TestNPUFlashAttentionAccuracy:
         v_row = torch.randn(1, 1, H, D, dtype=dtype, device="npu")
         v = v_row.expand(B, S, H, D).contiguous()
 
-        out = fa.forward(q, k, v, qkv_layout='bshd_bshd_bshd')
+        out = fa.forward(q, k, v, qkv_layout="bshd_bshd_bshd")
         out_4d = out.view(B, S, H, D)
 
         # softmax(scores) @ V where all V rows are identical = V[0]
@@ -619,12 +640,13 @@ class TestNPUFlashAttentionAccuracy:
         expected = v_row.expand(B, S, H, D)
         atol = 1e-2  # bf16 tolerance
         max_diff = (out_4d.float() - expected.float()).abs().max().item()
-        assert max_diff < atol, \
-            f"Constant V test: max_diff={max_diff:.4e}, expected < {atol}"
+        assert max_diff < atol, f"Constant V test: max_diff={max_diff:.4e}, expected < {atol}"
 
     @pytest.mark.xfail(
-        reason="BUG: TransformerEngineNPU FlashAttention ignores attn_mask_type='causal' — "
-               "causal mask has zero effect on output. Root cause in upstream kernel."
+        reason=(
+            "BUG: TransformerEngineNPU FlashAttention ignores attn_mask_type='causal' — "
+            "causal mask has zero effect on output. Root cause in upstream kernel."
+        )
     )
     @pytest.mark.parametrize("dtype", [torch.bfloat16])
     def test_flash_attn_causal_mask_effect(self, fa, dtype):
@@ -635,21 +657,22 @@ class TestNPUFlashAttentionAccuracy:
         k = torch.randn(B, S, H, D, dtype=dtype, device="npu")
         v = torch.randn(B, S, H, D, dtype=dtype, device="npu")
 
-        out_full = fa.forward(q, k, v, qkv_layout='bshd_bshd_bshd')
-        out_causal = fa.forward(q, k, v, qkv_layout='bshd_bshd_bshd',
-                                attn_mask_type='causal')
+        out_full = fa.forward(q, k, v, qkv_layout="bshd_bshd_bshd")
+        out_causal = fa.forward(q, k, v, qkv_layout="bshd_bshd_bshd", attn_mask_type="causal")
 
         out_full_4d = out_full.view(B, S, H, D)
         out_causal_4d = out_causal.view(B, S, H, D)
 
         # First token: only attends to itself in both cases — should be identical
-        assert torch.allclose(out_full_4d[:, 0], out_causal_4d[:, 0], atol=1e-3), \
-            "First token should be same for causal and non-causal"
+        assert torch.allclose(
+            out_full_4d[:, 0], out_causal_4d[:, 0], atol=1e-3
+        ), "First token should be same for causal and non-causal"
         # Middle token (e.g. token 4): causal blocks future tokens, full doesn't
         # With S=32, token 4 attends to 5/32 positions (causal) vs all 32 (full)
         mid = S // 4  # token 8 — attends to 9/32 in causal
-        assert not torch.allclose(out_full_4d[:, mid], out_causal_4d[:, mid], atol=1e-3), \
-            f"Token {mid} should differ between causal and non-causal"
+        assert not torch.allclose(
+            out_full_4d[:, mid], out_causal_4d[:, mid], atol=1e-3
+        ), f"Token {mid} should differ between causal and non-causal"
 
     def test_flash_attn_output_bounded(self, fa):
         """Output magnitude is bounded by V magnitude (weighted average)."""
@@ -659,7 +682,7 @@ class TestNPUFlashAttentionAccuracy:
         k = torch.randn(B, S, H, D, dtype=torch.bfloat16, device="npu")
         v = torch.randn(B, S, H, D, dtype=torch.bfloat16, device="npu")
 
-        out = fa.forward(q, k, v, qkv_layout='bshd_bshd_bshd')
+        out = fa.forward(q, k, v, qkv_layout="bshd_bshd_bshd")
         assert out.shape == (B, S, H * D)
         assert not torch.isnan(out).any()
         # Attention is a convex combination of V rows — output should be bounded
@@ -681,8 +704,9 @@ class TestNPUMultiTensorAccuracy:
         noop = torch.zeros(1, device="npu", dtype=torch.int32)
         npu_backend.multi_tensor_scale(65536, noop, [[t1], [t_out]], 0.5)
         expected = torch.tensor([1.0, 2.0, 3.0])
-        assert torch.allclose(t_out.cpu(), expected, atol=1e-6), \
-            f"Expected {expected}, got {t_out.cpu()}"
+        assert torch.allclose(
+            t_out.cpu(), expected, atol=1e-6
+        ), f"Expected {expected}, got {t_out.cpu()}"
 
     def test_multi_tensor_l2norm(self, npu_backend):
         # [3, 4] -> norm = 5.0
@@ -690,7 +714,7 @@ class TestNPUMultiTensorAccuracy:
         noop = torch.zeros(1, device="npu", dtype=torch.int32)
         result = npu_backend.multi_tensor_l2norm(65536, noop, [[t1]], False)
         norm_val = result[0] if isinstance(result, tuple) else result
-        got = norm_val.item() if hasattr(norm_val, 'item') else float(norm_val)
+        got = norm_val.item() if hasattr(norm_val, "item") else float(norm_val)
         assert abs(got - 5.0) < 1e-4, f"Expected 5.0, got {got}"
 
     def test_multi_tensor_l2norm_multi_tensor(self, npu_backend):
@@ -699,7 +723,7 @@ class TestNPUMultiTensorAccuracy:
         noop = torch.zeros(1, device="npu", dtype=torch.int32)
         result = npu_backend.multi_tensor_l2norm(65536, noop, [[t1]], False)
         norm_val = result[0] if isinstance(result, tuple) else result
-        got = norm_val.item() if hasattr(norm_val, 'item') else float(norm_val)
+        got = norm_val.item() if hasattr(norm_val, "item") else float(norm_val)
         assert abs(got - 2.0) < 1e-4, f"Expected 2.0, got {got}"
 
     def test_multi_tensor_scale_tensor(self, npu_backend):
@@ -709,8 +733,9 @@ class TestNPUMultiTensorAccuracy:
         noop = torch.zeros(1, device="npu", dtype=torch.int32)
         npu_backend.multi_tensor_scale_tensor(65536, noop, [[t1], [t_out]], scale_t)
         expected = torch.tensor([6.0, 9.0, 12.0])
-        assert torch.allclose(t_out.cpu(), expected, atol=1e-5), \
-            f"Expected {expected}, got {t_out.cpu()}"
+        assert torch.allclose(
+            t_out.cpu(), expected, atol=1e-5
+        ), f"Expected {expected}, got {t_out.cpu()}"
 
     def test_multi_tensor_unscale_l2norm(self, npu_backend):
         t1 = torch.tensor([6.0, 8.0], device="npu")
@@ -720,7 +745,7 @@ class TestNPUMultiTensorAccuracy:
             65536, noop, [[t1], [inv_scale]], inv_scale
         )
         norm_val = result[0] if isinstance(result, tuple) else result
-        got = norm_val.item() if hasattr(norm_val, 'item') else float(norm_val)
+        got = norm_val.item() if hasattr(norm_val, "item") else float(norm_val)
         # Positive and finite is minimum bar
         assert got > 0 and math.isfinite(got), f"Got {got}"
 
@@ -746,9 +771,7 @@ class TestNPUKnownBugs:
     def test_grouped_gemm(self, npu_backend):
         A = torch.randn(8, 4, device="npu", dtype=torch.bfloat16)
         B = torch.randn(4, 16, device="npu", dtype=torch.bfloat16)
-        npu_backend.grouped_gemm(
-            [A], [B], torch.bfloat16, [torch.empty(0)], [8], accumulate=False
-        )
+        npu_backend.grouped_gemm([A], [B], torch.bfloat16, [torch.empty(0)], [8], accumulate=False)
 
 
 # ===========================================================================
@@ -764,15 +787,16 @@ class TestNPUMultiTensorAccuracy:
         noop = torch.zeros(1, device="npu", dtype=torch.int32)
         npu_backend.multi_tensor_scale(65536, noop, [[t1], [t_out]], 0.5)
         expected = torch.tensor([1.0, 2.0, 3.0])
-        assert torch.allclose(t_out.cpu(), expected, atol=1e-5), \
-            f"Expected {expected}, got {t_out.cpu()}"
+        assert torch.allclose(
+            t_out.cpu(), expected, atol=1e-5
+        ), f"Expected {expected}, got {t_out.cpu()}"
 
     def test_multi_tensor_l2norm(self, npu_backend):
         t1 = torch.tensor([3.0, 4.0], device="npu")
         noop = torch.zeros(1, device="npu", dtype=torch.int32)
         result = npu_backend.multi_tensor_l2norm(65536, noop, [[t1]], False)
         norm_val = result[0] if isinstance(result, tuple) else result
-        got = norm_val.item() if hasattr(norm_val, 'item') else float(norm_val)
+        got = norm_val.item() if hasattr(norm_val, "item") else float(norm_val)
         expected = 5.0  # sqrt(9+16)
         assert abs(got - expected) < 1e-4, f"Expected {expected}, got {got}"
 
@@ -783,7 +807,7 @@ class TestNPUMultiTensorAccuracy:
         noop = torch.zeros(1, device="npu", dtype=torch.int32)
         result = npu_backend.multi_tensor_l2norm(65536, noop, [[t1, t2]], False)
         norm_val = result[0] if isinstance(result, tuple) else result
-        got = norm_val.item() if hasattr(norm_val, 'item') else float(norm_val)
+        got = norm_val.item() if hasattr(norm_val, "item") else float(norm_val)
         expected = 5.0  # sqrt(9+16) across both tensors
         assert abs(got - expected) < 1e-4, f"Expected {expected}, got {got}"
 
@@ -794,8 +818,9 @@ class TestNPUMultiTensorAccuracy:
         noop = torch.zeros(1, device="npu", dtype=torch.int32)
         npu_backend.multi_tensor_scale_tensor(65536, noop, [[t1], [t_out]], scale_t)
         expected = torch.tensor([6.0, 12.0, 18.0])
-        assert torch.allclose(t_out.cpu(), expected, atol=1e-5), \
-            f"Expected {expected}, got {t_out.cpu()}"
+        assert torch.allclose(
+            t_out.cpu(), expected, atol=1e-5
+        ), f"Expected {expected}, got {t_out.cpu()}"
 
     def test_multi_tensor_unscale_l2norm(self, npu_backend):
         """L2 norm with inverse scale applied."""
@@ -806,7 +831,7 @@ class TestNPUMultiTensorAccuracy:
             65536, noop, [[t1], [inv_scale]], inv_scale
         )
         norm_val = result[0] if isinstance(result, tuple) else result
-        got = norm_val.item() if hasattr(norm_val, 'item') else float(norm_val)
+        got = norm_val.item() if hasattr(norm_val, "item") else float(norm_val)
         # Implementation-dependent — just verify finite and positive
         assert got > 0 and math.isfinite(got), f"Got {got}"
 
@@ -831,6 +856,4 @@ class TestNPUKnownBugs:
     def test_grouped_gemm(self, npu_backend):
         A = torch.randn(8, 4, device="npu", dtype=torch.bfloat16)
         B = torch.randn(4, 16, device="npu", dtype=torch.bfloat16)
-        npu_backend.grouped_gemm(
-            [A], [B], torch.bfloat16, [torch.empty(0)], [8], accumulate=False
-        )
+        npu_backend.grouped_gemm([A], [B], torch.bfloat16, [torch.empty(0)], [8], accumulate=False)
