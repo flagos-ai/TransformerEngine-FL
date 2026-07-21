@@ -71,6 +71,7 @@ def assert_close(npu_out, ref_out, dtype, msg=""):
 # Mock tests (no NPU required)
 # ===========================================================================
 
+
 class TestNPUFlashAttentionValidation:
     def test_window_size_sliding_raises(self):
         from transformer_engine.plugin.core.backends.vendor.npu.flash_attention import (
@@ -416,9 +417,7 @@ class TestNPUFlashAttentionVsReference:
         return fa
 
     @pytest.mark.parametrize("dtype", [torch.bfloat16])
-    @pytest.mark.parametrize(
-        "B,S,H,D", [(1, 32, 4, 64), (2, 64, 8, 64), (1, 128, 2, 128)]
-    )
+    @pytest.mark.parametrize("B,S,H,D", [(1, 32, 4, 64), (2, 64, 8, 64), (1, 128, 2, 128)])
     def test_flash_attn_fwd_no_mask(self, npu_fa, ref_fa, dtype, B, S, H, D):
         """Forward pass without mask: NPU vs reference SDPA."""
         torch.manual_seed(42)
@@ -429,29 +428,32 @@ class TestNPUFlashAttentionVsReference:
         q_npu, k_npu, v_npu = q.to("npu"), k.to("npu"), v.to("npu")
 
         npu_out = npu_fa.forward(
-            q_npu, k_npu, v_npu,
+            q_npu,
+            k_npu,
+            v_npu,
             qkv_layout="bshd_bshd_bshd",
             attn_mask_type="no_mask",
         )
         ref_out = ref_fa.forward(
-            q, k, v,
+            q,
+            k,
+            v,
             qkv_layout="bshd_bshd_bshd",
             attn_mask_type="no_mask",
         )
 
         # Both return shape [B, S, H*D]
-        assert npu_out.shape == ref_out.shape, (
-            f"Shape mismatch: npu={npu_out.shape}, ref={ref_out.shape}"
-        )
+        assert (
+            npu_out.shape == ref_out.shape
+        ), f"Shape mismatch: npu={npu_out.shape}, ref={ref_out.shape}"
         # Flash attention uses online softmax tiling — allow slightly larger tolerance
         atol, rtol = 5e-2, 5e-2
         npu_cpu = npu_out.detach().cpu().float()
         ref_cpu = ref_out.detach().cpu().float()
         max_diff = (npu_cpu - ref_cpu).abs().max().item()
-        assert torch.allclose(npu_cpu, ref_cpu, atol=atol, rtol=rtol), (
-            f"flash_attn fwd no_mask B={B},S={S},H={H},D={D}: "
-            f"max_diff={max_diff:.6e}, atol={atol}"
-        )
+        assert torch.allclose(
+            npu_cpu, ref_cpu, atol=atol, rtol=rtol
+        ), f"flash_attn fwd no_mask B={B},S={S},H={H},D={D}: max_diff={max_diff:.6e}, atol={atol}"
 
     @pytest.mark.parametrize("dtype", [torch.bfloat16])
     def test_flash_attn_fwd_causal(self, npu_fa, ref_fa, dtype):
@@ -465,12 +467,16 @@ class TestNPUFlashAttentionVsReference:
         q_npu, k_npu, v_npu = q.to("npu"), k.to("npu"), v.to("npu")
 
         npu_out = npu_fa.forward(
-            q_npu, k_npu, v_npu,
+            q_npu,
+            k_npu,
+            v_npu,
             qkv_layout="bshd_bshd_bshd",
             attn_mask_type="causal",
         )
         ref_out = ref_fa.forward(
-            q, k, v,
+            q,
+            k,
+            v,
             qkv_layout="bshd_bshd_bshd",
             attn_mask_type="causal",
         )
@@ -480,14 +486,12 @@ class TestNPUFlashAttentionVsReference:
         npu_cpu = npu_out.detach().cpu().float()
         ref_cpu = ref_out.detach().cpu().float()
         max_diff = (npu_cpu - ref_cpu).abs().max().item()
-        assert torch.allclose(npu_cpu, ref_cpu, atol=atol, rtol=rtol), (
-            f"flash_attn fwd causal: max_diff={max_diff:.6e}, atol={atol}"
-        )
+        assert torch.allclose(
+            npu_cpu, ref_cpu, atol=atol, rtol=rtol
+        ), f"flash_attn fwd causal: max_diff={max_diff:.6e}, atol={atol}"
 
     @pytest.mark.parametrize("dtype", [torch.bfloat16])
-    @pytest.mark.parametrize(
-        "B,S,H,D", [(1, 32, 4, 64), (2, 64, 4, 64)]
-    )
+    @pytest.mark.parametrize("B,S,H,D", [(1, 32, 4, 64), (2, 64, 4, 64)])
     def test_flash_attn_bwd_no_mask(self, npu_fa, ref_fa, dtype, B, S, H, D):
         """Backward pass without mask: NPU vs reference gradient comparison."""
         torch.manual_seed(42)
@@ -499,7 +503,9 @@ class TestNPUFlashAttentionVsReference:
         # Reference forward + backward (CPU)
         ref_fa.train()
         ref_out = ref_fa.forward(
-            q, k, v,
+            q,
+            k,
+            v,
             qkv_layout="bshd_bshd_bshd",
             attn_mask_type="no_mask",
         )
@@ -516,7 +522,9 @@ class TestNPUFlashAttentionVsReference:
 
         npu_fa.train()
         npu_out = npu_fa.forward(
-            q_npu, k_npu, v_npu,
+            q_npu,
+            k_npu,
+            v_npu,
             qkv_layout="bshd_bshd_bshd",
             attn_mask_type="no_mask",
         )
@@ -540,14 +548,12 @@ class TestNPUFlashAttentionVsReference:
                 npu_cpu.flatten().unsqueeze(0),
                 ref_cpu.flatten().unsqueeze(0),
             ).item()
-            assert cos_sim > 0.95, (
-                f"flash_attn bwd {name}: cosine_sim={cos_sim:.4f} < 0.95, "
-                f"max_diff={max_diff:.6e}"
-            )
-            assert torch.allclose(npu_cpu, ref_cpu, atol=atol, rtol=rtol), (
-                f"flash_attn bwd {name}: max_diff={max_diff:.6e}, atol={atol}, "
-                f"cos_sim={cos_sim:.4f}"
-            )
+            assert (
+                cos_sim > 0.95
+            ), f"flash_attn bwd {name}: cosine_sim={cos_sim:.4f} < 0.95, max_diff={max_diff:.6e}"
+            assert torch.allclose(
+                npu_cpu, ref_cpu, atol=atol, rtol=rtol
+            ), f"flash_attn bwd {name}: max_diff={max_diff:.6e}, atol={atol}, cos_sim={cos_sim:.4f}"
 
     @pytest.mark.parametrize("dtype", [torch.bfloat16])
     def test_flash_attn_bwd_causal(self, npu_fa, ref_fa, dtype):
@@ -561,7 +567,9 @@ class TestNPUFlashAttentionVsReference:
 
         ref_fa.train()
         ref_out = ref_fa.forward(
-            q, k, v,
+            q,
+            k,
+            v,
             qkv_layout="bshd_bshd_bshd",
             attn_mask_type="causal",
         )
@@ -577,7 +585,9 @@ class TestNPUFlashAttentionVsReference:
 
         npu_fa.train()
         npu_out = npu_fa.forward(
-            q_npu, k_npu, v_npu,
+            q_npu,
+            k_npu,
+            v_npu,
             qkv_layout="bshd_bshd_bshd",
             attn_mask_type="causal",
         )
@@ -596,12 +606,10 @@ class TestNPUFlashAttentionVsReference:
                 npu_cpu.flatten().unsqueeze(0),
                 ref_cpu.flatten().unsqueeze(0),
             ).item()
-            assert cos_sim > 0.95, (
-                f"flash_attn bwd causal {name}: cos_sim={cos_sim:.4f} < 0.95"
-            )
-            assert torch.allclose(npu_cpu, ref_cpu, atol=atol, rtol=rtol), (
-                f"flash_attn bwd causal {name}: max_diff={max_diff:.6e}, atol={atol}"
-            )
+            assert cos_sim > 0.95, f"flash_attn bwd causal {name}: cos_sim={cos_sim:.4f} < 0.95"
+            assert torch.allclose(
+                npu_cpu, ref_cpu, atol=atol, rtol=rtol
+            ), f"flash_attn bwd causal {name}: max_diff={max_diff:.6e}, atol={atol}"
 
 
 # ===========================================================================
@@ -643,9 +651,7 @@ class TestNPUMultiTensorAccuracy:
         t1 = torch.tensor([6.0, 8.0], device="npu")
         inv_scale = torch.tensor([2.0], device="npu")
         noop = torch.zeros(1, device="npu", dtype=torch.int32)
-        result = npu_backend.multi_tensor_unscale_l2norm(
-            65536, noop, [[t1]], inv_scale
-        )
+        result = npu_backend.multi_tensor_unscale_l2norm(65536, noop, [[t1]], inv_scale)
         norm_val = result[0] if isinstance(result, tuple) else result
         got = norm_val.item() if hasattr(norm_val, "item") else float(norm_val)
         assert abs(got - 20.0) < 1e-4, f"Expected 20.0, got {got}"
@@ -685,14 +691,20 @@ class TestNPUComputeScaleAccuracy:
         noop_ref = torch.zeros(1, dtype=torch.int32)
 
         npu_backend.multi_tensor_compute_scale_and_scale_inv(
-            65536, noop_npu,
+            65536,
+            noop_npu,
             [amaxes_npu, scales_npu, scale_invs_npu],
-            max_fp8, False, epsilon,
+            max_fp8,
+            False,
+            epsilon,
         )
         ref_backend.multi_tensor_compute_scale_and_scale_inv(
-            65536, noop_ref,
+            65536,
+            noop_ref,
             [amaxes_ref, scales_ref, scale_invs_ref],
-            max_fp8, False, epsilon,
+            max_fp8,
+            False,
+            epsilon,
         )
 
         for i in range(n):
@@ -701,12 +713,12 @@ class TestNPUComputeScaleAccuracy:
             npu_sinv = scale_invs_npu[i].cpu()
             ref_sinv = scale_invs_ref[i]
 
-            assert torch.allclose(npu_scale, ref_scale, atol=1e-5, rtol=1e-5), (
-                f"scale[{i}]: npu={npu_scale.item():.6e}, ref={ref_scale.item():.6e}"
-            )
-            assert torch.allclose(npu_sinv, ref_sinv, atol=1e-5, rtol=1e-5), (
-                f"scale_inv[{i}]: npu={npu_sinv.item():.6e}, ref={ref_sinv.item():.6e}"
-            )
+            assert torch.allclose(
+                npu_scale, ref_scale, atol=1e-5, rtol=1e-5
+            ), f"scale[{i}]: npu={npu_scale.item():.6e}, ref={ref_scale.item():.6e}"
+            assert torch.allclose(
+                npu_sinv, ref_sinv, atol=1e-5, rtol=1e-5
+            ), f"scale_inv[{i}]: npu={npu_sinv.item():.6e}, ref={ref_sinv.item():.6e}"
 
     @pytest.mark.parametrize("force_pow_2", [True, False])
     def test_compute_scale_pow2(self, npu_backend, ref_backend, force_pow_2):
@@ -727,14 +739,20 @@ class TestNPUComputeScaleAccuracy:
         noop_ref = torch.zeros(1, dtype=torch.int32)
 
         npu_backend.multi_tensor_compute_scale_and_scale_inv(
-            65536, noop_npu,
+            65536,
+            noop_npu,
             [amaxes_npu, scales_npu, scale_invs_npu],
-            max_fp8, force_pow_2, epsilon,
+            max_fp8,
+            force_pow_2,
+            epsilon,
         )
         ref_backend.multi_tensor_compute_scale_and_scale_inv(
-            65536, noop_ref,
+            65536,
+            noop_ref,
             [amaxes_ref, scales_ref, scale_invs_ref],
-            max_fp8, force_pow_2, epsilon,
+            max_fp8,
+            force_pow_2,
+            epsilon,
         )
 
         for i in range(n):
@@ -747,9 +765,9 @@ class TestNPUComputeScaleAccuracy:
             if force_pow_2:
                 # Verify it's actually a power of 2
                 log2_val = torch.log2(npu_scale)
-                assert torch.allclose(log2_val, log2_val.round(), atol=1e-5), (
-                    f"scale[{i}] not power of 2: {npu_scale.item()}"
-                )
+                assert torch.allclose(
+                    log2_val, log2_val.round(), atol=1e-5
+                ), f"scale[{i}] not power of 2: {npu_scale.item()}"
 
     def test_compute_scale_noop_flag(self, npu_backend):
         """When noop_flag is non-zero, scales should remain unchanged."""
@@ -759,14 +777,16 @@ class TestNPUComputeScaleAccuracy:
         noop = torch.ones(1, device="npu", dtype=torch.int32)  # non-zero => skip
 
         npu_backend.multi_tensor_compute_scale_and_scale_inv(
-            65536, noop,
+            65536,
+            noop,
             [[amax], [scale], [scale_inv]],
-            448.0, False, 1e-12,
+            448.0,
+            False,
+            1e-12,
         )
 
         assert scale.item() == 999.0, f"scale changed to {scale.item()} despite noop"
         assert scale_inv.item() == 888.0, f"scale_inv changed to {scale_inv.item()} despite noop"
-
 
 
 # ===========================================================================
@@ -843,12 +863,12 @@ class TestNPUGroupedGEMMAccuracy:
         max_diff_0 = (npu_D0 - ref_D0).abs().max().item()
         max_diff_1 = (npu_D1 - ref_D1).abs().max().item()
 
-        assert torch.allclose(npu_D0, ref_D0, atol=atol, rtol=rtol), (
-            f"Group 0: max_diff={max_diff_0:.6e}"
-        )
-        assert torch.allclose(npu_D1, ref_D1, atol=atol, rtol=rtol), (
-            f"Group 1: max_diff={max_diff_1:.6e}"
-        )
+        assert torch.allclose(
+            npu_D0, ref_D0, atol=atol, rtol=rtol
+        ), f"Group 0: max_diff={max_diff_0:.6e}"
+        assert torch.allclose(
+            npu_D1, ref_D1, atol=atol, rtol=rtol
+        ), f"Group 1: max_diff={max_diff_1:.6e}"
 
     @pytest.mark.parametrize("dtype", [torch.bfloat16])
     def test_grouped_gemm_single_output(self, npu_backend, dtype):
@@ -892,16 +912,16 @@ class TestNPUGroupedGEMMAccuracy:
         )
 
         # Reference
-        ref_D0 = (B0 @ A0).cpu().float()   # [16, 8]
-        ref_D1 = (B1 @ A1).cpu().float()   # [16, 8]
+        ref_D0 = (B0 @ A0).cpu().float()  # [16, 8]
+        ref_D1 = (B1 @ A1).cpu().float()  # [16, 8]
         ref_packed = torch.cat([ref_D0, ref_D1], dim=0)  # [32, 8]
 
         npu_packed = D_packed.cpu().float()
         max_diff = (npu_packed - ref_packed).abs().max().item()
 
-        assert torch.allclose(npu_packed, ref_packed, atol=1e-2, rtol=1e-2), (
-            f"single_output grouped gemm: max_diff={max_diff:.6e}"
-        )
+        assert torch.allclose(
+            npu_packed, ref_packed, atol=1e-2, rtol=1e-2
+        ), f"single_output grouped gemm: max_diff={max_diff:.6e}"
 
     @pytest.mark.parametrize("dtype", [torch.bfloat16])
     def test_grouped_gemm_accumulate(self, npu_backend, dtype):
@@ -944,6 +964,6 @@ class TestNPUGroupedGEMMAccuracy:
         npu_D0 = D0.cpu().float()
         max_diff = (npu_D0 - ref_D0).abs().max().item()
 
-        assert torch.allclose(npu_D0, ref_D0, atol=1e-2, rtol=1e-2), (
-            f"accumulate grouped gemm: max_diff={max_diff:.6e}"
-        )
+        assert torch.allclose(
+            npu_D0, ref_D0, atol=1e-2, rtol=1e-2
+        ), f"accumulate grouped gemm: max_diff={max_diff:.6e}"
