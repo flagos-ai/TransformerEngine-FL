@@ -480,17 +480,13 @@ class NPUBackend(TEFLBackendBase):
 
         num_gemms = len(A)
         if len(B) != num_gemms:
-            raise ValueError(
-                f"A/B group count mismatch: len(A)={len(A)}, len(B)={len(B)}"
-            )
+            raise ValueError(f"A/B group count mismatch: len(A)={len(A)}, len(B)={len(B)}")
         if num_gemms == 0:
             return bias
 
         def op_shape(tensor: Any, transpose: bool) -> Tuple[int, int]:
             if tensor.ndim != 2:
-                raise ValueError(
-                    f"Grouped GEMM requires 2D tensors, got {tuple(tensor.shape)}"
-                )
+                raise ValueError(f"Grouped GEMM requires 2D tensors, got {tuple(tensor.shape)}")
             rows, cols = map(int, tensor.shape)
             return (cols, rows) if transpose else (rows, cols)
 
@@ -524,17 +520,14 @@ class NPUBackend(TEFLBackendBase):
             if D is None or len(D) != 1:
                 raise ValueError("single_output=True requires exactly one D tensor")
             if len({shape[1] for shape in output_shapes}) != 1:
-                raise ValueError(
-                    "single_output=True requires a common output width"
-                )
+                raise ValueError("single_output=True requires a common output width")
             expected_shape = (
                 sum(shape[0] for shape in output_shapes),
                 output_shapes[0][1],
             )
             if tuple(D[0].shape) != expected_shape:
                 raise ValueError(
-                    f"Invalid D shape: expected {expected_shape}, "
-                    f"got {tuple(D[0].shape)}"
+                    f"Invalid D shape: expected {expected_shape}, got {tuple(D[0].shape)}"
                 )
         else:
             if D is None:
@@ -547,12 +540,8 @@ class NPUBackend(TEFLBackendBase):
                     for index, shape in enumerate(output_shapes)
                 ]
             if len(D) != num_gemms:
-                raise ValueError(
-                    f"Expected {num_gemms} output tensors, got {len(D)}"
-                )
-            for index, (destination, expected_shape) in enumerate(
-                zip(D, output_shapes)
-            ):
+                raise ValueError(f"Expected {num_gemms} output tensors, got {len(D)}")
+            for index, (destination, expected_shape) in enumerate(zip(D, output_shapes)):
                 if tuple(destination.shape) != expected_shape:
                     raise ValueError(
                         f"Invalid D[{index}] shape: expected {expected_shape}, "
@@ -570,9 +559,7 @@ class NPUBackend(TEFLBackendBase):
         else:
             native_mode = None
 
-        dense_tensors = all(
-            isinstance(tensor, torch.Tensor) for tensor in (*A, *B)
-        )
+        dense_tensors = all(isinstance(tensor, torch.Tensor) for tensor in (*A, *B))
         dtype_ok = False
         device_ok = False
         shape_ok = False
@@ -581,7 +568,8 @@ class NPUBackend(TEFLBackendBase):
             input_dtypes = {tensor.dtype for tensor in (*A, *B)}
             input_dtype = next(iter(input_dtypes)) if len(input_dtypes) == 1 else None
             dtype_ok = (
-                input_dtype in {
+                input_dtype
+                in {
                     torch.float16,
                     torch.bfloat16,
                     torch.float32,
@@ -601,16 +589,8 @@ class NPUBackend(TEFLBackendBase):
                 shape_ok = len(set(output_shapes)) == 1
 
         has_bias = any(bias_flags)
-        epilogue_ok = (
-            not any(gelu_flags)
-            and (
-                not has_bias
-                or (
-                    native_mode == "m_split"
-                    and not grad
-                    and all(bias_flags)
-                )
-            )
+        epilogue_ok = not any(gelu_flags) and (
+            not has_bias or (native_mode == "m_split" and not grad and all(bias_flags))
         )
 
         use_native = (
@@ -665,15 +645,8 @@ class NPUBackend(TEFLBackendBase):
                 npu_weight = torch.cat(A, dim=0)
                 group_type = 2
 
-            layout = (
-                ("T" if transa else "N")
-                + ("T" if transb else "N")
-            )
-            use_forward_bias = (
-                native_mode == "m_split"
-                and not grad
-                and all(bias_flags)
-            )
+            layout = ("T" if transa else "N") + ("T" if transb else "N")
+            use_forward_bias = native_mode == "m_split" and not grad and all(bias_flags)
 
             packed_output = _get_tenpu_gemm().general_grouped_gemm(
                 npu_weight,
@@ -758,9 +731,7 @@ class NPUBackend(TEFLBackendBase):
                 bias=bias[index] if bias_flags[index] else None,
                 bias_type=bias_type,
                 gelu=gelu_flags[index],
-                gelu_in=(
-                    pre_gelu_out[index] if gelu_flags[index] else None
-                ),
+                gelu_in=(pre_gelu_out[index] if gelu_flags[index] else None),
                 grad=grad,
                 workspace=gemm_workspace,
                 workspace_size=workspaceSizes,
