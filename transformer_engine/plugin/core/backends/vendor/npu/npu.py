@@ -469,15 +469,9 @@ class NPUBackend(TEFLBackendBase):
             D[i] = op(B[i], transb) @ op(A[i], transa)
 
         Native NPU mappings:
-
-            Forward:
-                layout="TN", group_type=0
-
-            dgrad:
-                layout="NN", group_type=0
-
-            wgrad:
-                layout="NT", group_type=2
+            Forward:  layout="TN", group_type=0
+            dgrad:    layout="NN", group_type=0
+            wgrad:    layout="NT", group_type=2
 
         The group_type=2 path requires an Ascend A2/A3 device. Operations that
         require bgrad, GELU/dGELU, mixed per-group epilogues, unsupported dtypes,
@@ -485,18 +479,20 @@ class NPUBackend(TEFLBackendBase):
         """
 
         num_gemms = len(A)
-
         if len(B) != num_gemms:
             raise ValueError(
-                "A and B must contain the same number of groups, "
-                f"got len(A)={len(A)} and len(B)={len(B)}"
+                f"A/B group count mismatch: len(A)={len(A)}, len(B)={len(B)}"
             )
-
         if num_gemms == 0:
             return bias
 
-        if single_output and D is None:
-            raise ValueError("D must be provided when single_output=True")
+        def op_shape(tensor: Any, transpose: bool) -> Tuple[int, int]:
+            if tensor.ndim != 2:
+                raise ValueError(
+                    f"Grouped GEMM requires 2D tensors, got {tuple(tensor.shape)}"
+                )
+            rows, cols = map(int, tensor.shape)
+            return (cols, rows) if transpose else (rows, cols)
 
         def has_tensor(tensors, index: int) -> bool:
             return (
@@ -506,308 +502,241 @@ class NPUBackend(TEFLBackendBase):
                 and tensors[index].numel() > 0
             )
 
-        def matrix_shape(
-            tensor: Any,
-            transpose: bool,
-        ) -> Tuple[int, int]:
-            if tensor.ndim != 2:
-                raise ValueError(
-                    "te_general_grouped_gemm currently requires 2D tensors, "
-                    f"got shape={tuple(tensor.shape)}"
-                )
-
-            if transpose:
-                return int(tensor.shape[1]), int(tensor.shape[0])
-
-            return int(tensor.shape[0]), int(tensor.shape[1])
-
-        # TE-FL computes:
-        #
-        #     op(B, transb) @ op(A, transa)
-        #
-        # Calculate and validate each output shape first.
+        # 1. Validate GEMMs and prepare destinations.
         output_shapes: List[Tuple[int, int]] = []
-
-        for index in range(num_gemms):
-            a_rows, a_cols = matrix_shape(A[index], transa)
-            b_rows, b_cols = matrix_shape(B[index], transb)
-
+        for index, (a_tensor, b_tensor) in enumerate(zip(A, B)):
+            a_rows, a_cols = op_shape(a_tensor, transa)
+            b_rows, b_cols = op_shape(b_tensor, transb)
             if b_cols != a_rows:
                 raise ValueError(
-                    f"Incompatible GEMM shapes for group {index}: "
-                    f"B_comp=({b_rows}, {b_cols}), "
-                    f"A_comp=({a_rows}, {a_cols})"
+                    f"Incompatible shapes for group {index}: "
+                    f"op(B)=({b_rows}, {b_cols}), op(A)=({a_rows}, {a_cols})"
                 )
-
             output_shapes.append((b_rows, a_cols))
 
-        torch_out_dtype = _to_torch_dtype(D_type)
-
-        if torch_out_dtype is None:
-            if D is not None and len(D) > 0:
-                torch_out_dtype = D[0].dtype
-            else:
-                torch_out_dtype = B[0].dtype
-
-                if torch_out_dtype in (
-                    torch.float8_e4m3fn,
-                    torch.float8_e5m2,
-                ):
-                    torch_out_dtype = torch.bfloat16
-
-        # Allocate per-group output buffers when D is not provided.
-        # single_output=True requires the caller-provided packed buffer.
-        if D is None:
-            D = [
-                torch.empty(
-                    shape,
-                    dtype=torch_out_dtype,
-                    device=B[index].device,
-                )
-                for index, shape in enumerate(output_shapes)
-            ]
+        out_dtype = _to_torch_dtype(D_type)
+        if out_dtype is None:
+            out_dtype = D[0].dtype if D else B[0].dtype
+            if out_dtype in (torch.float8_e4m3fn, torch.float8_e5m2):
+                out_dtype = torch.bfloat16
 
         if single_output:
-            if len(D) != 1:
-                raise ValueError(f"single_output=True requires exactly one D tensor, got {len(D)}")
-
-            output_widths = {shape[1] for shape in output_shapes}
-
-            if len(output_widths) != 1:
+            if D is None or len(D) != 1:
+                raise ValueError("single_output=True requires exactly one D tensor")
+            if len({shape[1] for shape in output_shapes}) != 1:
                 raise ValueError(
-                    "single_output=True requires all grouped GEMMs to have the same output width"
+                    "single_output=True requires a common output width"
                 )
-
             expected_shape = (
                 sum(shape[0] for shape in output_shapes),
                 output_shapes[0][1],
             )
-
             if tuple(D[0].shape) != expected_shape:
                 raise ValueError(
-                    "Invalid single output shape: "
-                    f"expected {expected_shape}, "
+                    f"Invalid D shape: expected {expected_shape}, "
                     f"got {tuple(D[0].shape)}"
                 )
         else:
+            if D is None:
+                D = [
+                    torch.empty(
+                        shape,
+                        dtype=out_dtype,
+                        device=B[index].device,
+                    )
+                    for index, shape in enumerate(output_shapes)
+                ]
             if len(D) != num_gemms:
-                raise ValueError(f"Expected {num_gemms} output tensors, got {len(D)}")
-
-            for index, (destination, expected_shape) in enumerate(zip(D, output_shapes)):
+                raise ValueError(
+                    f"Expected {num_gemms} output tensors, got {len(D)}"
+                )
+            for index, (destination, expected_shape) in enumerate(
+                zip(D, output_shapes)
+            ):
                 if tuple(destination.shape) != expected_shape:
                     raise ValueError(
-                        f"Invalid output shape for group {index}: "
-                        f"expected {expected_shape}, "
+                        f"Invalid D[{index}] shape: expected {expected_shape}, "
                         f"got {tuple(destination.shape)}"
                     )
 
-        bias_flags = [has_tensor(bias, index) for index in range(num_gemms)]
-        gelu_flags = [has_tensor(pre_gelu_out, index) for index in range(num_gemms)]
+        bias_flags = [has_tensor(bias, i) for i in range(num_gemms)]
+        gelu_flags = [has_tensor(pre_gelu_out, i) for i in range(num_gemms)]
 
-        has_any_bias = any(bias_flags)
-        has_all_bias = all(bias_flags)
-        has_any_gelu = any(gelu_flags)
+        # 2. Decide whether the official native wrapper can represent this call.
+        if not transb:
+            native_mode = "m_split"
+        elif not transa:
+            native_mode = "k_split"
+        else:
+            native_mode = None
 
-        all_dense_tensors = all(isinstance(tensor, torch.Tensor) for tensor in list(A) + list(B))
+        dense_tensors = all(
+            isinstance(tensor, torch.Tensor) for tensor in (*A, *B)
+        )
+        dtype_ok = False
+        device_ok = False
+        shape_ok = False
 
-        same_output_width = len({shape[1] for shape in output_shapes}) == 1
-
-        # This dense wrapper does not pass quantization parameters to
-        # npu_grouped_matmul, so only use the non-quantized floating-point path.
-        native_dense_dtypes = {
-            torch.float16,
-            torch.bfloat16,
-            torch.float32,
-        }
-
-        native_dtype_supported = False
-        native_device_supported = False
-
-        if all_dense_tensors:
-            input_dtypes = {tensor.dtype for tensor in list(A) + list(B)}
-
-            native_dtype_supported = (
-                len(input_dtypes) == 1
-                and next(iter(input_dtypes)) in native_dense_dtypes
-                and torch_out_dtype in native_dense_dtypes
+        if dense_tensors:
+            input_dtypes = {tensor.dtype for tensor in (*A, *B)}
+            input_dtype = next(iter(input_dtypes)) if len(input_dtypes) == 1 else None
+            dtype_ok = (
+                input_dtype in {
+                    torch.float16,
+                    torch.bfloat16,
+                    torch.float32,
+                }
+                and out_dtype == input_dtype
             )
+            device_ok = len({tensor.device for tensor in (*A, *B)}) == 1
 
-            input_devices = {tensor.device for tensor in list(A) + list(B)}
-            native_device_supported = len(input_devices) == 1
+            if native_mode == "m_split":
+                shape_ok = (
+                    len({int(tensor.shape[1]) for tensor in B}) == 1
+                    and len({shape[1] for shape in output_shapes}) == 1
+                )
+            elif native_mode == "k_split":
+                # K-split packs both operands, so every group must produce the
+                # same [M, N] shape.
+                shape_ok = len(set(output_shapes)) == 1
 
-        # group_type=0:
-        #   The packed B input is not transposed. This covers forward and dgrad.
-        #
-        # group_type=2:
-        #   The packed B input is transposed and split along its K dimension.
-        #   This covers the standard TE wgrad layout="NT".
-        regular_native_layout = not transb
-        native_wgrad_layout = transb and not transa
-
-        native_layout_supported = regular_native_layout or native_wgrad_layout
-
-        # Forward bias can use the current TransformerEngineNPU wrapper.
-        #
-        # In backward mode the bias argument represents a bgrad destination,
-        # not a forward bias tensor, so it must not be passed to the native
-        # grouped GEMM as bias.
-        native_bias_supported = not has_any_bias or (
-            regular_native_layout and not grad and has_all_bias
+        has_bias = any(bias_flags)
+        epilogue_ok = (
+            not any(gelu_flags)
+            and (
+                not has_bias
+                or (
+                    native_mode == "m_split"
+                    and not grad
+                    and all(bias_flags)
+                )
+            )
         )
 
-        # npu_grouped_matmul does not implement the TE dGELU/pre_gelu_out
-        # contract. All GELU-related paths therefore use generic_gemm.
-        native_epilogue_supported = native_bias_supported and not has_any_gelu
-
-        use_native_path = (
-            num_gemms > 1
-            and all_dense_tensors
-            and native_dtype_supported
-            and native_device_supported
-            and native_layout_supported
-            and native_epilogue_supported
-            and same_output_width
+        use_native = (
+            1 < num_gemms <= 128
+            and native_mode is not None
+            and dense_tensors
+            and dtype_ok
+            and device_ok
+            and shape_ok
+            and epilogue_ok
         )
 
-        if use_native_path:
-            if m_splits:
-                split_sizes = [int(size) for size in m_splits]
-
-                if len(split_sizes) != num_gemms:
-                    raise ValueError(f"Expected {num_gemms} m_splits, got {len(split_sizes)}")
-            else:
-                split_sizes = [int(tensor.shape[0]) for tensor in B]
-
-            # For both group_type=0 and the standard group_type=2 wgrad
-            # mapping, m_splits describe the original row count of B[i].
+        # 3. Native M-split/K-split path.
+        if use_native:
             expected_splits = [int(tensor.shape[0]) for tensor in B]
-
+            split_sizes = (
+                [int(size) for size in m_splits]
+                if m_splits is not None and len(m_splits) > 0
+                else expected_splits
+            )
             if split_sizes != expected_splits:
                 raise ValueError(
-                    "m_splits must match the row counts of B for the "
-                    "native NPU grouped GEMM path: "
-                    f"expected {expected_splits}, "
-                    f"got {split_sizes}"
+                    "m_splits must equal the original B row counts: "
+                    f"expected {expected_splits}, got {split_sizes}"
                 )
 
-            # group_list_type=1 means group_split contains per-group sizes,
-            # rather than cumulative offsets.
+            # No kernel work is needed for an entirely empty token batch.
+            if sum(split_sizes) == 0:
+                if native_mode == "k_split" and not accumulate:
+                    for destination in D:
+                        destination.zero_()
+                return bias
+
             group_split = torch.tensor(
                 split_sizes,
                 dtype=torch.int64,
                 device=B[0].device,
             )
+            packed_b = torch.cat(B, dim=0)
 
-            packed_input = torch.cat(
-                B,
-                dim=0,
+            if native_mode == "m_split":
+                # Final NPU operands: x=[cat(B)], weight=A.
+                npu_weight = A
+                group_type = 0
+            else:
+                # layout="NT" turns cat(B) into the left operand:
+                #
+                #   x      = [cat(B).T]  -> [M, sum(K_i)]
+                #   weight = [cat(A)]    -> [sum(K_i), N]
+                #
+                # Both lists therefore have length 1, as required by K-split.
+                npu_weight = torch.cat(A, dim=0)
+                group_type = 2
+
+            layout = (
+                ("T" if transa else "N")
+                + ("T" if transb else "N")
+            )
+            use_forward_bias = (
+                native_mode == "m_split"
+                and not grad
+                and all(bias_flags)
             )
 
-            layout = ("T" if transa else "N") + ("T" if transb else "N")
-
-            group_type = 2 if native_wgrad_layout else 0
-
-            # Bias is only a forward group_type=0 epilogue here.
-            native_use_bias = regular_native_layout and not grad and has_all_bias
-
-            gemm_mod = _get_tenpu_gemm()
-
-            packed_output = gemm_mod.general_grouped_gemm(
-                A,  # NPU B: RHS/weight tensor list
-                packed_input,  # NPU A: packed LHS/input tensor
+            packed_output = _get_tenpu_gemm().general_grouped_gemm(
+                npu_weight,
+                packed_b,
                 group_split,
                 layout=layout,
-                use_bias=native_use_bias,
-                biases=bias if native_use_bias else None,
+                use_bias=use_forward_bias,
+                biases=bias if use_forward_bias else None,
                 group_type=group_type,
                 group_list_type=1,
                 split_item=3,
-                out_dtype=torch_out_dtype,
+                out_dtype=out_dtype,
             )
-
-            if packed_output is None:
-                raise RuntimeError("TransformerEngineNPU general_grouped_gemm returned None")
 
             if not isinstance(packed_output, torch.Tensor):
                 raise TypeError(
-                    "TransformerEngineNPU general_grouped_gemm must "
-                    "return a Tensor for split_item=3, "
-                    f"got {type(packed_output)}"
+                    "general_grouped_gemm must return one Tensor "
+                    f"for split_item=3, got {type(packed_output)}"
                 )
 
-            expected_packed_shape = (
+            packed_shape = (
                 sum(shape[0] for shape in output_shapes),
                 output_shapes[0][1],
             )
-            expected_packed_numel = expected_packed_shape[0] * expected_packed_shape[1]
-
-            if packed_output.numel() != expected_packed_numel:
+            packed_numel = packed_shape[0] * packed_shape[1]
+            if packed_output.numel() != packed_numel:
                 raise RuntimeError(
-                    "Unexpected native grouped GEMM output size: "
-                    "expected shape compatible with "
-                    f"{expected_packed_shape} "
-                    f"({expected_packed_numel} elements), "
-                    f"got shape={tuple(packed_output.shape)} "
-                    f"({packed_output.numel()} elements)"
+                    "Unexpected grouped GEMM output: "
+                    f"expected {packed_numel} elements, "
+                    f"got shape={tuple(packed_output.shape)}"
                 )
 
-            # group_type=0 normally returns [sum(M_i), N].
-            #
-            # group_type=2 may return [num_groups, N, K] when all group
-            # shapes are equal. Flattening the leading group dimensions
-            # converts both cases to TE-FL's packed [sum(rows_i), width]
-            # representation while preserving group order.
-            packed_output = packed_output.reshape(expected_packed_shape)
+            # M-split is already 2D. K-split [G, M, N] is flattened to TE's
+            # packed [G*M, N] representation.
+            packed_output = packed_output.reshape(packed_shape)
 
             if single_output:
-                source = packed_output.to(D[0].dtype)
-
-                if accumulate:
-                    D[0].add_(source)
-                else:
-                    D[0].copy_(source)
+                outputs = [packed_output]
             else:
-                output_chunks = torch.split(
+                outputs = torch.split(
                     packed_output,
                     [shape[0] for shape in output_shapes],
                     dim=0,
                 )
 
-                for destination, source in zip(D, output_chunks):
-                    source = source.to(destination.dtype)
+            for destination, source in zip(D, outputs):
+                source = source.to(destination.dtype)
+                if accumulate:
+                    destination.add_(source)
+                else:
+                    destination.copy_(source)
 
-                    if accumulate:
-                        destination.add_(source)
-                    else:
-                        destination.copy_(source)
-
-            # TE-FL expects this function to return the bias/bgrad buffers;
-            # GEMM results have already been written into D.
             return bias
 
-        # Correctness fallback for:
-        #
-        #   - bgrad
-        #   - GELU/dGELU
-        #   - mixed per-group bias/GELU epilogues
-        #   - transa=True and transb=True
-        #   - unsupported dense dtypes
-        #   - quantized/GroupedTensor inputs
-        #   - heterogeneous output widths
-        single_output_offset = 0
-
+        # 4. Correctness fallback.
+        output_offset = 0
         for index in range(num_gemms):
             if single_output:
-                output_rows = output_shapes[index][0]
-
-                destination = D[0][single_output_offset : single_output_offset + output_rows]
-
-                single_output_offset += output_rows
+                rows = output_shapes[index][0]
+                destination = D[0][output_offset : output_offset + rows]
+                output_offset += rows
             else:
                 destination = D[index]
-
-            bias_tensor = bias[index] if bias_flags[index] else None
-            gelu_input = pre_gelu_out[index] if gelu_flags[index] else None
 
             if workspace:
                 gemm_workspace = workspace[min(index, len(workspace) - 1)]
@@ -826,10 +755,12 @@ class NPUBackend(TEFLBackendBase):
                 D=destination,
                 quantizer=None,
                 output_dtype=D_type,
-                bias=bias_tensor,
+                bias=bias[index] if bias_flags[index] else None,
                 bias_type=bias_type,
                 gelu=gelu_flags[index],
-                gelu_in=gelu_input,
+                gelu_in=(
+                    pre_gelu_out[index] if gelu_flags[index] else None
+                ),
                 grad=grad,
                 workspace=gemm_workspace,
                 workspace_size=workspaceSizes,
@@ -837,17 +768,12 @@ class NPUBackend(TEFLBackendBase):
                 use_split_accumulator=use_split_accumulator,
             )
 
-            # generic_gemm returns the bias gradient, but does not necessarily
-            # write it into the grouped GEMM bias/bgrad destination.
             if grad and bias_flags[index] and bias_grad is not None:
                 bias_grad = bias_grad.to(bias[index].dtype)
-
                 if accumulate:
                     bias[index].add_(bias_grad)
                 else:
                     bias[index].copy_(bias_grad)
 
-        # math_sm_count is a CUDA-specific tuning parameter and has no
-        # corresponding control in torch_npu.npu_grouped_matmul.
-        _ = math_sm_count
+        _ = math_sm_count  # CUDA-only tuning knob.
         return bias

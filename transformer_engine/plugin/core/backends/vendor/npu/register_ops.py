@@ -358,6 +358,14 @@ def register_builtins(registry) -> None:
             vendor="NPU",
             priority=100,
         ),
+        OpImpl(
+            op_name="te_general_grouped_gemm",
+            impl_id="vendor.npu",
+            kind=BackendImplKind.VENDOR,
+            fn=_bind_is_available(backend.te_general_grouped_gemm, is_avail),
+            vendor="NPU",
+            priority=100,
+        ),
     ]
 
     registry.register_many(impls)

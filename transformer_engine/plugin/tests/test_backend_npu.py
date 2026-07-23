@@ -923,6 +923,253 @@ class TestNPUGroupedGEMMAccuracy:
             npu_packed, ref_packed, atol=1e-2, rtol=1e-2
         ), f"single_output grouped gemm: max_diff={max_diff:.6e}"
 
+    @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float32])
+    def test_grouped_gemm_dgrad(self, npu_backend, dtype):
+        """Grouped GEMM dgrad path: transa=True, transb=False, grad=True.
+
+        TE-FL semantics: D[i] = op(B[i], transb=False) @ op(A[i], transa=True)
+                       = B[i] @ A[i].T
+
+        This computes the activation gradient: dX = dY @ W^T
+        where A[i] is the weight (shape K, M) and B[i] is the output grad (shape N, M).
+        Result D[i] has shape (N, K).
+        """
+        from transformer_engine.plugin.core.ops import DType
+
+        torch.manual_seed(42)
+
+        # Group 0: A0:(K,M)=(8,4), B0:(N,M)=(16,4) => D0:(N,K)=(16,8)
+        # Group 1: A1:(K,M)=(6,4), B1:(N,M)=(12,4) => D1:(N,K)=(12,6)
+        A0 = torch.randn(8, 4, device="npu", dtype=dtype)
+        A1 = torch.randn(6, 4, device="npu", dtype=dtype)
+        B0 = torch.randn(16, 4, device="npu", dtype=dtype)
+        B1 = torch.randn(12, 4, device="npu", dtype=dtype)
+        D0 = torch.zeros(16, 8, device="npu", dtype=dtype)
+        D1 = torch.zeros(12, 6, device="npu", dtype=dtype)
+
+        dtype_map = {torch.bfloat16: DType.kBFloat16, torch.float32: DType.kFloat32}
+        d_type = dtype_map[dtype]
+
+        workspace = [torch.empty(0, dtype=torch.uint8, device="npu")]
+        bias = [torch.empty(0, device="npu"), torch.empty(0, device="npu")]
+
+        npu_backend.te_general_grouped_gemm(
+            A=[A0, A1],
+            transa=True,
+            B=[B0, B1],
+            transb=False,
+            D=[D0, D1],
+            D_type=d_type,
+            m_splits=[16, 12],
+            bias=bias,
+            bias_type=d_type,
+            single_output=False,
+            pre_gelu_out=[torch.empty(0, device="npu"), torch.empty(0, device="npu")],
+            grad=True,
+            workspace=workspace,
+            workspaceSizes=0,
+            accumulate=False,
+            use_split_accumulator=False,
+            math_sm_count=0,
+        )
+
+        # Reference: D[i] = B[i] @ A[i].T
+        ref_D0 = (B0.float() @ A0.float().T).cpu()
+        ref_D1 = (B1.float() @ A1.float().T).cpu()
+
+        npu_D0 = D0.cpu().float()
+        npu_D1 = D1.cpu().float()
+
+        atol = 1e-2 if dtype == torch.bfloat16 else 1e-5
+        rtol = 1e-2 if dtype == torch.bfloat16 else 1e-5
+
+        max_diff_0 = (npu_D0 - ref_D0).abs().max().item()
+        max_diff_1 = (npu_D1 - ref_D1).abs().max().item()
+
+        assert torch.allclose(
+            npu_D0, ref_D0, atol=atol, rtol=rtol
+        ), f"dgrad group 0: max_diff={max_diff_0:.6e}"
+        assert torch.allclose(
+            npu_D1, ref_D1, atol=atol, rtol=rtol
+        ), f"dgrad group 1: max_diff={max_diff_1:.6e}"
+
+    @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float32])
+    def test_grouped_gemm_wgrad(self, npu_backend, dtype):
+        """Grouped GEMM wgrad path: transa=False, transb=True, grad=True.
+
+        TE-FL semantics: D[i] = op(B[i], transb=True) @ op(A[i], transa=False)
+                       = B[i].T @ A[i]
+
+        This computes the weight gradient: dW = X^T @ dY
+        where B[i] is the activation (shape N, K) and A[i] is the output grad (shape N, M).
+        Result D[i] has shape (K, M).
+        """
+        from transformer_engine.plugin.core.ops import DType
+
+        torch.manual_seed(42)
+
+        # Group 0: A0:(N,M)=(16,8), B0:(N,K)=(16,4) => D0:(K,M)=(4,8)
+        # Group 1: A1:(N,M)=(12,8), B1:(N,K)=(12,4) => D1:(K,M)=(4,8)
+        A0 = torch.randn(16, 8, device="npu", dtype=dtype)
+        A1 = torch.randn(12, 8, device="npu", dtype=dtype)
+        B0 = torch.randn(16, 4, device="npu", dtype=dtype)
+        B1 = torch.randn(12, 4, device="npu", dtype=dtype)
+        D0 = torch.zeros(4, 8, device="npu", dtype=dtype)
+        D1 = torch.zeros(4, 8, device="npu", dtype=dtype)
+
+        dtype_map = {torch.bfloat16: DType.kBFloat16, torch.float32: DType.kFloat32}
+        d_type = dtype_map[dtype]
+
+        workspace = [torch.empty(0, dtype=torch.uint8, device="npu")]
+        bias = [torch.empty(0, device="npu"), torch.empty(0, device="npu")]
+
+        npu_backend.te_general_grouped_gemm(
+            A=[A0, A1],
+            transa=False,
+            B=[B0, B1],
+            transb=True,
+            D=[D0, D1],
+            D_type=d_type,
+            m_splits=[16, 12],
+            bias=bias,
+            bias_type=d_type,
+            single_output=False,
+            pre_gelu_out=[torch.empty(0, device="npu"), torch.empty(0, device="npu")],
+            grad=True,
+            workspace=workspace,
+            workspaceSizes=0,
+            accumulate=False,
+            use_split_accumulator=False,
+            math_sm_count=0,
+        )
+
+        # Reference: D[i] = B[i].T @ A[i]
+        ref_D0 = (B0.float().T @ A0.float()).cpu()
+        ref_D1 = (B1.float().T @ A1.float()).cpu()
+
+        npu_D0 = D0.cpu().float()
+        npu_D1 = D1.cpu().float()
+
+        atol = 1e-2 if dtype == torch.bfloat16 else 1e-5
+        rtol = 1e-2 if dtype == torch.bfloat16 else 1e-5
+
+        max_diff_0 = (npu_D0 - ref_D0).abs().max().item()
+        max_diff_1 = (npu_D1 - ref_D1).abs().max().item()
+
+        assert torch.allclose(
+            npu_D0, ref_D0, atol=atol, rtol=rtol
+        ), f"wgrad group 0: max_diff={max_diff_0:.6e}"
+        assert torch.allclose(
+            npu_D1, ref_D1, atol=atol, rtol=rtol
+        ), f"wgrad group 1: max_diff={max_diff_1:.6e}"
+
+    @pytest.mark.parametrize("dtype", [torch.bfloat16])
+    def test_grouped_gemm_dgrad_single_output(self, npu_backend, dtype):
+        """Grouped GEMM dgrad with single packed output buffer."""
+        from transformer_engine.plugin.core.ops import DType
+
+        torch.manual_seed(42)
+
+        # single_output requires all groups to have the same output width.
+        # dgrad: D[i] = B[i] @ A[i].T, output shape (N, K).
+        # Need common K across groups.
+        # Group 0: A0:(K,M)=(8,6), B0:(N,M)=(16,6) => D0:(16,8)
+        # Group 1: A1:(K,M)=(8,4), B1:(N,M)=(12,4) => D1:(12,8)
+        A0 = torch.randn(8, 6, device="npu", dtype=dtype)
+        A1 = torch.randn(8, 4, device="npu", dtype=dtype)
+        B0 = torch.randn(16, 6, device="npu", dtype=dtype)
+        B1 = torch.randn(12, 4, device="npu", dtype=dtype)
+
+        # Single output: packed along N dimension: [16+12, 8] = [28, 8]
+        D_packed = torch.zeros(28, 8, device="npu", dtype=dtype)
+
+        workspace = [torch.empty(0, dtype=torch.uint8, device="npu")]
+
+        npu_backend.te_general_grouped_gemm(
+            A=[A0, A1],
+            transa=True,
+            B=[B0, B1],
+            transb=False,
+            D=[D_packed],
+            D_type=DType.kBFloat16,
+            m_splits=[16, 12],
+            bias=[torch.empty(0, device="npu"), torch.empty(0, device="npu")],
+            bias_type=DType.kBFloat16,
+            single_output=True,
+            pre_gelu_out=[torch.empty(0, device="npu"), torch.empty(0, device="npu")],
+            grad=True,
+            workspace=workspace,
+            workspaceSizes=0,
+            accumulate=False,
+            use_split_accumulator=False,
+            math_sm_count=0,
+        )
+
+        # Reference
+        ref_D0 = (B0.float() @ A0.float().T).cpu()  # [16, 8]
+        ref_D1 = (B1.float() @ A1.float().T).cpu()  # [12, 8]
+        ref_packed = torch.cat([ref_D0, ref_D1], dim=0)  # [28, 8]
+
+        npu_packed = D_packed.cpu().float()
+        max_diff = (npu_packed - ref_packed).abs().max().item()
+
+        assert torch.allclose(
+            npu_packed, ref_packed, atol=1e-2, rtol=1e-2
+        ), f"dgrad single_output grouped gemm: max_diff={max_diff:.6e}"
+
+    @pytest.mark.parametrize("dtype", [torch.bfloat16])
+    def test_grouped_gemm_wgrad_single_output(self, npu_backend, dtype):
+        """Grouped GEMM wgrad with single packed output buffer."""
+        from transformer_engine.plugin.core.ops import DType
+
+        torch.manual_seed(42)
+
+        # wgrad: D[i] = B[i].T @ A[i], output shape (K, M).
+        # single_output requires common output width M across groups.
+        # Group 0: A0:(N,M)=(16,8), B0:(N,K)=(16,4) => D0:(4,8)
+        # Group 1: A1:(N,M)=(12,8), B1:(N,K)=(12,4) => D1:(4,8)
+        A0 = torch.randn(16, 8, device="npu", dtype=dtype)
+        A1 = torch.randn(12, 8, device="npu", dtype=dtype)
+        B0 = torch.randn(16, 4, device="npu", dtype=dtype)
+        B1 = torch.randn(12, 4, device="npu", dtype=dtype)
+
+        # Single output: packed along K dimension: [4+4, 8] = [8, 8]
+        D_packed = torch.zeros(8, 8, device="npu", dtype=dtype)
+
+        workspace = [torch.empty(0, dtype=torch.uint8, device="npu")]
+
+        npu_backend.te_general_grouped_gemm(
+            A=[A0, A1],
+            transa=False,
+            B=[B0, B1],
+            transb=True,
+            D=[D_packed],
+            D_type=DType.kBFloat16,
+            m_splits=[16, 12],
+            bias=[torch.empty(0, device="npu"), torch.empty(0, device="npu")],
+            bias_type=DType.kBFloat16,
+            single_output=True,
+            pre_gelu_out=[torch.empty(0, device="npu"), torch.empty(0, device="npu")],
+            grad=True,
+            workspace=workspace,
+            workspaceSizes=0,
+            accumulate=False,
+            use_split_accumulator=False,
+            math_sm_count=0,
+        )
+
+        # Reference
+        ref_D0 = (B0.float().T @ A0.float()).cpu()  # [4, 8]
+        ref_D1 = (B1.float().T @ A1.float()).cpu()  # [4, 8]
+        ref_packed = torch.cat([ref_D0, ref_D1], dim=0)  # [8, 8]
+
+        npu_packed = D_packed.cpu().float()
+        max_diff = (npu_packed - ref_packed).abs().max().item()
+
+        assert torch.allclose(
+            npu_packed, ref_packed, atol=1e-2, rtol=1e-2
+        ), f"wgrad single_output grouped gemm: max_diff={max_diff:.6e}"
+
     @pytest.mark.parametrize("dtype", [torch.bfloat16])
     def test_grouped_gemm_accumulate(self, npu_backend, dtype):
         """Grouped GEMM with accumulate=True adds to existing D."""
