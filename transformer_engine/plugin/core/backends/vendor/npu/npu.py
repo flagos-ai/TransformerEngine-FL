@@ -59,14 +59,6 @@ def _ensure_npu_libs():
     import torch_npu  # noqa: F401
 
 
-def _get_torch_npu():
-    """Lazy import of torch_npu."""
-    _ensure_npu_libs()
-    import torch_npu
-
-    return torch_npu
-
-
 def _get_tenpu_optimizers():
     """Get optimizers subpackage directly, bypassing transformer_engine_npu/__init__.py
     which triggers circular imports via pytorch/__init__.py -> module -> ops."""
@@ -165,7 +157,6 @@ class NPUBackend(TEFLBackendBase):
         NPU kernel requires 2D input [outer_dim, inner_dim]. We reshape accordingly.
         We ignore ln_out (pre-allocated output buffer), otype, sm_margin.
         """
-        torch_npu = _get_torch_npu()
 
         if zero_centered_gamma:
             weight = weight + 1
@@ -205,7 +196,6 @@ class NPUBackend(TEFLBackendBase):
         NPU supported combo (BF16):
           dy(BF16) x(BF16) rstd(FP32) gamma(BF16) → dx(BF16) dgamma(FP32)
         """
-        torch_npu = _get_torch_npu()
 
         if zero_centered_gamma:
             gamma = gamma + 1
