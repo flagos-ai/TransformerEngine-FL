@@ -321,7 +321,7 @@ def test_gemm_backward_bias_grad():
     # transA=False, transB=False -> out = mm(B_comp, A_comp) = mm((4,3),(3,2)) = (4,2)
     A = torch.randn(3, 2, dtype=torch.float32)
     B = torch.randn(4, 3, dtype=torch.float32)
-    bias = torch.ones(2, dtype=torch.float32)  # shape matches output columns
+    bias = torch.ones(B.shape[1], dtype=torch.float32)  # placeholder to request fused BGRAD
 
     res, bias_grad, _, _ = general_gemm_torch(
         A=A,
@@ -441,7 +441,7 @@ def test_gemm_backward_bias_grad_with_alpha():
     """
     A = torch.randn(3, 2, dtype=torch.float32)
     B = torch.randn(4, 3, dtype=torch.float32)
-    bias = torch.ones(2, dtype=torch.float32)
+    bias = torch.ones(B.shape[1], dtype=torch.float32)  # placeholder to request fused BGRAD
 
     res, bias_grad, _, _ = general_gemm_torch(
         A=A,
@@ -479,7 +479,7 @@ def test_gemm_backward_bias_grad_3d_input():
     # out = mm((6,4), (4,2)) = (6,2), then reshaped to (2, 3, 2)
     A = torch.randn(4, 2, dtype=torch.float32)
     B = torch.randn(2, 3, 4, dtype=torch.float32)
-    bias = torch.ones(2, dtype=torch.float32)
+    bias = torch.ones(B.shape[1], dtype=torch.float32)  # placeholder to request fused BGRAD
 
     res, bias_grad, _, _ = general_gemm_torch(
         A=A,
