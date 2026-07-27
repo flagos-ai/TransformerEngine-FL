@@ -54,10 +54,10 @@ def _check_npu_available() -> bool:
         return False
 
 
-def _ensure_npu_libs():
+def _get_torch_npu():
     """Ensure torch_npu is imported (activates NPU device support in PyTorch)."""
     import torch_npu  # noqa: F401
-
+    return torch_npu
 
 def _get_tenpu_optimizers():
     """Get optimizers subpackage directly, bypassing transformer_engine_npu/__init__.py
@@ -69,7 +69,6 @@ def _get_tenpu_optimizers():
 
 def _get_tenpu_gemm():
     """Get GEMM ops subpackage."""
-    _ensure_npu_libs()
     import transformer_engine_npu
 
     return transformer_engine_npu.pytorch.ops.gemm
@@ -158,7 +157,7 @@ class NPUBackend(TEFLBackendBase):
         inner_dim = weight.shape[0]
         x_2d = input.reshape(-1, inner_dim)
 
-        out_2d, inv_rms = torch_npu.npu_rms_norm(x_2d, weight, epsilon=eps)
+        out_2d, inv_rms = _get_torch_npu().npu_rms_norm(x_2d, weight, epsilon=eps)
 
         # Reshape output back to original input shape
         out = out_2d.reshape(input_shape)
@@ -201,7 +200,7 @@ class NPUBackend(TEFLBackendBase):
         # NPU kernel requires rstd in float32
         rsigma_fp32 = rsigma.float() if rsigma.dtype != torch.float32 else rsigma
 
-        dx_2d, dw = torch_npu.npu_rms_norm_backward(dz_2d, x_2d, gamma, rsigma_fp32)
+        dx_2d, dw = _get_torch_npu().npu_rms_norm_backward(dz_2d, x_2d, gamma, rsigma_fp32)
 
         # Reshape dx back to original input shape
         dx = dx_2d.reshape(input_shape)
