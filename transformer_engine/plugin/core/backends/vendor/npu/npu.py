@@ -57,7 +57,9 @@ def _check_npu_available() -> bool:
 def _get_torch_npu():
     """Ensure torch_npu is imported (activates NPU device support in PyTorch)."""
     import torch_npu  # noqa: F401
+
     return torch_npu
+
 
 def _get_tenpu_optimizers():
     """Get optimizers subpackage directly, bypassing transformer_engine_npu/__init__.py
