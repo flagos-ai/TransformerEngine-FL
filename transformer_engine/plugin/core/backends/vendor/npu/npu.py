@@ -75,14 +75,6 @@ def _get_tenpu_gemm():
     return transformer_engine_npu.pytorch.ops.gemm
 
 
-def _get_tenpu_activations():
-    """Get NPU activation functions (uses NPU-optimized kernels like npu_gelu, npu_swiglu)."""
-    _ensure_npu_libs()
-    from transformer_engine_npu.pytorch.ops.basic import npu_activation
-
-    return npu_activation
-
-
 class NPUBackend(TEFLBackendBase):
     """NPU backend delegating to transformer_engine_npu + torch_npu."""
 
