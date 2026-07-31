@@ -62,6 +62,22 @@ def register_builtins(registry) -> None:
             priority=100,
         ),
         OpImpl(
+            op_name="layernorm_fwd",
+            impl_id="vendor.kunlunxin",
+            kind=BackendImplKind.VENDOR,
+            fn=_bind_is_available(backend.layernorm_fwd, is_avail),
+            vendor="KUNLUNXIN",
+            priority=200,
+        ),
+        OpImpl(
+            op_name="layernorm_bwd",
+            impl_id="vendor.kunlunxin",
+            kind=BackendImplKind.VENDOR,
+            fn=_bind_is_available(backend.layernorm_bwd, is_avail),
+            vendor="KUNLUNXIN",
+            priority=200,
+        ),
+        OpImpl(
             op_name="multi_tensor_adam",
             impl_id="vendor.kunlunxin",
             kind=BackendImplKind.VENDOR,
@@ -180,6 +196,23 @@ def register_builtins(registry) -> None:
             fn=_bind_is_available(backend.multi_tensor_compute_scale_inv_e8m0, is_avail),
             vendor="KUNLUNXIN",
             priority=100,
+        ),
+        # GEMM (XPU via hydrax in transformer_engine_klx_torch.gemm)
+        OpImpl(
+            op_name="generic_gemm",
+            impl_id="vendor.kunlunxin",
+            kind=BackendImplKind.VENDOR,
+            fn=_bind_is_available(backend.generic_gemm, is_avail),
+            vendor="KUNLUNXIN",
+            priority=200,
+        ),
+        OpImpl(
+            op_name="te_general_grouped_gemm",
+            impl_id="vendor.kunlunxin",
+            kind=BackendImplKind.VENDOR,
+            fn=_bind_is_available(backend.te_general_grouped_gemm, is_avail),
+            vendor="KUNLUNXIN",
+            priority=200,
         ),
     ]
 
