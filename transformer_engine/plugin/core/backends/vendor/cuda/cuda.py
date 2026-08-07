@@ -1988,3 +1988,130 @@ class CUDABackend(TEFLBackendBase):
             use_ce,
             aggregate,
         )
+
+
+    ##### New APIs for TransformerEngine v2.17 #####
+
+    # Memory Management
+    def bulk_allocate(self, sizes: List[int]) -> List[torch.Tensor]:
+        """Bulk allocate multiple tensors with given sizes."""
+        tex = self._get_tex()
+        return tex.bulk_allocate(sizes)
+
+    def copy_data_ptrs_to_device(
+        self, host_ptrs: List[int], device_output: torch.Tensor
+    ) -> None:
+        """Copy host pointer list to device tensor."""
+        tex = self._get_tex()
+        return tex.copy_data_ptrs_to_device(host_ptrs, device_output)
+
+    # Quantization
+    def create_empty_quantized_tensor(
+        self, shape: List[int], dtype: DType, quantizer: Any
+    ) -> Any:
+        """Create empty quantized tensor with given shape and quantizer."""
+        tex = self._get_tex()
+        dtype_val = tex.DType(int(dtype)) if dtype is not None else None
+        if quantizer is not None and hasattr(quantizer, "dtype"):
+            quantizer.dtype = tex.DType(int(quantizer.dtype))
+        return tex.create_empty_quantized_tensor(shape, dtype_val, quantizer)
+
+    def group_dequantize(
+        self, input: Any, num_tensors: int, first_dims: List[int], otype: DType
+    ) -> torch.Tensor:
+        """Dequantize grouped tensors."""
+        tex = self._get_tex()
+        otype_val = tex.DType(int(otype)) if otype is not None else None
+        return tex.group_dequantize(input, num_tensors, first_dims, otype_val)
+
+    def nvfp4_quantize_with_amax(
+        self, input: torch.Tensor, amax: torch.Tensor
+    ) -> torch.Tensor:
+        """NVFP4 quantization with explicit amax."""
+        tex = self._get_tex()
+        if not hasattr(tex, "nvfp4_quantize_with_amax"):
+            raise NotImplementedError(
+                "nvfp4_quantize_with_amax requires TransformerEngine >= v2.17 "
+                "and CUDA compute capability >= 8.9 (Ada/Hopper)"
+            )
+        return tex.nvfp4_quantize_with_amax(input, amax)
+
+    def nvfp4_group_quantize_with_amax(
+        self, tensor: torch.Tensor, amax: torch.Tensor, num_tensors: int, first_dims: List[int]
+    ) -> torch.Tensor:
+        """NVFP4 group quantization with explicit amax."""
+        tex = self._get_tex()
+        if not hasattr(tex, "nvfp4_group_quantize_with_amax"):
+            raise NotImplementedError(
+                "nvfp4_group_quantize_with_amax requires TransformerEngine >= v2.17 "
+                "and CUDA compute capability >= 8.9 (Ada/Hopper)"
+            )
+        return tex.nvfp4_group_quantize_with_amax(tensor, amax, num_tensors, first_dims)
+
+    def swizzle_scales_and_pack_ptrs_for_discrete_weights(
+        self, data_ptrs: List[torch.Tensor], scale_ptrs: List[torch.Tensor]
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Swizzle scales and pack pointers for discrete weights."""
+        tex = self._get_tex()
+        return tex.swizzle_scales_and_pack_ptrs_for_discrete_weights(data_ptrs, scale_ptrs)
+
+    # Multi-Tensor Operations
+    def multi_tensor_pad_last_dim(
+        self, tensors: List[torch.Tensor], target_dim: int
+    ) -> List[torch.Tensor]:
+        """Pad last dimension of multiple tensors to target_dim."""
+        tex = self._get_tex()
+        return tex.multi_tensor_pad_last_dim(tensors, target_dim)
+
+    def multi_tensor_swizzle_scales_for_gemm_(
+        self, scale_invs: List[torch.Tensor]
+    ) -> None:
+        """In-place swizzle scales for GEMM (multi-tensor version)."""
+        tex = self._get_tex()
+        return tex.multi_tensor_swizzle_scales_for_gemm_(scale_invs)
+
+    def multi_tensor_transpose_to_bhsd(
+        self, tensors: List[torch.Tensor]
+    ) -> List[torch.Tensor]:
+        """Transpose multiple tensors to BHSD layout."""
+        tex = self._get_tex()
+        return tex.multi_tensor_transpose_to_bhsd(tensors)
+
+    # GEMM & Solver
+    def get_grouped_gemm_setup_workspace_size(
+        self, num_gemms: int, workspace_type: str = "generic"
+    ) -> int:
+        """Get workspace size for grouped GEMM setup."""
+        tex = self._get_tex()
+        return tex.get_grouped_gemm_setup_workspace_size(num_gemms, workspace_type)
+
+    def cusolvermp_ctx_create(self) -> Any:
+        """Create cuSolverMP context."""
+        tex = self._get_tex()
+        if not hasattr(tex, "cusolvermp_ctx_create"):
+            raise NotImplementedError(
+                "cusolvermp_ctx_create requires cuSolverMP library (CUDA >= 12.0)"
+            )
+        return tex.cusolvermp_ctx_create()
+
+    def cusolvermp_ctx_destroy(self, ctx: Any) -> None:
+        """Destroy cuSolverMP context."""
+        tex = self._get_tex()
+        if not hasattr(tex, "cusolvermp_ctx_destroy"):
+            raise NotImplementedError(
+                "cusolvermp_ctx_destroy requires cuSolverMP library (CUDA >= 12.0)"
+            )
+        return tex.cusolvermp_ctx_destroy(ctx)
+
+    # Utility
+    def splits_to_offsets_multi(
+        self, splits: List[torch.Tensor]
+    ) -> List[torch.Tensor]:
+        """Convert split sizes to offsets for multiple tensors."""
+        tex = self._get_tex()
+        return tex.splits_to_offsets_multi(splits)
+
+    def newton_schulz(self, input: torch.Tensor, num_iters: int) -> torch.Tensor:
+        """Newton-Schulz iteration for matrix inverse square root."""
+        tex = self._get_tex()
+        return tex.newton_schulz(input, num_iters)
