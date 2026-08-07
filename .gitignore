@@ -48,6 +48,7 @@ artifacts/
 transformer_engine/plugin/core/_build_config.py
 # Mac OS
 .DS_Store
+.claude/
 # Integration test outputs
 qa/L1_pytorch_mcore_integration/output/
 *.distcp

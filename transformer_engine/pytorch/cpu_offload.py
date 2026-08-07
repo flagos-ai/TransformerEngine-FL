@@ -16,7 +16,6 @@ from torch.autograd.graph import saved_tensors_hooks
 from transformer_engine.debug.pytorch.debug_state import TEDebugState
 import transformer_engine.pytorch as te
 import transformer_engine.pytorch.cpu_offload_v1 as v1_code_path
-from transformer_engine import te_device_type
 from .quantized_tensor import (
     restore_from_saved,
     prepare_for_saving,
@@ -47,6 +46,7 @@ def mark_activation_offload(*tensors):
 def mark_not_offload(*tensors: torch.Tensor):
     """Marks tensors to prevent them from being offloaded."""
     if NVTE_CPU_OFFLOAD_V1:
+        v1_code_path.mark_activation_offload(*tensors, offload=False)
         return
 
     tensors, tensor_obj = prepare_for_saving(*tensors)
@@ -307,8 +307,9 @@ class OffloadableLayerState:
         # needed to restore pre-offload state after reload.
         self.aux = aux
 
-        self.finish_offload_event = torch.cuda.Event()
-        self.finish_offload_event.record(self.offload_stream)
+        if len(self.fwd_gpu_tensor_group.tensor_list) > 0:
+            self.finish_offload_event = torch.cuda.Event()
+            self.finish_offload_event.record(self.offload_stream)
 
     def release_activation_forward_gpu_memory(self):
         """
@@ -319,13 +320,13 @@ class OffloadableLayerState:
             func_name="release_activation_forward_gpu_memory", allowed_states=["offload_started"]
         )
         self.state = "offload_finished"
+        if len(self.fwd_gpu_tensor_group.tensor_list) > 0:
+            torch.cuda.current_stream().wait_event(self.finish_offload_event)  # type: ignore[arg-type]
 
-        torch.cuda.current_stream().wait_event(self.finish_offload_event)  # type: ignore[arg-type]
-
-        # GPU memory can be released safely after the offload.
-        # Notice that the memory needs to be kept alive when GPU->CPU copy is performed.
-        self.fwd_gpu_tensor_group = TensorGroup()
-        del self.finish_offload_event
+            # GPU memory can be released safely after the offload.
+            # Notice that the memory needs to be kept alive when GPU->CPU copy is performed.
+            self.fwd_gpu_tensor_group = TensorGroup()
+            del self.finish_offload_event
 
     def start_reload(self):
         """
@@ -346,7 +347,7 @@ class OffloadableLayerState:
             # cannot move tensors from pool of one stream to another without
             # calling cudaFree and cudaMalloc again.
 
-            reloaded_tensor = torch.empty_like(tensor, device=torch.device(te_device_type()))
+            reloaded_tensor = torch.empty_like(tensor, device=torch.device("cuda"))
             self.offload_stream.wait_stream(torch.cuda.current_stream())
 
             with torch.cuda.stream(self.offload_stream):
@@ -462,7 +463,7 @@ class OffloadableLayerState:
             not isinstance(t, torch.nn.Parameter)
             and not getattr(t, "_TE_do_not_offload", False)
             and not isinstance(t, torch._subclasses.FakeTensor)
-            and t.device.type == te_device_type()
+            and t.device.type == "cuda"
         ):
             if not t.is_contiguous() and not getattr(t, "offload_base_tensor", False):
                 warnings.warn(
