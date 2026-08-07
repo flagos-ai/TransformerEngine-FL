@@ -1084,6 +1084,30 @@ def register_builtins(registry) -> None:
             vendor="HYGON",
             priority=100,
         ),
+        OpImpl(
+            op_name="device_supports_multicast",
+            impl_id="vendor.hygon",
+            kind=BackendImplKind.VENDOR,
+            fn=_bind_is_available(backend.device_supports_multicast, is_avail),
+            vendor="HYGON",
+            priority=100,
+        ),
+        OpImpl(
+            op_name="ubuf_built_with_mpi",
+            impl_id="vendor.hygon",
+            kind=BackendImplKind.VENDOR,
+            fn=_bind_is_available(backend.ubuf_built_with_mpi, is_avail),
+            vendor="HYGON",
+            priority=100,
+        ),
+        OpImpl(
+            op_name="get_stream_priority_range",
+            impl_id="vendor.hygon",
+            kind=BackendImplKind.VENDOR,
+            fn=_bind_is_available(backend.get_stream_priority_range, is_avail),
+            vendor="HYGON",
+            priority=100,
+        ),
         # FlashAttention class getter
         OpImpl(
             op_name="get_flash_attention_class",

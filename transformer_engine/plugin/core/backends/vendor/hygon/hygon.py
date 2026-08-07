@@ -1954,6 +1954,7 @@ class HygonBackend(TEFLBackendBase):
         aggregate: bool = False,
     ) -> "CommOverlapP2P":
         tex = self._get_tex()
+        comm_type = tex.CommOverlapType(int(comm_type)) if comm_type is not None else None
         return tex.CommOverlapP2P(
             buffer_shape,
             buffer_dtype,
@@ -1970,3 +1971,14 @@ class HygonBackend(TEFLBackendBase):
             use_ce,
             aggregate,
         )
+
+    def device_supports_multicast(self, device_id=-1):
+        return self._get_tex().device_supports_multicast(device_id)
+
+    def ubuf_built_with_mpi(self):
+        tex = self._get_tex()
+        return tex.ubuf_built_with_mpi()
+
+    def get_stream_priority_range(self, device_id=-1):
+        tex = self._get_tex()
+        return tex.get_stream_priority_range(device_id)
