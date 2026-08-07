@@ -719,22 +719,6 @@ def register_builtins(registry) -> None:
             priority=100,
         ),
         OpImpl(
-            op_name="convert_host_pointers_to_tensor",
-            impl_id="vendor.cuda",
-            kind=BackendImplKind.VENDOR,
-            fn=_bind_is_available(backend.convert_host_pointers_to_tensor, is_avail),
-            vendor="CUDA",
-            priority=100,
-        ),
-        OpImpl(
-            op_name="get_device_pointer_for_data_and_scales",
-            impl_id="vendor.cuda",
-            kind=BackendImplKind.VENDOR,
-            fn=_bind_is_available(backend.get_device_pointer_for_data_and_scales, is_avail),
-            vendor="CUDA",
-            priority=100,
-        ),
-        OpImpl(
             op_name="splits_to_offsets",
             impl_id="vendor.cuda",
             kind=BackendImplKind.VENDOR,

@@ -759,26 +759,6 @@ class CUDABackend(TEFLBackendBase):
         tex = self._get_tex()
         return tex.grouped_swizzle_for_gemm(tensor, rowwise, columnwise)
 
-    def convert_host_pointers_to_tensor(
-        self,
-        tensor_lists: List[List[torch.Tensor]],
-    ) -> Any:
-        tex = self._get_tex()
-        return tex.convert_host_pointers_to_tensor(tensor_lists)
-
-    def get_device_pointer_for_data_and_scales(
-        self,
-        data_tensors: List[torch.Tensor],
-        scale_tensors: List[torch.Tensor],
-        swizzle: bool = False,
-        rowwise: bool = True,
-        data_dtype: Any = None,
-    ) -> Any:
-        tex = self._get_tex()
-        return tex.get_device_pointer_for_data_and_scales(
-            data_tensors, scale_tensors, swizzle, rowwise, data_dtype
-        )
-
     def splits_to_offsets(
         self,
         first_dims: List[int],
