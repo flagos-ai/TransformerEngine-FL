@@ -1,6 +1,7 @@
 # Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # See LICENSE for license information.
+from transformer_engine import te_device_type
 
 """NVFuser functions and JIT utilities"""
 import os
@@ -332,11 +333,11 @@ def warmup_jit_bias_gelu(
     # Save cuda RNG state to ensure warmup does not affect reproducibility.
     rng_state = torch.cuda.get_rng_state()
 
-    bias = torch.rand(ffn_hidden_size_per_partition, dtype=dtype, device="cuda")
+    bias = torch.rand(ffn_hidden_size_per_partition, dtype=dtype, device=te_device_type())
     inp = torch.rand(
         (seq_length * micro_batch_size, ffn_hidden_size_per_partition),
         dtype=dtype,
-        device="cuda",
+        device=te_device_type(),
     )
     # Warmup JIT fusions with the input grad_enable state of both forward
     # prop and recomputation

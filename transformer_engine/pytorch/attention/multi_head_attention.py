@@ -8,7 +8,7 @@ import collections
 from typing import Any, Callable, List, Optional, Tuple, Union
 import torch
 
-from transformer_engine.pytorch.quantization import FP8GlobalStateManager, QuantizerRole
+from transformer_engine.pytorch.quantization import FP8GlobalStateManager, QuantizerRole, te_device_type
 from transformer_engine.pytorch.tensor.float8_tensor import Float8Tensor
 from transformer_engine.pytorch.module.base import TransformerEngineBaseModule
 from transformer_engine.pytorch.module import LayerNormLinear, Linear, RMSNorm, LayerNorm

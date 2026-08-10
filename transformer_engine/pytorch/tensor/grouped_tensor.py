@@ -1,6 +1,7 @@
 # Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # See LICENSE for license information.
+from transformer_engine import te_device_type
 
 """Grouped tensor class for handling collections of tensors with different shapes"""
 from __future__ import annotations
@@ -131,7 +132,7 @@ class GroupedTensor(GroupedTensorStorage, torch.Tensor):
                 device = maybe_tensor.device
                 break
         if device is None:
-            device = torch.device("cuda")
+            device = torch.device(te_device_type())
 
         # Match QuantizedTensor __new__: accept externally-computed stride to
         # avoid Python-side stride computation overhead for C++ construction.

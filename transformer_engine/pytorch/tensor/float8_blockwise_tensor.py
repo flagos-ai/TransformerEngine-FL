@@ -11,7 +11,7 @@ from typing import Any, Optional, Tuple, Union
 
 import torch
 import transformer_engine_torch as tex
-from transformer_engine.common.recipe import Float8BlockScaling, Recipe
+from transformer_engine.common.recipe import Float8BlockScaling, Recipe, te_device_type
 from .storage.float8_blockwise_tensor_storage import Float8BlockwiseQTensorStorage
 from ..quantized_tensor import QuantizedTensor, Quantizer
 from ._quantization_helpers import _IdentityFunc

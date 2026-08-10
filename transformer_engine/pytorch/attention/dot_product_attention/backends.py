@@ -19,6 +19,7 @@ from transformer_engine.pytorch.utils import (
     get_device_compute_capability,
     split_tensor_along_dim,
 )
+from transformer_engine import te_device_type
 from transformer_engine.pytorch.utils import (
     attention_mask_func,
     nvtx_range_push,
@@ -519,10 +520,10 @@ class UnfusedDotProductAttention(torch.nn.Module):
             # S/dP are forced to use DS quantizers in DPA.init_fp8_metadata; revert them here for true CS emulation
             if fp8_recipe.float8_current_scaling():
                 S_quantizer = Float8CurrentScalingQuantizer(
-                    fp8_dtype=S_quantizer.dtype, device="cuda"
+                    fp8_dtype=S_quantizer.dtype, device=te_device_type()
                 )
                 dP_quantizer = Float8CurrentScalingQuantizer(
-                    fp8_dtype=dP_quantizer.dtype, device="cuda"
+                    fp8_dtype=dP_quantizer.dtype, device=te_device_type()
                 )
             # disable swizzle for MXFP8Quantizer
             for quantizer in [

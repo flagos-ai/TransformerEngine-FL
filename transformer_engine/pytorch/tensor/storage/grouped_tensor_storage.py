@@ -1,6 +1,7 @@
 # Copyright (c) 2022-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 #
 # See LICENSE for license information.
+from transformer_engine import te_device_type
 
 """Grouped tensor storage class for handling collections of tensors with different shapes"""
 from __future__ import annotations
@@ -669,7 +670,7 @@ class GroupedTensorStorage:
             # TODO(ksivaman): Single kernel + remove the host offset calculation.
             tensor_offsets = GroupedTensorStorage.make_tensor_offsets(first_dims, logical_last_dim)
             if (
-                first_dims.device.type == "cuda"
+                first_dims.device.type == te_device_type()
                 and torch.cuda.is_available()
                 and torch.cuda.is_current_stream_capturing()
             ):

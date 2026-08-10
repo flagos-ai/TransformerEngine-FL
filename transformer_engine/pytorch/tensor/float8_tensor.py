@@ -15,6 +15,7 @@ from transformer_engine.common.recipe import (
     Float8CurrentScaling,
     Recipe,
 )
+from transformer_engine import te_device_type
 from ..utils import canonicalize_process_group, devices_match
 from .storage.float8_tensor_storage import Float8TensorStorage, _FromFloat8Func
 from ..quantized_tensor import QuantizedTensor, Quantizer
