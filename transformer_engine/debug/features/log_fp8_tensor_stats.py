@@ -10,10 +10,13 @@ import warnings
 
 import torch
 import nvdlfw_inspect.api as debug_api
+import transformer_engine_torch as tex
+
 from nvdlfw_inspect.debug_features.log_tensor_stats import LogTensorStats as BaseLogTensorStats
 from nvdlfw_inspect.registry import Registry, api_method
 from transformer_engine.pytorch import DType
 
+from transformer_engine import te_device_type
 from transformer_engine.debug.features.utils.stats_buffer import STATS_BUFFERS
 from transformer_engine.debug.features.utils import get_reduction_params, next_enabled_iter
 from transformer_engine.pytorch.tensor import Quantizer, QuantizedTensor
@@ -57,7 +60,10 @@ def _get_new_quantizer(recipe_name, fp8_dtype):
         return Float8BlockQuantizer(fp8_dtype=fp8_dtype, rowwise=True, columnwise=True)
     if recipe_name == "fp8_current_scaling":
         return Float8CurrentScalingQuantizer(
-            fp8_dtype=fp8_dtype, device=torch.device("cuda"), rowwise=True, columnwise=True
+            fp8_dtype=fp8_dtype,
+            device=torch.device(te_device_type()),
+            rowwise=True,
+            columnwise=True,
         )
     if recipe_name == "mxfp8":
         return MXFP8Quantizer(fp8_dtype=fp8_dtype, rowwise=True, columnwise=True)
@@ -251,7 +257,7 @@ class LogFp8TensorStats(BaseLogTensorStats):
         Yields the aux_dict.
         Needs to clean after usage, because it possibly change the usage of the quantized tensor.
         """
-        fp8_dtype = DType.kFloat8E4M3
+        fp8_dtype = tex.DType.kFloat8E4M3
         if recipe_name in ["fp8_delayed_scaling", "fp8_current_scaling", "fp8_block_scaling"]:
             assert isinstance(
                 quantizer, (Float8Quantizer, Float8CurrentScalingQuantizer, Float8BlockQuantizer)

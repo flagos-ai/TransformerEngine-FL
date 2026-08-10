@@ -3,10 +3,12 @@
 # See LICENSE for license information.
 
 # A workflow to trigger ci on hybrid infra (github + self hosted runner)
+
+# DISABLED in FlagOS
 name: Blossom-CI
 on:
   issue_comment:
-    types: [created]
+    types: [__disabled_do_not_remove__]
   workflow_dispatch:
       inputs:
           platform:

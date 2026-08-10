@@ -11,6 +11,8 @@ import warnings
 import logging
 
 import torch
+from transformer_engine import te_device_type
+import transformer_engine_torch as tex
 import torch.nn.functional as F
 from torch.nn.parameter import Parameter
 
@@ -59,6 +61,14 @@ from transformer_engine.pytorch.attention.dot_product_attention.backends import 
     FusedAttention,
     FlashAttention,
 )
+
+#########################################################################
+# Preserve TransformerEngine-FL plugin attention dispatch.
+_FlashAttentionNative = FlashAttention
+FlashAttention = getattr(tex, "flash_attention", _FlashAttentionNative)
+dpa_utils._original_get_attention_backend = dpa_utils.get_attention_backend
+dpa_utils.get_attention_backend = tex.get_attention_backend
+#########################################################################
 
 
 # Setup Attention Logging
@@ -1286,8 +1296,10 @@ class DotProductAttention(TransformerEngineBaseModule):
 
             # checks for q/k/v shapes
             assert (
-                query_layer.is_cuda and key_layer.is_cuda and value_layer.is_cuda
-            ), "DotProductAttention only supports CUDA tensors."
+                query_layer.device.type == te_device_type()
+                and key_layer.device.type == te_device_type()
+                and value_layer.device.type == te_device_type()
+            ), f"DotProductAttention only supports {te_device_type()} tensors."
             assert (
                 query_layer.dtype == key_layer.dtype and query_layer.dtype == value_layer.dtype
             ), "Queries, keys and values must have the same data type!"

@@ -1,0 +1,77 @@
+name: Common Integration Tests
+
+on:
+  workflow_call:
+    inputs:
+      device:
+        required: true
+        type: string
+      image:
+        required: true
+        type: string
+      container_pull_policy:
+        required: false
+        type: string
+        default: never
+      runs_on:
+        required: true
+        type: string
+      container_volumes:
+        required: true
+        type: string
+      container_options:
+        required: true
+        type: string
+      setup_script:
+        required: false
+        type: string
+        default: ''
+      checkout_submodules:
+        required: false
+        type: string
+        default: 'false'
+      test_matrix:
+        required: true
+        type: string
+
+jobs:
+  integration_test:
+    defaults:
+      run:
+        shell: bash
+    runs-on: ${{ fromJson(inputs.runs_on) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        test_group: ${{ fromJson(inputs.test_matrix) }}
+    name: integration-${{ inputs.device }}-${{ matrix.test_group.name }}
+    container:
+      image: ${{ inputs.image }}
+      volumes: ${{ fromJson(inputs.container_volumes) }}
+      options: --pull ${{ inputs.container_pull_policy }} ${{ inputs.container_options }}
+
+    steps:
+      - name: Prepare Checkout Environment
+        run: |
+          /usr/bin/git config --global safe.directory '*'
+          /usr/bin/git config --global --unset-all credential.helper 2>/dev/null || true
+          /usr/bin/git config --system --unset-all credential.helper 2>/dev/null || true
+
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: ${{ inputs.checkout_submodules }}
+          set-safe-directory: true
+
+      - name: Environment Setup
+        if: inputs.setup_script != ''
+        run: bash "$GITHUB_WORKSPACE/${{ inputs.setup_script }}"
+
+      - name: Execute Tests
+        run: |
+          set -euo pipefail
+          export TE_LIB_PATH="${TE_LIB_PATH:-$(python3 -c 'import site; print(site.getsitepackages()[0])')/transformer_engine}"
+          test -f "${{ matrix.test_group.path }}"
+          bash "${{ matrix.test_group.path }}"
+        timeout-minutes: 30

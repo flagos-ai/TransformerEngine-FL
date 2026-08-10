@@ -1,0 +1,76 @@
+# MooreThreads MUSA Hardware Configuration for TransformerEngine-FL
+
+hardware_name: mthreads
+display_name: 'MooreThreads MUSA Tests'
+checkout_submodules: recursive
+
+# CI image for MooreThreads MUSA dev env
+ci_image: harbor.baai.ac.cn/flagos-dev/transformerengine-fl:f826afe-musa-dev
+
+# Runner labels for self-hosted MooreThreads node
+# Adjust this label to match the actual GitHub Actions runner label.
+runner_labels:
+  - mt-8g-cicd-te
+
+# Container volumes
+container_volumes:
+  - /dev/dri:/dev/dri
+  - /home/flagscale_cicd/flask/static:/workspace/report
+
+# Container options
+container_options: >-
+  --runtime=mthreads
+  --ipc=host
+  --privileged=true
+  --shm-size=100gb
+  --ulimit memlock=-1
+  --ulimit stack=67108864
+  --user root
+  --group-add video
+  -e PLATFORM=mthreads
+  -e MTHREADS_VISIBLE_DEVICES=all
+  -e MTHREADS_DRIVER_CAPABILITIES=all
+  -e MUSA_HOME=/usr/local/musa
+  -e PIP_NO_INDEX=1
+  -e PIP_DISABLE_PIP_VERSION_CHECK=1
+  -e LD_LIBRARY_PATH=/usr/lib:/usr/lib/x86_64-linux-gnu:/usr/local/musa/lib:/usr/local/openmpi/lib:$LD_LIBRARY_PATH
+
+# Platform-specific environment setup script
+setup_script: .github/scripts/setup_musa.sh
+
+# Device types to run tests on
+device_types:
+  - s5000
+
+coverage:
+  enabled: true
+  required: false
+  python: python3
+  sources:
+    - transformer_engine
+  include:
+    - transformer_engine/pytorch/*
+    - transformer_engine/debug/*
+    - transformer_engine/plugin/*
+  omit:
+    - '*/setup.py'
+    - '*/transformer_engine/plugin/core/_build_config.py'
+
+# MUSA launchers keep platform-specific selection outside shared QA scripts.
+unit_test_matrix:
+  - name: pytorch_debug
+    runner: script
+    path: tests/plugin/backend/musa/run_native_tests.sh
+  - name: pytorch_unittest
+    runner: script
+    path: tests/plugin/backend/musa/run_native_tests.sh
+  - name: pytorch_distributed_utils
+    runner: script
+    path: tests/plugin/backend/musa/run_native_tests.sh
+  - name: pytorch_onnx_unittest
+    runner: script
+    path: tests/plugin/backend/musa/run_native_tests.sh
+
+integration_test_matrix:
+  - name: pytorch_mcore_integration
+    path: tests/integration/musa/run_mcore.sh

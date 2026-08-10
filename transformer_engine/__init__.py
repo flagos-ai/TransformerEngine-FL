@@ -13,6 +13,51 @@ from importlib import metadata
 from typing import Optional, Tuple
 import transformer_engine.common
 
+import torch
+
+# Public, simple global (kept for backward compatibility).
+TE_DEVICE_TYPE = "cuda"
+TE_PLATFORM = torch.cuda
+
+# Apply MUSA (VENDOR) Patches, such as torch.cuda.device -> torch.musa.device
+try:
+    from .plugin.core.backends.vendor.musa.patches import apply_patch as _musa_apply_patch
+
+    _musa_apply_patch()
+except Exception as e:
+    pass
+
+# Apply TXDA (VENDOR) such as torch.cuda.device -> torch.txda.device
+try:
+    from .plugin.core.backends.vendor.tsingmicro.patches import apply_patch as _txda_apply_patch
+
+    _txda_apply_patch()
+except Exception as e:
+    pass
+
+# Apply NPU (VENDOR) Patches, such as torch.cuda.device -> torch_npu.npu.device
+try:
+    from .plugin.core.backends.vendor.npu.patches import apply_patch as _npu_apply_patch
+
+    _npu_apply_patch()
+except Exception as e:
+    pass
+
+
+def te_device_type(default: str = "cuda") -> str:
+    try:
+        return TE_DEVICE_TYPE
+    except Exception:
+        return default
+
+
+def te_platform(default=torch.cuda):
+    try:
+        return TE_PLATFORM
+    except Exception:
+        return default
+
+
 # Minimum NCCL version for the statically-linked NCCL EP backend.
 _NCCL_EP_MIN_VERSION = (2, 30, 4)
 

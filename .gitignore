@@ -24,6 +24,9 @@ __pycache__
 tests/cpp/build/
 .ipynb_checkpoints
 *.log
+logs/
+qa_logs/
+*.mudmp
 CMakeFiles/CMakeSystem.cmake
 sdist/
 var/
@@ -41,5 +44,14 @@ compile_commands.json
 .nfs
 tensor_dumps/
 artifacts/
+# Auto-generated build configuration (specific to each environment)
+transformer_engine/plugin/core/_build_config.py
+# Mac OS
 .DS_Store
 .claude/
+# Integration test outputs
+qa/L1_pytorch_mcore_integration/output/
+*.distcp
+.coverage
+.coverage.*
+.coverage

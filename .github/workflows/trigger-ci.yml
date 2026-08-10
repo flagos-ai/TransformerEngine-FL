@@ -6,7 +6,7 @@
 name: TE-CI Trigger
 on:
   issue_comment:
-    types: [created]
+    types: [__disabled_do_not_remove__]
 jobs:
   Authorization:
     name: Authorization

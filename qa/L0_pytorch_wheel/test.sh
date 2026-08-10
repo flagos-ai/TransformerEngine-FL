@@ -27,6 +27,7 @@ VERSION=`cat $TE_PATH/build_tools/VERSION.txt`
 WHL_BASE="transformer_engine-${VERSION}"
 
 # Core wheel.
+rm -rf dist/*.whl 2>/dev/null || true  # Clean up any existing wheels
 NVTE_RELEASE_BUILD=1 pip3 wheel --no-build-isolation -vvv --wheel-dir ./dist . || error_exit "Failed to setup bdist_wheel"
 python3 -m wheel unpack dist/${WHL_BASE}-* || error_exit "Failed to unpack dist/${WHL_BASE}-*.whl"
 sed -i "s/Name: transformer-engine/Name: transformer-engine-cu12/g" "transformer_engine-${VERSION}/transformer_engine-${VERSION}.dist-info/METADATA"
@@ -43,6 +44,8 @@ NVTE_RELEASE_BUILD=1 pip3 wheel --no-build-isolation --no-deps -vvv --wheel-dir 
 pip3 install --no-build-isolation --no-deps -vvv dist/* || error_exit "Failed to install dist/*"
 cd $TE_PATH
 pip3 install --no-build-isolation --no-deps -vvv dist/*.whl || error_exit "Failed to install dist/*.whl --no-deps"
+
+export TE_LIB_PATH=$(python -c "import site; print(site.getsitepackages()[0])")/transformer_engine
 
 python3 $TE_PATH/tests/pytorch/test_sanity_import.py || test_fail "test_sanity_import.py"
 

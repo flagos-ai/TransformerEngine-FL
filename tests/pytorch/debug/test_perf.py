@@ -5,6 +5,7 @@
 
 import pytest
 import torch
+from transformer_engine import te_device_type
 import transformer_engine.pytorch as te
 
 import nvdlfw_inspect.api as debug_api
@@ -38,8 +39,8 @@ def test_layer_switches_to_nondebug_mode(configs_dir, feature_dirs, use_microbat
         dummy_feature._inspect_tensor_enabled_call_count = 0
         dummy_feature._inspect_tensor_call_count = 0
 
-        model = te.Linear(256, 256, name="test_linear").cuda()
-        x = torch.randn(8, 256, 256).cuda()
+        model = te.Linear(256, 256, name="test_linear", device=te_device_type())
+        x = torch.randn(8, 256, 256).to(device=te_device_type())
 
         # Run multiple iterations
         for i in range(20):

@@ -1,0 +1,119 @@
+name: Plugin - Unit Tests
+
+on:
+  push:
+    branches: main
+    paths:
+      - 'transformer_engine/plugin/**'
+      - 'tests/plugin/**'
+      - '.github/workflows/te-plugin-tests.yml'
+  pull_request:
+    branches: main
+    paths:
+      - 'transformer_engine/plugin/**'
+      - 'tests/plugin/**'
+      - '.github/workflows/te-plugin-tests.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.actor }}
+  cancel-in-progress: true
+
+jobs:
+  run-plugin-tests:
+    runs-on: [ nv-8g-cicd-te ]
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: harbor.baai.ac.cn/flagscale/cuda12.8.1-torch2.7.1-python3.10-te2.9:20260209
+      ports:
+        - 80:80
+      options: >-
+        --gpus all 
+        --shm-size=500g 
+        --privileged 
+        --ipc=host 
+        --ulimit memlock=-1 
+        --ulimit stack=67108864 
+        --ulimit nofile=65535:65535 
+        --user root
+        --pull never
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6.0.1
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          ssh-strict: true
+          ssh-user: git
+          persist-credentials: true
+          clean: true
+          sparse-checkout-cone-mode: true
+          fetch-tags: false
+          show-progress: true
+          lfs: false
+          submodules: recursive
+          set-safe-directory: true
+      
+      - name: Install Dependencies & Build Transformer Engine
+        # timeout-minutes: 40
+        env:
+          NVTE_FRAMEWORK: pytorch
+          TE_WITH_NCCL: 1
+        run: |
+          # Activate conda environment
+          echo "Activating conda environment..."
+          source /opt/miniconda3/etc/profile.d/conda.sh
+          conda activate flagscale-train
+
+          # Print environment information for debugging
+          echo "=== Environment Info ==="
+          conda info
+          python --version
+          pip --version
+          gcc --version
+          nvcc --version
+          cmake --version
+          cat /usr/local/cuda-12.8/include/cudnn_version.h | grep -E "CUDNN_MAJOR|CUDNN_MINOR|CUDNN_PATCHLEVEL"
+
+          # Install dependencies
+          echo "=== Installing Dependencies ==="
+          pip install transformers expecttest pytest
+
+          # Build and install transformer_engine
+          echo "=== Building Transformer Engine ==="
+          pip install --no-build-isolation -vvv . --no-deps
+
+          # Verify installation
+          echo "=== Verifying Installation ==="
+          python3 tests/pytorch/test_sanity_import.py
+          python3 -c "import transformer_engine; print('TE Version:', transformer_engine.__version__)"
+
+      - name: Verify GPU Availability & Health
+        run: |
+          # Execute GPU check
+          echo "=== Checking GPU Status ==="
+          source .github/workflows/scripts/gpu_check.sh
+          wait_for_gpu
+
+      - name: Plugin Test
+        # timeout-minutes: 10
+        run: |
+          # Activate conda environment
+          source /opt/miniconda3/etc/profile.d/conda.sh
+          conda activate flagscale-train
+
+          # Execute each plugin test file in a fresh Python process. Several plugin tests
+          # install MagicMock modules into sys.modules, so a single pytest process can leak
+          # mocked dependencies across files and produce order-dependent failures.
+          mapfile -t plugin_tests < <(
+            find tests/plugin/plugin tests/plugin/backend \
+              -path 'tests/plugin/backend/npu' -prune -o \
+              -name 'test_*.py' -type f -print | sort
+          )
+          for test_file in "${plugin_tests[@]}"; do
+            echo "=== Running ${test_file} ==="
+            python3 -m pytest -q -x -p no:warnings "${test_file}"
+          done
+
+          echo "=== All Plugin Tests Completed Successfully ==="

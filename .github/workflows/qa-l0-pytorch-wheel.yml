@@ -1,0 +1,78 @@
+name: QA Pytorch Wheel
+
+on:
+  push:
+    branches:
+      - __disabled_do_not_remove__
+  pull_request:
+    branches:
+      - __disabled_do_not_remove__
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.actor }}
+  cancel-in-progress: true
+
+jobs:
+  qa-l0-pytorch-wheel:
+    runs-on: [ self-hosted, Linux, X64, nvidia, gpu-8 ]
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: harbor.baai.ac.cn/flagscale/cuda12.8.1-torch2.7.1-python3.10-te2.9:20260209
+      ports:
+        - 80:80
+      options: >-
+        --gpus all 
+        --shm-size=500g 
+        --privileged 
+        --ipc=host
+        --ulimit memlock=-1 
+        --ulimit stack=67108864 
+        --ulimit nofile=65535:65535 
+        --user root
+        --pull always
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v6.0.1
+        with:
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          ref: ${{ github.event.pull_request.head.ref }}
+          ssh-strict: true
+          ssh-user: git
+          persist-credentials: true
+          clean: true
+          sparse-checkout-cone-mode: true
+          fetch-tags: false
+          show-progress: true
+          lfs: false
+          submodules: recursive
+          set-safe-directory: true
+
+      - name: L0 Pytorch Wheel
+        id: L0_pytoech_wheel
+        # timeout-minutes: 50
+        env:
+          TE_PATH: .
+          RUN_LOG: /logs/pytorch/wheel
+        run: |
+          echo "TE_PATH: ${TE_PATH}"
+          sed -i "s/^cd transformer_engine\/pytorch\s*$/pushd transformer_engine\/pytorch/" qa/L0_pytorch_wheel/test.sh
+          sed -i '44 s/^cd \s*\$TE_PATH\s*$/popd/' qa/L0_pytorch_wheel/test.sh
+
+          cat qa/L0_pytorch_wheel/test.sh
+          source /opt/miniconda3/etc/profile.d/conda.sh
+          conda activate flagscale-train
+          pip uninstall -y transformer_engine
+
+          bash qa/L0_pytorch_wheel/test.sh | tee ${RUN_LOG}/pytorch_wheel-${{ github.run_id }}.log
+
+      - name: Upload Installation Logs
+        if: always() && steps.L0_pytoech_wheel.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: L0-pytorch-logs-${{ github.run_id }}
+          path: /logs/pytorch/wheel
+          retention-days: 7
+          if-no-files-found: warn

@@ -1,0 +1,64 @@
+# Hardware configuration template for TransformerEngine-FL CI.
+# Copy this file and provide a setup script when adding a platform.
+
+hardware_name: example
+display_name: 'Example Accelerator'
+checkout_submodules: 'false'
+
+ci_image: registry.example.com/transformer-engine:latest
+container_pull_policy: never
+
+runner_labels:
+  - example-runner
+
+container_volumes: []
+container_options: >-
+  --privileged
+  --ipc=host
+  --user root
+
+# The script owns Python activation, accelerator runtime paths, dependency
+# installation, and platform preflight checks. Persist variables needed by
+# later steps through GITHUB_ENV.
+setup_script: .github/scripts/setup_example.sh
+
+device_types:
+  - example
+
+coverage:
+  enabled: true
+  required: false
+  python: python3
+  sources:
+    # Importable package or source directory passed to pytest-cov --cov.
+    - transformer_engine
+  include:
+    # Optional file patterns used to limit generated coverage reports.
+    - transformer_engine/pytorch/*
+    - transformer_engine/debug/*
+    - transformer_engine/plugin/*
+  omit:
+    - '*/setup.py'
+    - '*/transformer_engine/plugin/core/_build_config.py'
+
+# A script group preserves an existing QA entry point. A pytest group may
+# instead declare pytest_args, env, log_dir, and a list of test steps.
+unit_test_matrix:
+  - name: pytorch_debug
+    runner: script
+    path: qa/L0_pytorch_debug_unittest/test.sh
+  - name: pytorch_unittest
+    runner: script
+    path: qa/L0_pytorch_unittest/test.sh
+  - name: pytorch_distributed_unittest
+    runner: script
+    path: qa/L1_pytorch_distributed_unittest/test.sh
+  - name: pytorch_onnx_unittest
+    runner: script
+    path: qa/L1_pytorch_onnx_unittest/test.sh
+
+# Integration groups use the same common workflow. Put test-specific
+# environment defaults in the test script, not in the workflow.
+integration_test_matrix:
+  - name: pytorch_mcore_integration
+    path: qa/L1_pytorch_mcore_integration/test.sh

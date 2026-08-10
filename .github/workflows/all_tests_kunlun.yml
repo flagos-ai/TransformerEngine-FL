@@ -1,0 +1,14 @@
+name: kunlunxin_tests
+
+on:
+  workflow_dispatch:
+
+jobs:
+  select_kunlun_branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Select the Kunlun development branch
+        run: |
+          echo "This entry registers KunlunXin tests in the Actions page."
+          echo "Run it again and select Kunlun-dev from the branch list."
+          exit 1

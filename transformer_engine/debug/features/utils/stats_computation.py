@@ -26,6 +26,17 @@ class BlockwiseDynamicRangeStat(
         return f"max_blockwise_dynamic_range_block_size_{self.block_size}_dims_{self.dims}{suffix}"
 
 
+class BlockwiseDynamicRangeStat(
+    namedtuple("BlockwiseDynamicRangeStat", ["block_size", "dims", "max_over_orientations"])
+):
+    """Named tuple representing a blockwise dynamic range statistic configuration."""
+
+    def __str__(self) -> str:
+        """Convert to string representation for stat name. Used for logging."""
+        suffix = "_max_over_orientations" if self.max_over_orientations else ""
+        return f"max_blockwise_dynamic_range_block_size_{self.block_size}_dims_{self.dims}{suffix}"
+
+
 @torch.compile
 def _compute_dynamic_range_top(tensor):
     """Computes the log2 of the amax of the tensor"""

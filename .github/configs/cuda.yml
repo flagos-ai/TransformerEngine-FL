@@ -1,0 +1,92 @@
+# CUDA Hardware Configuration for TransformerEngine-FL
+# Refactored for A100 Nodes
+# This file defines environment variables, volumes, and test filters for TE tests.
+
+hardware_name: cuda
+display_name: 'NVIDIA CUDA (A100)'
+checkout_submodules: recursive
+
+# CI image for online env
+ci_image: harbor.baai.ac.cn/flagscale/cuda12.8.1-torch2.7.1-python3.10-te2.9:20260209
+
+# Runner labels for self-hosted A100 node
+runner_labels:
+  - self-hosted
+  - Linux
+  - X64
+  - nvidia
+  - gpu-8
+
+# Runner labels for online env
+runner_labels:
+  - nv-8g-cicd-te
+
+# Container volumes
+container_volumes:
+  - /home/flagscale_cicd/flask/static:/workspace/report
+
+# Container options
+container_options: >-
+  --privileged 
+  --gpus all 
+  --shm-size=500g 
+  --ipc=host 
+  --ulimit memlock=-1 
+  --ulimit stack=67108864 
+  --user root
+
+# Platform-specific environment setup script
+setup_script: .github/scripts/setup_cuda.sh
+
+# Device types to run tests on
+device_types:
+  - a100
+
+coverage:
+  enabled: true
+  required: false
+  python: /opt/miniconda3/envs/flagscale-train/bin/python3
+  sources:
+    - transformer_engine
+  include:
+    - transformer_engine/pytorch/*
+    - transformer_engine/debug/*
+    - transformer_engine/plugin/*
+  omit:
+    - '*/setup.py'
+    - '*/transformer_engine/plugin/core/_build_config.py'
+
+unit_test_matrix:
+  - name: pytorch_debug
+    runner: script
+    path: qa/L0_pytorch_debug_unittest/test.sh
+  - name: pytorch_unittest
+    runner: script
+    path: qa/L0_pytorch_unittest/test.sh
+  - name: pytorch_distributed_unittest
+    runner: script
+    path: qa/L1_pytorch_distributed_unittest/test.sh
+  - name: pytorch_onnx_unittest
+    runner: script
+    path: qa/L1_pytorch_onnx_unittest/test.sh
+
+integration_test_matrix:
+  - name: pytorch_mcore_integration
+    path: qa/L1_pytorch_mcore_integration/test.sh
+
+# Test matrix configuration
+test_matrix:
+  l0_pytorch:
+    path: 'qa/L0_pytorch_unittest/test.sh'
+    ignored_tests:
+      - test_sanity_layernorm_mlp
+      - test_sanity_gpt
+      - test_sanity_bert
+      - test_sanity_T5
+      - test_sanity_amp_and_nvfuser
+      - test_sanity_drop_path
+      - test_layernorm_mlp_accuracy
+      - test_grouped_linear_accuracy
+      - test_gpt_accuracy
+      - test_basic_linear
+      - test_layer_norm

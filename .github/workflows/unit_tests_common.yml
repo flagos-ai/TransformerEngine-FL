@@ -1,0 +1,278 @@
+name: Common Unit Tests
+
+on:
+  workflow_call:
+    inputs:
+      platform:
+        required: true
+        type: string
+      device:
+        required: true
+        type: string
+      image:
+        required: true
+        type: string
+      container_pull_policy:
+        required: false
+        type: string
+        default: never
+      runs_on:
+        required: true
+        type: string
+      container_volumes:
+        required: true
+        type: string
+      container_options:
+        required: true
+        type: string
+      checkout_submodules:
+        required: false
+        type: string
+        default: 'false'
+      setup_script:
+        required: false
+        type: string
+        default: ''
+      test_matrix:
+        required: true
+        type: string
+      coverage_enabled:
+        required: false
+        type: boolean
+        default: false
+      coverage_required:
+        required: false
+        type: boolean
+        default: false
+      coverage_sources:
+        required: false
+        type: string
+        default: ''
+      coverage_include:
+        required: false
+        type: string
+        default: ''
+      coverage_omit:
+        required: false
+        type: string
+        default: ''
+      coverage_python:
+        required: false
+        type: string
+        default: python3
+
+jobs:
+  unit_test:
+    defaults:
+      run:
+        shell: bash
+    runs-on: ${{ fromJson(inputs.runs_on) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        test_group: ${{ fromJson(inputs.test_matrix) }}
+    name: unit-${{ inputs.device }}-${{ matrix.test_group.name }}
+    container:
+      image: ${{ inputs.image }}
+      volumes: ${{ fromJson(inputs.container_volumes) }}
+      options: --pull ${{ inputs.container_pull_policy }} ${{ inputs.container_options }}
+
+    steps:
+      - name: Prepare checkout environment
+        run: |
+          /usr/bin/git config --global safe.directory '*'
+          /usr/bin/git config --global --unset-all credential.helper 2>/dev/null || true
+          /usr/bin/git config --system --unset-all credential.helper 2>/dev/null || true
+
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: ${{ inputs.checkout_submodules }}
+          set-safe-directory: true
+
+      - name: Set up test environment
+        if: inputs.setup_script != ''
+        run: bash "$GITHUB_WORKSPACE/${{ inputs.setup_script }}"
+
+      - name: Execute tests
+        working-directory: ${{ github.workspace }}
+        env:
+          TE_TEST_GROUP_JSON: ${{ toJson(matrix.test_group) }}
+          COVERAGE_ENABLED: ${{ inputs.coverage_enabled }}
+          COVERAGE_REQUIRED: ${{ inputs.coverage_required }}
+          COVERAGE_SOURCES: ${{ inputs.coverage_sources }}
+          COVERAGE_INCLUDE: ${{ inputs.coverage_include }}
+          COVERAGE_OMIT: ${{ inputs.coverage_omit }}
+        run: |
+          set -euo pipefail
+
+          export TE_PATH="$GITHUB_WORKSPACE"
+          export TE_LIB_PATH="$(python3 -c 'import site; print(site.getsitepackages()[0])')"
+          export PYTHONPATH="$GITHUB_WORKSPACE:${PYTHONPATH:-}"
+          mkdir -p logs
+
+          echo "TE_PATH=$TE_PATH"
+          echo "TE_LIB_PATH=$TE_LIB_PATH"
+          echo "PYTHONPATH=$PYTHONPATH"
+          echo "PATH=$PATH"
+          echo "LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}"
+
+          coverage_active=false
+          if [ "$COVERAGE_ENABLED" = "true" ]; then
+            if python3 -c "import importlib.metadata as m; import coverage, pytest_cov; print('[coverage] coverage', m.version('coverage'), 'pytest-cov', m.version('pytest-cov'))"; then
+              coverage_args=""
+              IFS=',' read -ra sources <<< "$COVERAGE_SOURCES"
+              for source in "${sources[@]}"; do
+                [ -n "$source" ] && coverage_args+=" --cov=$source"
+              done
+              export PYTEST_ADDOPTS="${PYTEST_ADDOPTS:-}${coverage_args} --cov-append --cov-report="
+              coverage_active=true
+            elif [ "$COVERAGE_REQUIRED" = "true" ]; then
+              echo "Coverage dependencies are required but missing from the CI image: coverage pytest-cov" >&2
+              exit 1
+            else
+              echo "WARNING: Coverage dependencies are missing from the CI image; collection disabled"
+            fi
+          fi
+
+          set +e
+          python3 tests/test_utils/run_ci_test_group.py
+          test_exit=$?
+          set -e
+
+          coverage_exit=0
+          if [ "$coverage_active" = "true" ]; then
+            shopt -s nullglob
+            coverage_fragments=(.coverage.*)
+            shopt -u nullglob
+            if [ "${#coverage_fragments[@]}" -gt 0 ]; then
+              python3 -m coverage combine --keep
+            fi
+
+            coverage_name="coverage-${{ inputs.platform }}-${{ inputs.device }}-${{ matrix.test_group.name }}"
+            if [ -f .coverage ]; then
+              coverage_command=(
+                python3 -m coverage json
+                -o "${coverage_name}.json"
+                -i
+              )
+              if [ -n "$COVERAGE_INCLUDE" ]; then
+                coverage_command+=(--include="$COVERAGE_INCLUDE")
+              fi
+              if [ -n "$COVERAGE_OMIT" ]; then
+                coverage_command+=(--omit="$COVERAGE_OMIT")
+              fi
+              "${coverage_command[@]}"
+              cp .coverage "${coverage_name}.coverage"
+            else
+              echo "WARNING: No raw coverage data found for ${{ matrix.test_group.name }}"
+              [ "$COVERAGE_REQUIRED" = "true" ] && coverage_exit=1
+            fi
+          fi
+
+          [ "$test_exit" -eq 0 ] && [ "$coverage_exit" -eq 0 ]
+        timeout-minutes: 90
+
+      - name: Upload coverage artifact
+        if: ${{ !cancelled() && inputs.coverage_enabled }}
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: coverage-${{ inputs.platform }}-${{ inputs.device }}-${{ matrix.test_group.name }}
+          path: |
+            coverage-${{ inputs.platform }}-${{ inputs.device }}-${{ matrix.test_group.name }}.json
+            coverage-${{ inputs.platform }}-${{ inputs.device }}-${{ matrix.test_group.name }}.coverage
+          if-no-files-found: ignore
+
+  aggregate_coverage:
+    name: unit-${{ inputs.device }}-pytorch-unittest-coverage
+    needs: unit_test
+    if: ${{ !cancelled() && inputs.coverage_enabled }}
+    defaults:
+      run:
+        shell: bash
+    runs-on: ${{ fromJson(inputs.runs_on) }}
+    container:
+      image: ${{ inputs.image }}
+      volumes: ${{ fromJson(inputs.container_volumes) }}
+      options: --pull ${{ inputs.container_pull_policy }} ${{ inputs.container_options }}
+
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          set-safe-directory: true
+
+      - name: Download coverage artifacts
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: coverage-${{ inputs.platform }}-${{ inputs.device }}-pytorch_*
+          path: coverage-artifacts
+          merge-multiple: true
+
+      - name: Aggregate PyTorch coverage
+        id: aggregate
+        env:
+          COVERAGE_REQUIRED: ${{ inputs.coverage_required }}
+          COVERAGE_INCLUDE: ${{ inputs.coverage_include }}
+          COVERAGE_OMIT: ${{ inputs.coverage_omit }}
+          COVERAGE_PYTHON: ${{ inputs.coverage_python }}
+        run: |
+          set -euo pipefail
+          "$COVERAGE_PYTHON" -c "import importlib.metadata as m; import coverage; print('[coverage] coverage', m.version('coverage'))"
+
+          mkdir -p coverage-raw
+          coverage_count=0
+          for coverage_file in coverage-artifacts/*.coverage; do
+            [ -f "$coverage_file" ] || continue
+            coverage_count=$((coverage_count + 1))
+            cp "$coverage_file" "coverage-raw/.coverage.$coverage_count"
+          done
+
+          if [ "$coverage_count" -eq 0 ]; then
+            echo "coverage_aggregated=false" >> "$GITHUB_OUTPUT"
+            echo "WARNING: No raw coverage files found for aggregation"
+            if [ "$COVERAGE_REQUIRED" = "true" ]; then
+              exit 1
+            fi
+            exit 0
+          fi
+
+          "$COVERAGE_PYTHON" -m coverage combine coverage-raw
+          coverage_name="coverage-${{ inputs.platform }}-${{ inputs.device }}-pytorch-unittest.json"
+          coverage_command=(
+            "$COVERAGE_PYTHON" -m coverage json
+            -o "$coverage_name"
+            -i
+          )
+          if [ -n "$COVERAGE_INCLUDE" ]; then
+            coverage_command+=(--include="$COVERAGE_INCLUDE")
+          fi
+          if [ -n "$COVERAGE_OMIT" ]; then
+            coverage_command+=(--omit="$COVERAGE_OMIT")
+          fi
+          "${coverage_command[@]}"
+          echo "coverage_aggregated=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload aggregated coverage artifact
+        if: steps.aggregate.outputs.coverage_aggregated == 'true'
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: coverage-${{ inputs.platform }}-${{ inputs.device }}-pytorch-unittest
+          path: coverage-${{ inputs.platform }}-${{ inputs.device }}-pytorch-unittest.json
+
+      - name: Upload coverage report to FlagCICD
+        if: steps.aggregate.outputs.coverage_aggregated == 'true'
+        uses: flagos-ai/FlagOps/actions/post-pytest-report@v2
+        continue-on-error: true
+        env:
+          NO_PROXY: flagcicd-inner.flagos.net
+        with:
+          backend_url: http://flagcicd-inner.flagos.net:8000/metrics/
+          user_id: '000000000000000000'
+          report_path: coverage-${{ inputs.platform }}-${{ inputs.device }}-pytorch-unittest.json
+          fail_on_error: 'false'

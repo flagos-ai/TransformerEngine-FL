@@ -1,0 +1,77 @@
+# Huawei Ascend NPU configuration for TransformerEngine-FL
+# This file follows the same schema as cuda.yml and metax.yml.
+
+hardware_name: ascend
+display_name: 'Huawei Ascend NPU'
+checkout_submodules: recursive
+
+# CI image for the Ascend environment
+ci_image: harbor.baai.ac.cn/flagos-dev/transformerengine-fl:85c2523-ascend-dev
+container_pull_policy: always
+
+# Runner labels for the self-hosted Ascend node
+runner_labels:
+  - hw-4g-cicd-te
+
+# Container volumes
+container_volumes:
+  - /usr/local/Ascend/driver:/usr/local/Ascend/driver
+  - /usr/local/Ascend/add-ons:/usr/local/Ascend/add-ons
+
+# Container options
+container_options: >-
+  --privileged
+  --shm-size=100g
+  --ipc=host
+  --ulimit memlock=-1
+  --ulimit stack=67108864
+  --user root
+  --device=/dev/davinci0
+  --device=/dev/davinci1
+  --device=/dev/davinci2
+  --device=/dev/davinci3
+  --device=/dev/davinci_manager
+  --device=/dev/devmm_svm
+  --device=/dev/hisi_hdc
+
+# Platform-specific environment setup script
+setup_script: .github/scripts/setup_ascend.sh
+
+coverage:
+  enabled: true
+  required: true
+  python: python3
+  sources:
+    - transformer_engine
+  include:
+    - transformer_engine/pytorch/*
+    - transformer_engine/debug/*
+    - transformer_engine/plugin/*
+  omit:
+    - '*/setup.py'
+    - '*/transformer_engine/plugin/core/_build_config.py'
+
+unit_test_matrix:
+  - name: pytorch_debug
+    runner: script
+    path: qa/L0_pytorch_debug_unittest/test_ascend.sh
+
+  - name: pytorch_unittest
+    runner: script
+    path: qa/L0_pytorch_unittest/test_ascend.sh
+
+  - name: pytorch_distributed_unittest
+    runner: script
+    path: qa/L1_pytorch_distributed_unittest/test_ascend.sh
+
+  - name: pytorch_onnx_unittest
+    runner: script
+    path: qa/L1_pytorch_onnx_unittest/test_ascend.sh
+
+integration_test_matrix:
+  - name: pytorch_mcore_integration
+    path: qa/L1_pytorch_mcore_integration/test.sh
+
+# Device types to run tests on
+device_types:
+  - ascend

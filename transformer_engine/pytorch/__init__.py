@@ -15,7 +15,7 @@ from transformer_engine.pytorch.torch_version import torch_version
 
 assert torch_version() >= (2, 1), f"Minimum torch version 2.1 required. Found {torch_version()}."
 
-load_framework_extension("torch")
+load_framework_extension("torch_nv")
 from transformer_engine.pytorch import constants
 from transformer_engine.pytorch.constants import DType
 from transformer_engine.pytorch.module import LayerNormLinear
