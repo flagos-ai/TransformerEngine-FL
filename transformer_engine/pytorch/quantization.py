@@ -414,7 +414,7 @@ class FP8GlobalStateManager:
         """Set the skip fp8 weight update tensor"""
         if cls.quantization_state.skip_fp8_weight_update_tensor is None:
             cls.quantization_state.skip_fp8_weight_update_tensor = torch.empty(
-                1, dtype=torch.float32, device="cuda"
+                1, dtype=torch.float32, device=te_device_type()
             )
         cls.quantization_state.skip_fp8_weight_update_tensor.fill_(skip)
 
@@ -1471,7 +1471,7 @@ class Float8CurrentScalingRecipeState(RecipeState):
 
         # Allocate buffers
         if device is None:
-            device = torch.device("cuda")
+            device = torch.device(te_device_type())
         self.device = device
 
     def make_quantizers(self) -> list:
