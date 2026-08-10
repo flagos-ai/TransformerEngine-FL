@@ -129,6 +129,8 @@ class NVTE_QKV_Format(IntEnum):
     NVTE_SBHD_2BSHD = 4
     NVTE_THD_2BSHD = 5
     NVTE_THD_2SBHD = 6
+    NVTE_BHSD = 7
+    NVTE_QKV_Format_NOT_SET = 8
 
 
 class NVTE_QKV_Layout(IntEnum):
