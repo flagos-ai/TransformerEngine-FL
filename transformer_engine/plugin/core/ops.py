@@ -534,6 +534,7 @@ class TEFLBackendBase(ABC):
         quantizer: Any,
         limit: float = 7.0,
         alpha: float = 1.702,
+        glu_linear_offset: float = 1.0,
     ) -> Any:
         raise NotImplementedError
 
@@ -636,6 +637,7 @@ class TEFLBackendBase(ABC):
         quantizer: Any,
         limit: float = 7.0,
         alpha: float = 1.702,
+        glu_linear_offset: float = 1.0,
     ) -> Any:
         raise NotImplementedError
 
@@ -862,6 +864,7 @@ class TEFLBackendBase(ABC):
         quantizer: Any,
         num_tensors: int,
         first_dims: List[int],
+        tensor_offsets: Optional[Any] = None,
     ) -> Any:
         raise NotImplementedError
 
@@ -871,6 +874,7 @@ class TEFLBackendBase(ABC):
         quantizer: Any,
         num_tensors: int,
         first_dims: List[int],
+        tensor_offsets: Optional[Any] = None,
     ) -> Any:
         raise NotImplementedError
 
@@ -983,6 +987,132 @@ class TEFLBackendBase(ABC):
         first_dims: List[int],
         logical_last_dim: int,
     ) -> torch.Tensor:
+        raise NotImplementedError
+
+    def splits_to_offsets_multi(
+        self,
+        split_sizes: List[int],
+        device: Any,
+        *,
+        strides: Any,
+        include_leading_zero: bool,
+        dtypes: Any,
+        bulk_allocate: bool = False,
+    ) -> Any:
+        raise NotImplementedError
+
+    def copy_data_ptrs_to_device(
+        self,
+        tensors: List[torch.Tensor],
+        device: Any,
+    ) -> Any:
+        raise NotImplementedError
+
+    def bulk_allocate(
+        self,
+        shapes: List[List[int]],
+        dtypes: List[Any],
+        device: Optional[Any] = None,
+        alignments: Optional[List[int]] = None,
+    ) -> Any:
+        raise NotImplementedError
+
+    def create_empty_quantized_tensor(
+        self,
+        quantizer: Any,
+        shape: List[int],
+        dtype: Any,
+        device: Any,
+        pin_memory: bool,
+    ) -> Any:
+        raise NotImplementedError
+
+    def group_dequantize(
+        self,
+        input: Any,
+        otype: Any,
+    ) -> Any:
+        raise NotImplementedError
+
+    def get_grouped_gemm_setup_workspace_size(self) -> int:
+        raise NotImplementedError
+
+    def multi_tensor_pad_last_dim(
+        self,
+        inputs: List[torch.Tensor],
+        alignment: int,
+    ) -> Any:
+        raise NotImplementedError
+
+    def multi_tensor_swizzle_scales_for_gemm_(
+        self,
+        tensors: List[torch.Tensor],
+        rowwise_usage: Any,
+        columnwise_usage: Any,
+    ) -> None:
+        raise NotImplementedError
+
+    def multi_tensor_transpose_to_bhsd(
+        self,
+        inputs: List[torch.Tensor],
+        original_format: Any,
+        outputs: Optional[List[Optional[torch.Tensor]]] = None,
+    ) -> Any:
+        raise NotImplementedError
+
+    def cusolvermp_ctx_create(
+        self,
+        nccl_comm_ptr: int,
+        nranks: int,
+        rank: int,
+    ) -> Any:
+        raise NotImplementedError
+
+    def cusolvermp_ctx_destroy(
+        self,
+        ctx_ptr: Any,
+    ) -> None:
+        raise NotImplementedError
+
+    def newton_schulz(
+        self,
+        ctx_ptr: Any,
+        m: int,
+        n: int,
+        x: torch.Tensor,
+        num_iterations: int,
+        coefficients: Any,
+    ) -> Any:
+        raise NotImplementedError
+
+    def nvfp4_quantize_with_amax(
+        self,
+        tensor: torch.Tensor,
+        quantizer: Any,
+        rowwise_amax: torch.Tensor,
+        columnwise_amax: torch.Tensor,
+    ) -> Any:
+        raise NotImplementedError
+
+    def nvfp4_group_quantize_with_amax(
+        self,
+        tensor: torch.Tensor,
+        quantizer: Any,
+        num_tensors: int,
+        first_dims: List[int],
+        rowwise_amax: torch.Tensor,
+        columnwise_amax: torch.Tensor,
+        tensor_offsets: Optional[Any] = None,
+    ) -> Any:
+        raise NotImplementedError
+
+    def swizzle_scales_and_pack_ptrs_for_discrete_weights(
+        self,
+        data_tensors: List[torch.Tensor],
+        scale_tensors: List[torch.Tensor],
+        swizzle_type: Any,
+        device: Any,
+    ) -> Any:
         raise NotImplementedError
 
     def get_fused_attn_backend(

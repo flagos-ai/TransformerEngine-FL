@@ -758,6 +758,51 @@ class HygonBackend(TEFLBackendBase):
             data_tensors, scale_tensors, swizzle, rowwise, data_dtype
         )
 
+    def group_quantize(
+        self,
+        tensor: torch.Tensor,
+        quantizer: Any,
+        num_tensors: int,
+        first_dims: List[int],
+        tensor_offsets: Optional[Any] = None,
+    ) -> Any:
+        tex = self._get_tex()
+        return tex.group_quantize(tensor, quantizer, num_tensors, first_dims, tensor_offsets)
+
+    def bgrad_group_quantize(
+        self,
+        tensor: torch.Tensor,
+        quantizer: Any,
+        num_tensors: int,
+        first_dims: List[int],
+        tensor_offsets: Optional[Any] = None,
+    ) -> Any:
+        tex = self._get_tex()
+        return tex.bgrad_group_quantize(tensor, quantizer, num_tensors, first_dims, tensor_offsets)
+
+    def clamped_swiglu(
+        self,
+        input: torch.Tensor,
+        quantizer: Any,
+        limit: float = 7.0,
+        alpha: float = 1.702,
+        glu_linear_offset: float = 1.0,
+    ) -> Any:
+        tex = self._get_tex()
+        return tex.clamped_swiglu(input, quantizer, limit, alpha, glu_linear_offset)
+
+    def clamped_dswiglu(
+        self,
+        grad: torch.Tensor,
+        fwd_input: torch.Tensor,
+        quantizer: Any,
+        limit: float = 7.0,
+        alpha: float = 1.702,
+        glu_linear_offset: float = 1.0,
+    ) -> Any:
+        tex = self._get_tex()
+        return tex.clamped_dswiglu(grad, fwd_input, quantizer, limit, alpha, glu_linear_offset)
+
     def splits_to_offsets(
         self,
         first_dims: List[int],
@@ -765,6 +810,157 @@ class HygonBackend(TEFLBackendBase):
     ) -> torch.Tensor:
         tex = self._get_tex()
         return tex.splits_to_offsets(first_dims, logical_last_dim)
+
+    def splits_to_offsets_multi(
+        self,
+        split_sizes: List[int],
+        device: Any,
+        *,
+        strides: Any,
+        include_leading_zero: bool,
+        dtypes: Any,
+        bulk_allocate: bool = False,
+    ) -> Any:
+        tex = self._get_tex()
+        return tex.splits_to_offsets_multi(
+            split_sizes, device, strides=strides,
+            include_leading_zero=include_leading_zero,
+            dtypes=dtypes, bulk_allocate=bulk_allocate,
+        )
+
+    def copy_data_ptrs_to_device(
+        self,
+        tensors: List[torch.Tensor],
+        device: Any,
+    ) -> Any:
+        tex = self._get_tex()
+        return tex.copy_data_ptrs_to_device(tensors, device)
+
+    def bulk_allocate(
+        self,
+        shapes: List[List[int]],
+        dtypes: List[Any],
+        device: Optional[Any] = None,
+        alignments: Optional[List[int]] = None,
+    ) -> Any:
+        tex = self._get_tex()
+        return tex.bulk_allocate(shapes, dtypes, device, alignments)
+
+    def create_empty_quantized_tensor(
+        self,
+        quantizer: Any,
+        shape: List[int],
+        dtype: Any,
+        device: Any,
+        pin_memory: bool,
+    ) -> Any:
+        tex = self._get_tex()
+        return tex.create_empty_quantized_tensor(quantizer, shape, dtype, device, pin_memory)
+
+    def group_dequantize(
+        self,
+        input: Any,
+        otype: Any,
+    ) -> Any:
+        tex = self._get_tex()
+        return tex.group_dequantize(input, otype)
+
+    def get_grouped_gemm_setup_workspace_size(self) -> int:
+        tex = self._get_tex()
+        return tex.get_grouped_gemm_setup_workspace_size()
+
+    def multi_tensor_pad_last_dim(
+        self,
+        inputs: List[torch.Tensor],
+        alignment: int,
+    ) -> Any:
+        tex = self._get_tex()
+        return tex.multi_tensor_pad_last_dim(inputs, alignment)
+
+    def multi_tensor_swizzle_scales_for_gemm_(
+        self,
+        tensors: List[torch.Tensor],
+        rowwise_usage: Any,
+        columnwise_usage: Any,
+    ) -> None:
+        tex = self._get_tex()
+        return tex.multi_tensor_swizzle_scales_for_gemm_(tensors, rowwise_usage, columnwise_usage)
+
+    def multi_tensor_transpose_to_bhsd(
+        self,
+        inputs: List[torch.Tensor],
+        original_format: Any,
+        outputs: Optional[List[Optional[torch.Tensor]]] = None,
+    ) -> Any:
+        tex = self._get_tex()
+        return tex.multi_tensor_transpose_to_bhsd(inputs, original_format, outputs)
+
+    def cusolvermp_ctx_create(
+        self,
+        nccl_comm_ptr: int,
+        nranks: int,
+        rank: int,
+    ) -> Any:
+        tex = self._get_tex()
+        return tex.cusolvermp_ctx_create(nccl_comm_ptr, nranks, rank)
+
+    def cusolvermp_ctx_destroy(
+        self,
+        ctx_ptr: Any,
+    ) -> None:
+        tex = self._get_tex()
+        return tex.cusolvermp_ctx_destroy(ctx_ptr)
+
+    def newton_schulz(
+        self,
+        ctx_ptr: Any,
+        m: int,
+        n: int,
+        x: torch.Tensor,
+        num_iterations: int,
+        coefficients: Any,
+    ) -> Any:
+        tex = self._get_tex()
+        return tex.newton_schulz(ctx_ptr, m, n, x, num_iterations, coefficients)
+
+    def nvfp4_quantize_with_amax(
+        self,
+        tensor: torch.Tensor,
+        quantizer: Any,
+        rowwise_amax: torch.Tensor,
+        columnwise_amax: torch.Tensor,
+    ) -> Any:
+        tex = self._get_tex()
+        return tex.nvfp4_quantize_with_amax(tensor, quantizer, rowwise_amax, columnwise_amax)
+
+    def nvfp4_group_quantize_with_amax(
+        self,
+        tensor: torch.Tensor,
+        quantizer: Any,
+        num_tensors: int,
+        first_dims: List[int],
+        rowwise_amax: torch.Tensor,
+        columnwise_amax: torch.Tensor,
+        tensor_offsets: Optional[Any] = None,
+    ) -> Any:
+        tex = self._get_tex()
+        return tex.nvfp4_group_quantize_with_amax(
+            tensor, quantizer, num_tensors, first_dims,
+            rowwise_amax, columnwise_amax, tensor_offsets,
+        )
+
+    def swizzle_scales_and_pack_ptrs_for_discrete_weights(
+        self,
+        data_tensors: List[torch.Tensor],
+        scale_tensors: List[torch.Tensor],
+        swizzle_type: Any,
+        device: Any,
+    ) -> Any:
+        tex = self._get_tex()
+        return tex.grouped_mlp_experimental.swizzle_scales_and_pack_ptrs_for_discrete_weights(
+            data_tensors, scale_tensors, swizzle_type, device,
+        )
+
 
     def get_fused_attn_backend(
         self,
