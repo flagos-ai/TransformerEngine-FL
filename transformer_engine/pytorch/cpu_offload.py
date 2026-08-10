@@ -13,7 +13,7 @@ import warnings
 from typing import Any, Optional
 import torch
 from torch.autograd.graph import saved_tensors_hooks
-from transformer_engine.debug.pytorch.debug_state import TEDebugState
+from transformer_engine.debug.pytorch.debug_state import TEDebugState, te_device_type
 from transformer_engine import TE_DEVICE_TYPE
 import transformer_engine.pytorch as te
 import transformer_engine.pytorch.cpu_offload_v1 as v1_code_path
@@ -464,7 +464,7 @@ class OffloadableLayerState:
             not isinstance(t, torch.nn.Parameter)
             and not getattr(t, "_TE_do_not_offload", False)
             and not isinstance(t, torch._subclasses.FakeTensor)
-            and t.device.type == "cuda"
+            and t.device.type == te_device_type()
         ):
             if not t.is_contiguous() and not getattr(t, "offload_base_tensor", False):
                 warnings.warn(
