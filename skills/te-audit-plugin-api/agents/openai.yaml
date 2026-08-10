@@ -1,0 +1,4 @@
+interface:
+  display_name: "TE Plugin API Auditor"
+  short_description: "Audit plugin API and backend coverage"
+  default_prompt: "Use $te-audit-plugin-api to compare upstream bindings with TransformerEngine-FL plugin coverage."

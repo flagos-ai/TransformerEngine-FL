@@ -1,0 +1,4 @@
+interface:
+  display_name: "TE Upgrade Finalizer"
+  short_description: "Finalize upgrade evidence and rollback plan"
+  default_prompt: "Use $te-finalize-upstream-upgrade to audit upgrade evidence and prepare a safe handoff."
