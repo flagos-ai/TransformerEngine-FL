@@ -11,9 +11,7 @@ import torch
 import nvdlfw_inspect.api as debug_api
 from nvdlfw_inspect.registry import Registry, api_method
 
-
-import transformer_engine_torch as tex
-from transformer_engine import te_device_type
+from transformer_engine.pytorch import DType
 from transformer_engine.pytorch.tensor import Quantizer
 from transformer_engine.pytorch.tensor.float8_tensor import (
     Float8Tensor,
@@ -24,7 +22,7 @@ from transformer_engine.debug.features.api import TEConfigAPIMapper
 
 
 def per_tensor_cast(
-    tensor: torch.Tensor, fp8_dtype: tex.DType, out: Float8Tensor = None
+    tensor: torch.Tensor, fp8_dtype: DType, out: Float8Tensor = None
 ) -> Float8Tensor:
     """
     This function computes the scaling factors based on the tensor amax and then casts it to the fp8
@@ -35,12 +33,10 @@ def per_tensor_cast(
         torch.float16,
         torch.bfloat16,
     ), "[NVTORCH INSPECT ERROR] Unsupported tensor type for per tensor current scaling"
-    assert (
-        tensor.device.type == te_device_type()
-    ), f"[NVTORCH INSPECT ERROR] Must be a {te_device_type()} tensor."
+    assert tensor.is_cuda, "[NVTORCH INSPECT ERROR] Must be a GPU tensor."
     assert fp8_dtype in {
-        tex.DType.kFloat8E4M3,
-        tex.DType.kFloat8E5M2,
+        DType.kFloat8E4M3,
+        DType.kFloat8E5M2,
     }, "[NVTORCH INSPECT ERROR] Only 2 FP8 types: E4M3 and E5M2 are supported in TE."
     tensor = tensor.contiguous()
 

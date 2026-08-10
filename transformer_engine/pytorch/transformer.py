@@ -10,7 +10,6 @@ from typing import Any, Callable, List, Optional, Tuple, Union
 
 import torch
 
-from transformer_engine import te_device_type
 from transformer_engine.pytorch.torch_version import torch_version
 from transformer_engine.pytorch.module import LayerNormMLP, LayerNorm, RMSNorm
 from transformer_engine.pytorch.attention.multi_head_attention import MultiheadAttention
@@ -190,8 +189,9 @@ class TransformerLayer(torch.nn.Module):
     activation_params : Optional[dict], default = None
                         Additional parameters for the activation function.
                         At the moment, only used for ``'clamped_swiglu'`` activation which
-                        supports ``'limit'`` and ``'alpha'`` parameters. You can set these as
-                        ``activation_params={'limit': 7.0, 'alpha': 1.702}``.
+                        supports ``'limit'``, ``'alpha'``, and ``'glu_linear_offset'`` parameters.
+                        You can set these as
+                        ``activation_params={'limit': 7.0, 'alpha': 1.702, 'glu_linear_offset': 1.0}``.
     device : Union[torch.device, str], default = "cuda"
           The device on which the parameters of the model will be allocated. It is the user's
           responsibility to ensure all parameters are moved to the GPU before running the
@@ -344,7 +344,7 @@ class TransformerLayer(torch.nn.Module):
         activation: str = "gelu",
         activation_params: Optional[dict] = None,
         normalization: str = "LayerNorm",
-        device: Union[torch.device, str] = te_device_type(),
+        device: Union[torch.device, str] = "cuda",
         attn_input_format: str = "sbhd",
         name: str = None,
         qk_norm_type: Optional[str] = None,

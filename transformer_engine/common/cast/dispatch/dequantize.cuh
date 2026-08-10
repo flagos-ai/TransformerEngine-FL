@@ -16,6 +16,10 @@
 #include "../../common.h"
 #include "../fp8/dequantize_fp8.cuh"
 #include "../mxfp8/dequantize_mxfp8.cuh"
+<<<<<<< HEAD
+=======
+#include "../mxfp8/group_dequantize_mxfp8.cuh"
+>>>>>>> dev
 #include "../nvfp4/dequantize_nvfp4.cuh"
 
 namespace transformer_engine {
@@ -25,6 +29,13 @@ inline void dequantize_helper(const Tensor &input, Tensor *output, cudaStream_t 
   CheckInputTensor(input, "cast_input");
   CheckOutputTensor(*output, "cast_output");
 
+<<<<<<< HEAD
+=======
+  if (input.numel() == 0) {
+    return;
+  }
+
+>>>>>>> dev
   switch (input.scaling_mode) {
     case NVTE_DELAYED_TENSOR_SCALING: {
       NVTE_CHECK(is_fp8_dtype(input.dtype()), "Input must have FP8 type.");
@@ -50,6 +61,29 @@ inline void dequantize_helper(const Tensor &input, Tensor *output, cudaStream_t 
   }
 }
 
+<<<<<<< HEAD
+=======
+inline void group_dequantize_helper(const GroupedTensor &input, GroupedTensor *output,
+                                    cudaStream_t stream) {
+  CheckInputGroupedTensor(input, "group_dequantize_input");
+  CheckOutputGroupedTensor(*output, "group_dequantize_output");
+
+  switch (input.scaling_mode) {
+    case NVTE_MXFP8_1D_SCALING: {
+      if (is_supported_by_CC_100()) {
+        mxfp8::group_dequantize(&input, output, stream);
+      } else {
+        NVTE_ERROR("MXFP8 Grouped Dequantization is NOT supported by architectures < 10.0");
+      }
+      break;
+    }
+    default:
+      NVTE_ERROR("Grouped dequantize not implemented for scaling mode: " +
+                 to_string(input.scaling_mode) + ".");
+  }
+}
+
+>>>>>>> dev
 }  // namespace dispatch
 }  // namespace transformer_engine
 

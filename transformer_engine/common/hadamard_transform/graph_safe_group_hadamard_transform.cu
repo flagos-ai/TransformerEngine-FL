@@ -58,12 +58,18 @@ __device__ __forceinline__ size_t get_current_tensor_id(
 template <typename IType, int kHadamardDimension, int BUFF_DIM_Y, int BUFF_DIM_X,
           bool kReturnPreRhtAmax, bool kReturnIdentityAmax, bool kReturnTransposedAmax>
 __device__ __forceinline__ void ComputeKernel(uint32_t b_frag_i[4], uint32_t b_frag_t[4],
+<<<<<<< HEAD
                                               IType* in_sh_ptr, uint32_t& local_pre_rht_amax_reg,
+=======
+                                              IType* in_sh_ptr, int swizzle_idx,
+                                              uint32_t& local_pre_rht_amax_reg,
+>>>>>>> dev
                                               uint32_t& local_amax_reg,
                                               uint32_t& local_amax_t_reg) {
   uint32_t a_frag[4];  // A matrix fragment
   uint32_t c_frag[4];  // Result fragment
 
+<<<<<<< HEAD
   int warp_id = threadIdx.x / kThreadsPerWarp;
   int local_rank = (threadIdx.x % kThreadsPerWarp);
 
@@ -71,6 +77,8 @@ __device__ __forceinline__ void ComputeKernel(uint32_t b_frag_i[4], uint32_t b_f
   int ld_col_idx = local_rank / kHadamardDimension + warp_id * 2;
   int swizzle_idx = swizzle_128B_atom_32B(ld_row_idx, ld_col_idx);
 
+=======
+>>>>>>> dev
   uint32_t temp_amax_reg;
   uint32_t temp_amax_t_reg;
 
@@ -87,6 +95,7 @@ __device__ __forceinline__ void ComputeKernel(uint32_t b_frag_i[4], uint32_t b_f
   }
 
   if (kReturnTransposedAmax) {
+<<<<<<< HEAD
     // TODO(Frank): This is not efficient, since we could directly load the
     // matrix in transposed layout.
     if (!kReturnIdentityAmax) {
@@ -99,6 +108,18 @@ __device__ __forceinline__ void ComputeKernel(uint32_t b_frag_i[4], uint32_t b_f
     matrix_transpose_m8_n8_b16_inplace(a_frag[2]);
     matrix_transpose_m8_n8_b16_inplace(a_frag[3]);
 
+=======
+    if (!kReturnIdentityAmax) {
+      ldmatrix_x4_m8n8_shared_b16<true>(a_frag[0], a_frag[1], a_frag[2], a_frag[3],
+                                        reinterpret_cast<uint4*>(in_sh_ptr) + swizzle_idx);
+    } else {
+      matrix_transpose_m8_n8_b16_inplace(a_frag[0]);
+      matrix_transpose_m8_n8_b16_inplace(a_frag[1]);
+      matrix_transpose_m8_n8_b16_inplace(a_frag[2]);
+      matrix_transpose_m8_n8_b16_inplace(a_frag[3]);
+    }
+
+>>>>>>> dev
     mma_m16_n16_k16_b16_b16_b16_noacc<kReturnTransposedAmax>(
         a_frag[0], a_frag[2], a_frag[1], a_frag[3], b_frag_t[0], b_frag_t[1], b_frag_t[2],
         b_frag_t[3], c_frag[0], c_frag[1], c_frag[2], c_frag[3], temp_amax_t_reg);
@@ -315,6 +336,15 @@ __global__ void GraphSafeGroupHadamardAmaxTmaKernel(
   uint32_t local_amax_reg = *reinterpret_cast<uint32_t*>(&local_amax);
   uint32_t local_amax_t_reg = *reinterpret_cast<uint32_t*>(&local_amax_t);
 
+<<<<<<< HEAD
+=======
+  const int warp_id = threadIdx.x / kThreadsPerWarp;
+  const int local_rank = threadIdx.x % kThreadsPerWarp;
+  const int ld_row_idx = local_rank % kHadamardDimension;
+  const int ld_col_idx = local_rank / kHadamardDimension + warp_id * 2;
+  const int swizzle_idx = swizzle_128B_atom_32B(ld_row_idx, ld_col_idx);
+
+>>>>>>> dev
   for (int stage_y = 0; stage_y < STAGES_Y; ++stage_y) {
     for (int stage_x = 0; stage_x < STAGES_X; ++stage_x) {
       int stage = STAGES_X * stage_y + stage_x;
@@ -357,6 +387,7 @@ __global__ void GraphSafeGroupHadamardAmaxTmaKernel(
               had_frag_i, had_frag_t,
               in_sh_ptr + in_row_offset +
                   (compute_stage_x * kHadamardDimension * (THREADS_PER_CHUNK / kThreadsPerWarp)),
+<<<<<<< HEAD
               local_pre_rht_amax_reg, local_amax_reg, local_amax_t_reg);
         }
 
@@ -365,6 +396,14 @@ __global__ void GraphSafeGroupHadamardAmaxTmaKernel(
         __syncthreads();
       }
 
+=======
+              swizzle_idx, local_pre_rht_amax_reg, local_amax_reg, local_amax_t_reg);
+        }
+      }
+      // Ensure all threads have finished their computation before new data over-writes the shared
+      // memory.
+      __syncthreads();
+>>>>>>> dev
       // Ensure generic shared-memory accesses are visible before the next TMA write.
       ptx::fence_proxy_async_shared_cta();
     }

@@ -3,7 +3,6 @@
 # See LICENSE for license information.
 
 import nvdlfw_inspect.api as debug_api
-from transformer_engine import te_device_type
 import transformer_engine.debug
 import transformer_engine.pytorch as te
 import torch
@@ -19,6 +18,7 @@ from transformer_engine.pytorch import (
     is_nvfp4_available,
 )
 from transformer_engine.pytorch.quantization import RecipeState
+from transformer_engine.pytorch.tensor import QuantizedTensor
 from transformer_engine.debug.pytorch.debug_state import TEDebugState
 from transformer_engine.debug.features.utils.stats_computation import (
     compute_max_blockwise_dynamic_range,
@@ -75,7 +75,8 @@ for r in recipes:
             ):
                 # hopper is needed for current-scaling, block-scaling
                 continue
-            if r == "mxfp8" and not mxfp8_available:
+            if r == "mxfp8" and torch.cuda.get_device_capability()[0] < 10:
+                # blackwell is needed for mxfp8
                 continue
             if (
                 r in ["fp8_delayed_scaling", "fp8_current_scaling"]
@@ -134,8 +135,8 @@ def test_sanity(feature_dirs):
 
     log_all_stats_config = LOG_QUANTIZED_CONFIG_BASE.format(stats=", ".join(all_stats))
     with debug_session(log_all_stats_config, feature_dirs) as log_dir:
-        model = te.Linear(128, 128, params_dtype=torch.bfloat16, device=te_device_type())
-        inp = torch.zeros(128, 128, dtype=torch.bfloat16).to(device=te_device_type())
+        model = te.Linear(128, 128, params_dtype=torch.bfloat16)
+        inp = torch.zeros(128, 128, dtype=torch.bfloat16).cuda()
 
         for _ in range(10):
             with te.autocast(recipe=recipe.DelayedScaling()):
@@ -190,8 +191,8 @@ def test_sanity_log_fp8_model_parameters(feature_dirs):
 
     with debug_session(LOG_FP8_MODEL_PARAMETERS_CONFIG_BASE, feature_dirs) as log_dir:
         with te.fp8_model_init(recipe=recipe.DelayedScaling()):
-            model = te.Linear(128, 128, params_dtype=torch.bfloat16, device=te_device_type())
-        inp = torch.zeros(128, 128, dtype=torch.bfloat16).to(device=te_device_type())
+            model = te.Linear(128, 128, params_dtype=torch.bfloat16)
+        inp = torch.zeros(128, 128, dtype=torch.bfloat16).cuda()
         for _ in range(10):
             with te.fp8_autocast(fp8_recipe=recipe.DelayedScaling()):
                 output = model(inp)
@@ -229,7 +230,7 @@ def test_log_quantized_stats_numerics(fp8_recipe, feature_dirs):
             num_quantizers=3,
         )
 
-        tensor = torch.randn(1024, 1024).to(device=te_device_type())
+        tensor = torch.randn(1024, 1024).cuda()
         tensor[0, 100:200] = -0.0
         quantizer = recipe_state.make_quantizers()[0]
         quantized_tensor = quantizer(tensor)
@@ -308,7 +309,7 @@ def test_log_stats_numerics(feature_dirs, tensor_name):
         epsilon = 1e-10
         A = 1000
         B = 50
-        tensor = torch.zeros(1024, 1024).to(device=te_device_type()) + epsilon
+        tensor = torch.zeros(1024, 1024).cuda() + epsilon
         tensor[0, :] = A
         tensor[1:4, :] = B
 
@@ -387,14 +388,14 @@ def test_log_every_3_or_5_layers(layer, configs_dir, feature_dirs):
         )
 
         if layer == "linear":
-            model = te.Linear(128, 128, name="linear1", device=te_device_type())
+            model = te.Linear(128, 128, name="linear1")
         elif layer == "transformer":
-            model = te.TransformerLayer(128, 128, 4, name="transformer1", device=te_device_type())
+            model = te.TransformerLayer(128, 128, 4, name="transformer1")
         else:
             raise ValueError(f"Invalid layer: {layer}")
 
         for i in range(20):
-            x = torch.randn(4, 128, 128).to(device=te_device_type())
+            x = torch.randn(4, 128, 128).cuda()
             with te.autocast(enabled=True):
                 y = model(x)
             y.sum().backward()
@@ -445,9 +446,6 @@ def test_nvfp4_numeric(feature_dirs):
     log_nvfp4_config = LOG_NVFP4_CONFIG_BASE.format(stats="underflows%, mse")
 
     with debug_session(log_nvfp4_config, feature_dirs) as log_dir:
-        from transformer_engine.pytorch.tensor.nvfp4_tensor import NVFP4Quantizer
-        from transformer_engine.pytorch.quantization import RecipeState
-
         recipe_state = RecipeState.create(
             recipe.NVFP4BlockScaling(),
             mode="forward",
@@ -456,7 +454,7 @@ def test_nvfp4_numeric(feature_dirs):
 
         # Create test tensor with known distribution
         torch.manual_seed(42)
-        tensor = torch.randn(128, 128, dtype=torch.bfloat16).to(device=te_device_type())
+        tensor = torch.randn(128, 128, dtype=torch.bfloat16).cuda()
         # Add some small values that should underflow to zero in FP4
         tensor[0, :16] = 0.0001
 
@@ -519,8 +517,8 @@ def test_fp8_stats_allows_nvfp4_with_recipe_prefix(feature_dirs):
     log_fp8_config = LOG_QUANTIZED_CONFIG_BASE.format(stats="mxfp8_mse")
 
     with debug_session(log_fp8_config, feature_dirs) as log_dir:
-        model = te.Linear(128, 128, params_dtype=torch.bfloat16, device=te_device_type())
-        inp = torch.randn(128, 128, dtype=torch.bfloat16).to(device=te_device_type())
+        model = te.Linear(128, 128, params_dtype=torch.bfloat16)
+        inp = torch.randn(128, 128, dtype=torch.bfloat16).cuda()
 
         # Should work - recipe-prefixed stats compute MXFP8 separately for comparison
         for _ in range(2):
@@ -541,10 +539,8 @@ def test_log_grouped_gemm(feature_dirs):
 
     log_all_stats_config = LOG_QUANTIZED_CONFIG_BASE.format(stats=", ".join(all_stats))
     with debug_session(log_all_stats_config, feature_dirs) as log_dir:
-        model = te.GroupedLinear(
-            3, 128, 128, name="linear1", params_dtype=torch.bfloat16, device=te_device_type()
-        )
-        inp = torch.randn((1, 128, 128), dtype=torch.bfloat16).to(device=te_device_type())
+        model = te.GroupedLinear(3, 128, 128, name="linear1", params_dtype=torch.bfloat16)
+        inp = torch.randn((1, 128, 128), dtype=torch.bfloat16).cuda()
         m_splits = [64, 32, 32]
         with te.fp8_autocast(fp8_recipe=recipe.DelayedScaling()):
             output = model(inp, m_splits=m_splits)
@@ -570,7 +566,7 @@ def test_compute_max_blockwise_dynamic_range_direct():
     epsilon = 0.01
     A = 1000.0
     B = 50.0
-    tensor = torch.zeros(1024, 1024).to(device=te_device_type()) + epsilon
+    tensor = torch.zeros(1024, 1024).cuda() + epsilon
     tensor[0, :] = A
     tensor[1:4, :] = B
 
@@ -613,7 +609,7 @@ def test_compute_max_blockwise_dynamic_range_direct():
     ), f"Block size 8 should work correctly, expected {expected}, got {result.item()}"
 
     # Test 5: Tensor with all uniform values -> dynamic_range should be 0
-    uniform_tensor = torch.ones(64, 64).to(device=te_device_type()) * 42.0
+    uniform_tensor = torch.ones(64, 64).cuda() * 42.0
     stat_config = BlockwiseDynamicRangeStat(block_size=4, dims=1, max_over_orientations=True)
     result = compute_max_blockwise_dynamic_range(uniform_tensor, stat_config)
     assert result.item() == pytest.approx(
@@ -630,7 +626,7 @@ def test_compute_max_blockwise_dynamic_range_direct():
             [100.0, 100.0, 1000.0, 1000.0],
             [100.0, 100.0, 1000.0, 1000.0],
         ]
-    ).to(device=te_device_type())
+    ).cuda()
 
     # Compute on 2D tensor: 4 blocks of 2x2, max range is log2(1000/100)
     stat_config = BlockwiseDynamicRangeStat(block_size=2, dims=2, max_over_orientations=False)
@@ -646,3 +642,82 @@ def test_compute_max_blockwise_dynamic_range_direct():
     )
 
     print("All direct tests for compute_max_blockwise_dynamic_range passed!")
+
+
+# DumpTensors tests
+DUMP_TENSORS_CONFIG = """
+dump:
+  layers:
+    layer_name_regex_pattern: .*
+  enabled: True
+  transformer_engine:
+    DumpTensors:
+      enabled: True
+      tensors: [activation]
+      high_precision_tensor: True
+      quantized_tensor: True
+      freq: 1
+"""
+
+
+def test_dump_tensors_sanity(feature_dirs):
+    """Sanity test for DumpTensors feature - verify files are created with correct structure."""
+    if not fp8_available:
+        pytest.skip(reason_for_no_fp8)
+
+    with debug_session(DUMP_TENSORS_CONFIG, feature_dirs) as log_dir:
+        recipe_state = RecipeState.create(
+            recipe.DelayedScaling(),
+            mode="forward",
+            num_quantizers=3,
+        )
+
+        tensor = torch.randn(128, 128, dtype=torch.bfloat16).cuda()
+        quantizer = recipe_state.make_quantizers()[0]
+        quantized_tensor = quantizer(tensor)
+
+        debug_api.transformer_engine.inspect_tensor(
+            layer_name="test_layer",
+            tensor_name="activation",
+            iteration=0,
+            tp_group=None,
+            tensor=tensor,
+            quantizer=quantizer,
+            rowwise_quantized_tensor=quantized_tensor,
+            columnwise_quantized_tensor=quantized_tensor,
+        )
+        debug_api.step()
+
+        # Check that dump file was created
+        dump_dir = os.path.join(log_dir, "tensor_dumps", "rank_0")
+        assert os.path.exists(dump_dir), f"Dump directory not created: {dump_dir}"
+
+        iter_dir = os.path.join(dump_dir, "iter_000000")
+        assert os.path.exists(iter_dir), f"Iteration directory not created: {iter_dir}"
+
+        dump_files = os.listdir(iter_dir)
+        assert len(dump_files) == 1, f"Expected 1 dump file, got {len(dump_files)}"
+        assert (
+            dump_files[0] == "test_layer_activation.pt"
+        ), f"Unexpected dump filename: {dump_files[0]}"
+
+        # Load and verify structure
+        dump_file = os.path.join(iter_dir, dump_files[0])
+        # weights_only=False is required because the dump may contain QuantizedTensor objects,
+        # which are custom Python classes incompatible with the safe weights_only=True path.
+        data = torch.load(dump_file, weights_only=False)
+
+        assert isinstance(data, dict), "Dump should be a dictionary"
+        assert "high_precision" in data, "Missing high_precision tensor"
+        assert "quantized" in data, "Missing quantized tensor"
+        assert isinstance(
+            data["quantized"], QuantizedTensor
+        ), f"Expected QuantizedTensor, got {type(data['quantized'])}"
+
+        # Verify tensor shapes and values match
+        assert data["high_precision"].shape == tensor.shape, "high_precision shape mismatch"
+        assert torch.equal(
+            data["high_precision"], tensor
+        ), "high_precision tensor values do not match original tensor"
+
+    print("DumpTensors sanity test passed!")

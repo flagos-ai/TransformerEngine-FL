@@ -253,6 +253,7 @@ def test_bf16_no_excess_forward_memory():
     )
 
 
+<<<<<<< HEAD
 @pytest.mark.xfail(
     strict=False,
     reason=(
@@ -261,6 +262,8 @@ def test_bf16_no_excess_forward_memory():
         "adding per-layer memory overhead beyond what bf16 autograd saves require."
     ),
 )
+=======
+>>>>>>> dev
 def test_fp8_temp_accumulation_across_layers(recipe_name, quantized_model_init):
     """Detect FP8 weight temporaries accumulating across layers during forward.
 
@@ -381,6 +384,7 @@ def test_bf16_no_excess_backward_memory():
     )
 
 
+<<<<<<< HEAD
 @pytest.mark.xfail(
     strict=False,
     reason=(
@@ -390,6 +394,8 @@ def test_bf16_no_excess_backward_memory():
         "completes, not retained across step boundaries."
     ),
 )
+=======
+>>>>>>> dev
 def test_transpose_cache_retained_after_backward(recipe_name, quantized_model_init):
     """Detect transpose caches persisting after backward completes.
 
@@ -456,9 +462,16 @@ def test_transpose_cache_retained_after_backward(recipe_name, quantized_model_in
     # significantly more positive than bf16.
     excess = fp8_bwd_delta - bf16_bwd_delta
 
+<<<<<<< HEAD
     # Allow 256 KiB total for FP8 scale/amax bookkeeping.
     # Transpose caches (~3 MiB for this 8-layer model) should NOT persist.
     tolerance = 256 * 1024
+=======
+    # Allow 1 MiB for FP8 scale/amax bookkeeping and temporary workspace
+    # re-creation during backward. The key check is that transpose caches
+    # (~3 MiB for this 8-layer model) do NOT persist across steps.
+    tolerance = 1024 * 1024
+>>>>>>> dev
 
     assert excess <= tolerance, (
         f"FP8 backward retains {excess/1024**2:.2f} MiB more than bf16 baseline. "

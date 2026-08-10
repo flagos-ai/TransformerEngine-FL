@@ -61,6 +61,10 @@ class _IdentityFunc(torch.autograd.Function):
         kwargs = tensor.get_metadata()
         for key, val in init_kwargs.items():
             kwargs[key] = val
+<<<<<<< HEAD
+=======
+        kwargs["device"] = tensor.device
+>>>>>>> dev
         return type(tensor)(tensor.shape, tensor.dtype, **kwargs)
 
     @staticmethod

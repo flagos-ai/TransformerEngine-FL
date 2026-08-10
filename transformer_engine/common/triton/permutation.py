@@ -12,6 +12,19 @@ from triton.language.standard import _log2
 from packaging import version
 
 
+<<<<<<< HEAD
+=======
+_PERMUTATION_AUTOTUNE_BLOCK_SIZES = (64, 128, 256, 512, 1024, 2048, 4096)
+
+
+def _permutation_autotune_configs():
+    """Autotune ``configs`` list shared by every permutation Triton
+    kernel below.
+    """
+    return [triton.Config({"BLOCK_SIZE": bs}) for bs in _PERMUTATION_AUTOTUNE_BLOCK_SIZES]
+
+
+>>>>>>> dev
 # The following three argsort related kernels are adapted from
 # the issue https://github.com/triton-lang/triton/issues/3698
 
@@ -295,6 +308,7 @@ def _permute_kernel(
 
 try:
     _permute_kernel = triton.autotune(
+<<<<<<< HEAD
         configs=[
             triton.Config({"BLOCK_SIZE": 64}),
             triton.Config({"BLOCK_SIZE": 128}),
@@ -304,6 +318,9 @@ try:
             triton.Config({"BLOCK_SIZE": 2048}),
             triton.Config({"BLOCK_SIZE": 4096}),
         ],
+=======
+        configs=_permutation_autotune_configs(),
+>>>>>>> dev
         key=["hidden_size"],
     )(_permute_kernel)
 except RuntimeError:
@@ -416,6 +433,7 @@ def _unpermute_kernel(
 
 try:
     _unpermute_kernel = triton.autotune(
+<<<<<<< HEAD
         configs=[
             triton.Config({"BLOCK_SIZE": 64}),
             triton.Config({"BLOCK_SIZE": 128}),
@@ -425,6 +443,9 @@ try:
             triton.Config({"BLOCK_SIZE": 2048}),
             triton.Config({"BLOCK_SIZE": 4096}),
         ],
+=======
+        configs=_permutation_autotune_configs(),
+>>>>>>> dev
         key=["hidden_size"],
     )(_unpermute_kernel)
 except RuntimeError:
@@ -525,6 +546,7 @@ def _unpermute_bwd_with_merging_probs_kernel(
 
 try:
     _unpermute_bwd_with_merging_probs_kernel = triton.autotune(
+<<<<<<< HEAD
         configs=[
             triton.Config({"BLOCK_SIZE": 64}),
             triton.Config({"BLOCK_SIZE": 128}),
@@ -534,6 +556,9 @@ try:
             triton.Config({"BLOCK_SIZE": 2048}),
             triton.Config({"BLOCK_SIZE": 4096}),
         ],
+=======
+        configs=_permutation_autotune_configs(),
+>>>>>>> dev
         key=["hidden_size"],
     )(_unpermute_bwd_with_merging_probs_kernel)
 except RuntimeError:
@@ -643,6 +668,7 @@ def _sort_chunks_by_map_kernel(
 
 try:
     _sort_chunks_by_map_kernel = triton.autotune(
+<<<<<<< HEAD
         configs=[
             triton.Config({"BLOCK_SIZE": 64}),
             triton.Config({"BLOCK_SIZE": 128}),
@@ -652,6 +678,9 @@ try:
             triton.Config({"BLOCK_SIZE": 2048}),
             triton.Config({"BLOCK_SIZE": 4096}),
         ],
+=======
+        configs=_permutation_autotune_configs(),
+>>>>>>> dev
         key=["hidden_size"],
     )(_sort_chunks_by_map_kernel)
 except RuntimeError:

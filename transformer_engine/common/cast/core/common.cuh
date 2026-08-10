@@ -17,6 +17,10 @@
 #include <transformer_engine/transformer_engine.h>
 
 #include "../../common.h"
+<<<<<<< HEAD
+=======
+#include "../../util/ptx.cuh"
+>>>>>>> dev
 #include "../../utils.cuh"
 
 namespace transformer_engine {

@@ -9,8 +9,6 @@ from typing import Union
 import torch
 import triton
 
-from transformer_engine import te_device_type
-
 from transformer_engine.common.triton.permutation import (
     _row_id_map_pass_1_kernel,
     _row_id_map_pass_2_kernel,
@@ -51,12 +49,10 @@ def make_row_id_map(
         The [num_experts, num_experts + n_routed) items are the indices of the experts corresponding
         to the first n_routed row indices above.
     """
-    row_id_map = torch.empty(
-        (num_tokens, num_experts * 2 + 1), dtype=torch.int32, device=te_device_type()
-    )
+    row_id_map = torch.empty((num_tokens, num_experts * 2 + 1), dtype=torch.int32, device="cuda")
     block_size = 1024
     grid = (num_experts, triton.cdiv(num_tokens, block_size))
-    workspace_tensor = torch.empty(grid, dtype=torch.int32, device=te_device_type())
+    workspace_tensor = torch.empty(grid, dtype=torch.int32, device="cuda")
 
     # supposing num_tokens == 5, num_experts == 3, block_size == 3
     # and we have a routing_map like this:
@@ -155,7 +151,7 @@ def permute_with_mask_map(
     num_experts : int
         Number of experts in the input tensor.
     num_out_tokens : int
-        Number of tokens in the permuted tensor.
+        Number of rows allocated for the permuted tensor (must be a positive integer).
     hidden_size : int
         Hidden size of the input tensor.
     scale_hidden_dim : int
@@ -164,14 +160,12 @@ def permute_with_mask_map(
     # Use torch.zeros when pad_offsets is provided to ensure padding regions are zeroed.
     # The kernel writes only to valid positions, leaving padding positions at zero.
     alloc = torch.zeros if pad_offsets is not None else torch.empty
-    output = alloc((num_out_tokens, hidden_size), dtype=inp.dtype, device=te_device_type())
+    output = alloc((num_out_tokens, hidden_size), dtype=inp.dtype, device="cuda")
     permuted_probs = (
-        alloc((num_out_tokens,), dtype=probs.dtype, device=te_device_type())
-        if probs is not None
-        else None
+        alloc((num_out_tokens,), dtype=probs.dtype, device="cuda") if probs is not None else None
     )
     permuted_scale = (
-        alloc((num_out_tokens, scale_hidden_dim), dtype=scale.dtype, device=te_device_type())
+        alloc((num_out_tokens, scale_hidden_dim), dtype=scale.dtype, device="cuda")
         if scale is not None
         else None
     )
@@ -249,10 +243,10 @@ def unpermute_with_mask_map(
     hidden_size : int
         Hidden size of the permuted tensor.
     """
-    output = torch.empty((num_tokens, hidden_size), dtype=inp.dtype, device=te_device_type())
+    output = torch.empty((num_tokens, hidden_size), dtype=inp.dtype, device="cuda")
     if permuted_probs is not None:
         unpermuted_probs = torch.empty(
-            (num_tokens, num_experts), dtype=permuted_probs.dtype, device=te_device_type()
+            (num_tokens, num_experts), dtype=permuted_probs.dtype, device="cuda"
         )
     else:
         unpermuted_probs = None
@@ -331,11 +325,9 @@ def unpermute_with_mask_map_bwd_with_merging_probs(
     # by the kernel. This matches the behavior of Fp8Unpadding.backward which zeros
     # out the padding slots.
     alloc = torch.zeros if pad_offsets is not None else torch.empty
-    act_grad = alloc(
-        (num_out_tokens, hidden_size), dtype=fwd_output_grad.dtype, device=te_device_type()
-    )
+    act_grad = alloc((num_out_tokens, hidden_size), dtype=fwd_output_grad.dtype, device="cuda")
     merging_probs_grad = torch.empty(
-        (num_tokens, num_experts), dtype=merging_probs.dtype, device=te_device_type()
+        (num_tokens, num_experts), dtype=merging_probs.dtype, device="cuda"
     )
     grid = (num_tokens,)
     _unpermute_bwd_with_merging_probs_kernel[grid](
@@ -386,7 +378,7 @@ def make_chunk_sort_map(
     num_splits : int
         Number of splits of split_sizes and sorted_indices.
     """
-    row_id_map = torch.empty((num_tokens,), dtype=torch.int32, device=te_device_type())
+    row_id_map = torch.empty((num_tokens,), dtype=torch.int32, device="cuda")
     grid = (num_tokens,)
     _make_chunk_sort_map_kernel[grid](
         split_sizes,
@@ -424,9 +416,9 @@ def sort_chunks_by_map(
     is_forward : bool
         Whether the sort is for forward or backward.
     """
-    output = torch.empty((num_tokens, hidden_size), dtype=inp.dtype, device=te_device_type())
+    output = torch.empty((num_tokens, hidden_size), dtype=inp.dtype, device="cuda")
     if probs is not None:
-        permuted_probs = torch.empty((num_tokens,), dtype=probs.dtype, device=te_device_type())
+        permuted_probs = torch.empty((num_tokens,), dtype=probs.dtype, device="cuda")
     else:
         permuted_probs = None
     # pylint: disable=unnecessary-lambda-assignment

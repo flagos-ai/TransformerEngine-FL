@@ -26,6 +26,7 @@ void nvte_quantize(const NVTETensor input, NVTETensor output, cudaStream_t strea
   dispatch::quantize_fwd_helper<IS_ACT, Empty, nullptr>(input, output, nullptr, stream);
 }
 
+<<<<<<< HEAD
 void nvte_group_quantize(const NVTEGroupedTensor input, NVTEGroupedTensor output,
                          const NVTEQuantizationConfig quant_config, cudaStream_t stream) {
   NVTE_API_CALL(nvte_group_quantize);
@@ -35,6 +36,8 @@ void nvte_group_quantize(const NVTEGroupedTensor input, NVTEGroupedTensor output
   dispatch::group_quantize_fwd_helper<IS_ACT, Empty, nullptr>(input, output, quant_config, stream);
 }
 
+=======
+>>>>>>> dev
 void nvte_quantize_noop(const NVTETensor input, NVTETensor output, NVTETensor noop,
                         cudaStream_t stream) {
   NVTE_API_CALL(nvte_quantize_noop);
@@ -56,6 +59,7 @@ void nvte_quantize_v2(const NVTETensor input, NVTETensor output,
   dispatch::quantize_fwd_helper<IS_ACT, Empty, nullptr>(input, output, quant_config, stream);
 }
 
+<<<<<<< HEAD
 void nvte_quantize_dbias(const NVTETensor input, NVTETensor output, NVTETensor dbias,
                          NVTETensor workspace, cudaStream_t stream) {
   NVTE_API_CALL(nvte_quantize_dbias);
@@ -82,6 +86,8 @@ void nvte_group_quantize_dbias(const NVTEGroupedTensor input, NVTEGroupedTensor 
       input, activation_input, output, dbias, workspace, nullptr, stream);
 }
 
+=======
+>>>>>>> dev
 void nvte_dequantize(const NVTETensor input, NVTETensor output, cudaStream_t stream) {
   NVTE_API_CALL(nvte_dequantize);
   using namespace transformer_engine;
@@ -122,6 +128,7 @@ void nvte_multi_tensor_quantize(const NVTETensor *inputs, NVTETensor *outputs,
     NVTE_CHECK_CUDA(cudaStreamWaitEvent(stream, detail::get_compute_stream_event(s)));
   }
 }
+<<<<<<< HEAD
 
 // Group quantize assumes contiguous inputs and outputs in memory allocation
 // Note: this API assumes knowing split sections from the host, if split information
@@ -138,3 +145,5 @@ void nvte_group_nvfp4_quantize_with_amax(const NVTETensor input, NVTETensor *out
   dispatch::group_quantize_fwd_host_aware_helper<IS_ACT, Empty, nullptr>(
       input, outputs, split_sections, num_tensors, quant_config, stream);
 }
+=======
+>>>>>>> dev
