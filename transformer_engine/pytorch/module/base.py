@@ -20,6 +20,8 @@ from torch.distributed.tensor import DTensor
 
 import transformer_engine_torch as tex
 
+from transformer_engine import TE_DEVICE_TYPE, te_device_type
+
 from ._common import _ParameterInitMeta, noop_cat
 from ..quantization import (
     MXFP8BlockScalingRecipeState,
@@ -109,7 +111,7 @@ def get_dummy_wgrad(shape: list, dtype: torch.dtype, zero=False) -> torch.Tensor
         _dummy_wgrads[key] = torch.empty(
             shape,
             dtype=dtype,
-            device="cuda",
+            device=te_device_type(),
             requires_grad=False,
         )
     if zero:
@@ -1312,7 +1314,7 @@ class TransformerEngineBaseModule(torch.nn.Module, ABC):
         elif isinstance(state, io.BytesIO):
             # Deprecated format with io.BytesIO
             state.seek(0)
-            state = torch.load(state, map_location="cuda")
+            state = torch.load(state, map_location=te_device_type())
         else:
             raise RuntimeError("Unsupported checkpoint format.")
 
@@ -1688,7 +1690,7 @@ class TransformerEngineBaseModule(torch.nn.Module, ABC):
             param = param._local_tensor if is_dtensor else param
             # Ensure parameter is on a real device
             if param.device == torch.device("meta"):
-                param = torch.empty_like(param, device="cuda")
+                param = torch.empty_like(param, device=te_device_type())
             # Initialize the parameter values on device
             init_fn = self.param_init_meta[name].init_fn
             get_rng_state_tracker = self.param_init_meta[name].get_rng_state_tracker
