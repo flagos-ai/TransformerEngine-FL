@@ -1422,7 +1422,7 @@ class DelayedScalingRecipeState(RecipeState):
 
         # Allocate buffers
         if device is None:
-            device = torch.device("cuda")
+            device = torch.device(TE_DEVICE_TYPE)
         self.scale = torch.ones(num_quantizers, dtype=torch.float32, device=device)
         self.amax_history = torch.zeros(
             recipe.amax_history_len,
@@ -1514,7 +1514,7 @@ class MXFP8BlockScalingRecipeState(RecipeState):
 
         # Allocate buffers
         if device is None:
-            device = torch.device("cuda")
+            device = torch.device(TE_DEVICE_TYPE)
 
     def make_quantizers(self) -> list:
         # TODO(ksivamani); Find better design for this, adding here to avoid circular import.
@@ -1556,7 +1556,7 @@ class Float8BlockScalingRecipeState(RecipeState):
 
         # Allocate buffers
         if device is None:
-            device = torch.device("cuda")
+            device = torch.device(TE_DEVICE_TYPE)
         self.device = device
 
     def make_quantizers(self) -> list:
@@ -1639,7 +1639,7 @@ class NVFP4BlockScalingRecipeState(RecipeState):
 
         # Allocate buffers
         if device is None:
-            device = torch.device("cuda")
+            device = torch.device(TE_DEVICE_TYPE)
 
     def make_quantizers(self) -> list:
         """Build one ``NVFP4Quantizer`` per slot, dispatched by tensor type.
@@ -1870,7 +1870,7 @@ class CustomRecipeState(RecipeState):
         self.num_quantizers = num_quantizers
         self.roles = roles
         if device is None:
-            device = torch.device("cuda")
+            device = torch.device(TE_DEVICE_TYPE)
         self.device = device
 
         # -- Stateful sub-state slots (initialized empty) --

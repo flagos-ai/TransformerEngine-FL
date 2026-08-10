@@ -328,7 +328,7 @@ class Quantizer(abc.ABC):
             )
 
         if device is None:
-            device = torch.device("cuda")
+            device = torch.device(TE_DEVICE_TYPE)
         # Handle the device passed as string
         device = torch.device(device)
         result = tex.create_empty_quantized_tensor(
@@ -816,3 +816,4 @@ class QuantizedTensor(torch.Tensor):
 
         """
         return self.__class__.make_like(self, dtype=dtype)
+_class__.make_like(self, dtype=dtype)

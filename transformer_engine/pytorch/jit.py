@@ -295,9 +295,9 @@ def warmup_jit_bias_dropout_add(
     # Save cuda RNG state to ensure warmup does not affect reproducibility.
     rng_state = torch.cuda.get_rng_state()
 
-    inp = torch.rand((seq_length, micro_batch_size, hidden_size), dtype=dtype, device="cuda")
-    residual = torch.rand((seq_length, micro_batch_size, hidden_size), dtype=dtype, device="cuda")
-    bias = torch.rand((hidden_size), dtype=dtype, device="cuda")
+    inp = torch.rand((seq_length, micro_batch_size, hidden_size), dtype=dtype, device=TE_DEVICE_TYPE)
+    residual = torch.rand((seq_length, micro_batch_size, hidden_size), dtype=dtype, device=TE_DEVICE_TYPE)
+    bias = torch.rand((hidden_size), dtype=dtype, device=TE_DEVICE_TYPE)
     dropout_rate = 0.1
     # Warmup JIT fusions with the input grad_enable state of both forward
     # prop and recomputation
@@ -370,7 +370,7 @@ def warmup_jit_l2normalization(
     inp = torch.rand(
         (seq_length * micro_batch_size, hidden_size),
         dtype=dtype,
-        device="cuda",
+        device=TE_DEVICE_TYPE,
     )
     eps = 1e-6
     # Warmup JIT fusions with the input grad_enable state of both forward

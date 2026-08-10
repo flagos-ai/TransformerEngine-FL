@@ -15,6 +15,7 @@ import torch
 
 from .torch_version import torch_version
 from ..debug.pytorch.debug_quantization import DebugQuantizedTensor
+from transformer_engine import TE_DEVICE_TYPE
 
 
 __all__ = [
@@ -854,7 +855,7 @@ def torch_get_autocast_gpu_dtype() -> torch.dtype:
 
 
 if torch_version() >= (2, 4, 0):
-    gpu_autocast_ctx = functools.partial(torch.amp.autocast, device_type="cuda")
+    gpu_autocast_ctx = functools.partial(torch.amp.autocast, device_type=TE_DEVICE_TYPE)
 else:
     gpu_autocast_ctx = torch.cuda.amp.autocast
 

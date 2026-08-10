@@ -28,6 +28,7 @@ except ImportError:
     HAS_TORCH_SYMMETRIC = False
 
 import transformer_engine_torch as tex
+from transformer_engine import TE_DEVICE_TYPE
 
 from transformer_engine.pytorch.triton.pad import pad_columnwise_scale_inv
 from .torch_version import torch_version

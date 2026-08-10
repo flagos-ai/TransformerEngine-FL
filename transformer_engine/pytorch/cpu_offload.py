@@ -14,6 +14,7 @@ from typing import Any, Optional
 import torch
 from torch.autograd.graph import saved_tensors_hooks
 from transformer_engine.debug.pytorch.debug_state import TEDebugState
+from transformer_engine import TE_DEVICE_TYPE
 import transformer_engine.pytorch as te
 import transformer_engine.pytorch.cpu_offload_v1 as v1_code_path
 from .quantized_tensor import (
@@ -347,7 +348,7 @@ class OffloadableLayerState:
             # cannot move tensors from pool of one stream to another without
             # calling cudaFree and cudaMalloc again.
 
-            reloaded_tensor = torch.empty_like(tensor, device=torch.device("cuda"))
+            reloaded_tensor = torch.empty_like(tensor, device=torch.device(TE_DEVICE_TYPE))
             self.offload_stream.wait_stream(torch.cuda.current_stream())
 
             with torch.cuda.stream(self.offload_stream):
