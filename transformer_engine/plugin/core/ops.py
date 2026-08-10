@@ -29,6 +29,24 @@ class DType(IntEnum):
     kNumTypes = 11
 
 
+class PublicDType(IntEnum):
+    """Public ``transformer_engine_torch.DType`` compatibility contract.
+
+    The NVIDIA PyTorch binding exposes these eight values. The plugin keeps
+    the complete internal :class:`DType` enum for backend implementation
+    details, but must not leak internal-only values through the module alias.
+    """
+
+    kByte = DType.kByte
+    kInt32 = DType.kInt32
+    kFloat32 = DType.kFloat32
+    kFloat16 = DType.kFloat16
+    kBFloat16 = DType.kBFloat16
+    kFloat8E4M3 = DType.kFloat8E4M3
+    kFloat8E5M2 = DType.kFloat8E5M2
+    kFloat4E2M1 = DType.kFloat4E2M1
+
+
 class Float8BlockScaleTensorFormat(IntEnum):
     GEMM_READY = 0
     COMPACT = 1
@@ -1803,7 +1821,8 @@ class TEFLModule:
 
         self._manager = manager if manager is not None else get_default_manager()
         # emum
-        self.DType = DType
+        # Match the public NVIDIA binding; internal backend code uses DType directly.
+        self.DType = PublicDType
         self.Float8BlockScaleTensorFormat = Float8BlockScaleTensorFormat
         self.FP8FwdTensors = FP8FwdTensors
         self.FP8BwdTensors = FP8BwdTensors
