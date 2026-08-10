@@ -14,6 +14,7 @@ import transformer_engine_torch as tex
 
 from nvdlfw_inspect.debug_features.log_tensor_stats import LogTensorStats as BaseLogTensorStats
 from nvdlfw_inspect.registry import Registry, api_method
+from transformer_engine.pytorch import DType
 
 from transformer_engine import te_device_type
 from transformer_engine.debug.features.utils.stats_buffer import STATS_BUFFERS

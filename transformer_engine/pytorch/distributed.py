@@ -29,8 +29,6 @@ except ImportError:
 
 import transformer_engine_torch as tex
 
-from transformer_engine import te_device_type
-
 from transformer_engine.pytorch.triton.pad import pad_columnwise_scale_inv
 from .torch_version import torch_version
 from .utils import (
@@ -98,7 +96,7 @@ def is_graph_safe_rng_state(state: Union[torch.Tensor, torch.Generator]) -> bool
 
 
 def _get_cuda_rng_state(
-    device: Union[int, str, torch.device] = te_device_type(),
+    device: Union[int, str, torch.device] = "cuda",
     clone: bool = False,
     graph_safe: bool = True,
 ) -> torch.Tensor:
@@ -108,7 +106,7 @@ def _get_cuda_rng_state(
     if isinstance(device, str):
         device = torch.device(device)
     elif isinstance(device, int):
-        device = torch.device(te_device_type(), device)
+        device = torch.device("cuda", device)
     idx = device.index
     if idx is None:
         idx = torch.cuda.current_device()
@@ -130,11 +128,11 @@ def _set_cuda_rng_state(
     """Sets the random number generator state of the current GPU."""
 
     if device == -1:
-        device = torch.device(te_device_type())
+        device = torch.device("cuda")
     elif isinstance(device, str):
         device = torch.device(device)
     elif isinstance(device, int):
-        device = torch.device(te_device_type(), device)
+        device = torch.device("cuda", device)
 
     def cb() -> None:
         idx = device.index
@@ -263,14 +261,11 @@ class activation_recompute_forward(AbstractContextManager, ContextDecorator):
         )
         _FP8_ACTIVATION_RECOMPUTE_PHASE = self.recompute_phase
 
+        qstate = FP8GlobalStateManager.quantization_state
         if self.activation_recompute and not self.recompute_phase:
-            activation_recompute_forward._is_first_fp8_module.append(
-                FP8GlobalStateManager.IS_FIRST_FP8_MODULE
-            )
+            activation_recompute_forward._is_first_fp8_module.append(qstate.is_first_fp8_module)
         if self.activation_recompute and self.recompute_phase:
-            FP8GlobalStateManager.IS_FIRST_FP8_MODULE = (
-                activation_recompute_forward._is_first_fp8_module.pop(0)
-            )
+            qstate.is_first_fp8_module = activation_recompute_forward._is_first_fp8_module.pop(0)
 
     def __exit__(self, *exc_details):
         global _FP8_ACTIVATION_RECOMPUTE_ENABLED, _FP8_ACTIVATION_RECOMPUTE_PHASE
@@ -296,10 +291,10 @@ def _get_active_autocast_contexts():
     autocast_cached = torch.is_autocast_cache_enabled()
 
     if torch_version() >= (2, 4, 0):
-        gpu_autocast_enabled = torch.is_autocast_enabled(te_device_type())
-        gpu_autocast_dtype = torch.get_autocast_dtype(te_device_type())
+        gpu_autocast_enabled = torch.is_autocast_enabled("cuda")
+        gpu_autocast_dtype = torch.get_autocast_dtype("cuda")
         gpu_autocast_ctx = torch.amp.autocast(
-            te_device_type(),
+            "cuda",
             enabled=gpu_autocast_enabled,
             dtype=gpu_autocast_dtype,
             cache_enabled=autocast_cached,
@@ -618,18 +613,21 @@ def get_activation_recompute_contexts():
     return forward_ctx, recompute_ctx
 
 
-def has_te_modules(network):
+@lru_cache
+def get_te_classes():
     """
-    Check if there are any Transformer Engine modules in the network.
+    Return all Transformer Engine modules.
     """
     from .module import LayerNorm, RMSNorm
     from .module.base import TransformerEngineBaseModule
+    from .attention.dot_product_attention.dot_product_attention import (
+        DotProductAttention,
+    )
     from .attention.dot_product_attention.backends import UnfusedDotProductAttention
-    from .attention.dot_product_attention.dot_product_attention import DotProductAttention
     from .attention.multi_head_attention import MultiheadAttention
     from .transformer import TransformerLayer
 
-    te_classes_list = [
+    return (
         LayerNorm,
         RMSNorm,
         TransformerEngineBaseModule,
@@ -637,12 +635,17 @@ def has_te_modules(network):
         DotProductAttention,
         MultiheadAttention,
         TransformerLayer,
-    ]
+    )
 
+
+def has_te_modules(network):
+    """
+    Check if there are any Transformer Engine modules in the network.
+    """
+    te_classes = get_te_classes()
     if isinstance(network, torch.nn.Module):
-        for module in network.modules():
-            if any(isinstance(module, te_class) for te_class in te_classes_list):
-                return True
+        if any(isinstance(module, te_classes) for module in network.modules()):
+            return True
         return False
 
     # Cannot check for TE modules inside a custom class/callable that's not a torch.nn.Module,
@@ -1023,7 +1026,7 @@ def _all_gather_fp8(
     out: Float8TensorStorage
     if quantizer is not None:
         dtype = torch.float32
-        device = te_device_type()
+        device = "cuda"
         if isinstance(inp, Float8Tensor):
             dtype = inp.dtype
             device = inp.device
@@ -1839,6 +1842,27 @@ def get_symmetric_memory_tensor(tensor_numel, tensor_dtype, tensor_device, tp_gr
     return msg
 
 
+def symm_mem_alloc(
+    shape,
+    dtype: torch.dtype,
+    ep_group: dist_group_type,
+    device: Optional[torch.device] = None,
+) -> torch.Tensor:
+    """Allocate and rendezvous a symm-mem buffer on ep_group. Collective on ep_group."""
+    if device is None:
+        device = torch.device("cuda", torch.cuda.current_device())
+    if not HAS_TORCH_SYMMETRIC:
+        raise RuntimeError(
+            "torch.distributed._symmetric_memory is unavailable; symm_mem_alloc "
+            "requires PyTorch built with NCCL symm-mem support."
+        )
+    if symm_mem.get_backend(device) != "NCCL":
+        symm_mem.set_backend("NCCL")
+    t = symm_mem.empty(*shape, dtype=dtype, device=device)
+    symm_mem.rendezvous(t, group=ep_group)
+    return t
+
+
 def symmetric_all_reduce(
     inp: torch.Tensor,
     tp_group: Optional[dist_group_type] = None,
@@ -2045,28 +2069,8 @@ def _is_te_module(module):
     Check if given module is a Transformer Engine module that requires the TE checkpoint
     implementation for activation recompute.
     """
-    from .module import LayerNorm, RMSNorm
-    from .module.base import TransformerEngineBaseModule
-    from .attention.dot_product_attention.dot_product_attention import DotProductAttention
-    from .attention.dot_product_attention.backends import UnfusedDotProductAttention
-    from .attention.multi_head_attention import MultiheadAttention
-    from .transformer import TransformerLayer
-
-    te_classes_list = [
-        LayerNorm,
-        RMSNorm,
-        TransformerEngineBaseModule,
-        UnfusedDotProductAttention,
-        DotProductAttention,
-        MultiheadAttention,
-        TransformerLayer,
-    ]
-    is_te_module = False
-    for te_class in te_classes_list:
-        if isinstance(module, te_class):
-            is_te_module = True
-            break
-    return is_te_module
+    te_classes = get_te_classes()
+    return isinstance(module, te_classes)
 
 
 def prepare_te_modules_for_fsdp(fsdp_root: torch.nn.Module) -> None:
