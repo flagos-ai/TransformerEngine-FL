@@ -56,6 +56,8 @@ def te_platform(default=torch.cuda):
         return TE_PLATFORM
     except Exception:
         return default
+
+
 # Minimum NCCL version for the statically-linked NCCL EP backend.
 _NCCL_EP_MIN_VERSION = (2, 30, 4)
 

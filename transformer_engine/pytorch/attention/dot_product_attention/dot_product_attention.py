@@ -1296,7 +1296,9 @@ class DotProductAttention(TransformerEngineBaseModule):
 
             # checks for q/k/v shapes
             assert (
-                query_layer.device.type == te_device_type() and key_layer.device.type == te_device_type() and value_layer.device.type == te_device_type()
+                query_layer.device.type == te_device_type()
+                and key_layer.device.type == te_device_type()
+                and value_layer.device.type == te_device_type()
             ), f"DotProductAttention only supports {te_device_type()} tensors."
             assert (
                 query_layer.dtype == key_layer.dtype and query_layer.dtype == value_layer.dtype
