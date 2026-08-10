@@ -230,6 +230,7 @@ class CUDABackend(TEFLBackendBase):
         quantizer: Any,
         num_tensors: int,
         first_dims: List[int],
+        tensor_offsets: Optional[torch.Tensor] = None,
     ) -> Any:
         tex = self._get_tex()
         try:
@@ -239,7 +240,7 @@ class CUDABackend(TEFLBackendBase):
                     quantizer.dtype = tex.DType(int(qdtype))
         except Exception:
             pass
-        return tex.bgrad_group_quantize(tensor, quantizer, num_tensors, first_dims)
+        return tex.bgrad_group_quantize(tensor, quantizer, num_tensors, first_dims, tensor_offsets)
 
     def generic_gemm(
         self,

@@ -894,6 +894,7 @@ class TEFLBackendBase(ABC):
         quantizer: Any,
         num_tensors: int,
         first_dims: List[int],
+        tensor_offsets: Optional[torch.Tensor] = None,
     ) -> Any:
         raise NotImplementedError
 
