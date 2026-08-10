@@ -159,6 +159,8 @@ class NVTE_QKV_Layout(IntEnum):
     NVTE_Paged_KV_SBHD_SBHD_SBHD = 22
     NVTE_Paged_KV_THD_BSHD_BSHD = 23
     NVTE_Paged_KV_THD_SBHD_SBHD = 24
+    NVTE_BHSD_BHSD_BHSD = 25
+    NVTE_QKV_Layout_NOT_SET = 26
 
 
 class CommOverlapType(IntEnum):
