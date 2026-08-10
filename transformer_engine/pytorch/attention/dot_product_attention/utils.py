@@ -21,7 +21,7 @@ import torch.distributed as dist
 import torch.nn.functional as F
 import transformer_engine_torch as tex
 import transformer_engine as te
-from transformer_engine.pytorch.cpp_extensions.fused_attn import (, te_device_type
+from transformer_engine.pytorch.cpp_extensions.fused_attn import (
     QKVLayout,
     AttnBiasType,
     AttnMaskType,
@@ -47,6 +47,7 @@ from transformer_engine.pytorch.tensor.storage.mxfp8_tensor_storage import MXFP8
 
 from transformer_engine.pytorch.quantization import get_fp8_te_dtype
 from transformer_engine.pytorch.constants import TE_DType, MXFP8_BLOCK_SCALING_SIZE
+from transformer_engine import te_device_type
 
 
 from transformer_engine.pytorch.utils import (
