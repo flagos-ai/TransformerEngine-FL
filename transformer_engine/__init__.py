@@ -11,6 +11,21 @@ import functools
 import os
 from importlib import metadata
 from typing import Optional, Tuple
+
+import torch
+
+# Public, simple global (kept for backward compatibility).
+TE_DEVICE_TYPE = "cuda"
+TE_PLATFORM = torch.cuda
+
+
+def te_device_type(default: str = "cuda") -> str:
+    try:
+        return TE_DEVICE_TYPE
+    except Exception:
+        return default
+
+
 import transformer_engine.common
 
 # Minimum NCCL version for the statically-linked NCCL EP backend.
