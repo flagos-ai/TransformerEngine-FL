@@ -15,6 +15,7 @@ from torch.nn.parameter import Parameter
 from torch.nn import init
 
 import transformer_engine_torch as tex
+from transformer_engine import te_device_type
 
 from transformer_engine.common.recipe import Recipe
 from transformer_engine.pytorch.torch_version import torch_version

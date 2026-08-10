@@ -43,7 +43,7 @@ from transformer_engine.pytorch.distributed import (
     CudaRNGStatesTracker,
     graph_safe_rng_available,
 )
-from transformer_engine.debug.pytorch.debug_state import te_device_type
+from transformer_engine import te_device_type
 from transformer_engine.pytorch.jit import no_torch_dynamo
 from transformer_engine.pytorch.graph import is_graph_capturing
 from transformer_engine.pytorch.attention.inference import InferenceParams
