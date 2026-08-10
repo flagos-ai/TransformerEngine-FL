@@ -162,6 +162,15 @@ void init_router_bindings(pybind11::module &m) {
   m.def("fused_moe_aux_loss_bwd", &fused_moe_aux_loss_bwd, py::arg("Const_buf"),
         py::arg("tokens_per_expert"), py::arg("num_rows"), py::arg("num_cols"),
         py::arg("grad_aux_loss"), "Fused aux loss bwd");
+  m.def("convert_host_pointers_to_tensor",
+        &transformer_engine::pytorch::convert_host_pointers_to_tensor,
+        "Copy host-side device pointers into device tensors", py::arg("tensor_lists"),
+        py::call_guard<py::gil_scoped_release>());
+  m.def("get_device_pointer_for_data_and_scales",
+        &transformer_engine::pytorch::get_device_pointer_for_data_and_scales,
+        "Swizzle scales and collect data/scale device pointers into device tensors",
+        py::arg("data_tensors"), py::arg("scale_tensors"), py::arg("swizzle") = false,
+        py::arg("rowwise"), py::arg("data_dtype"), py::call_guard<py::gil_scoped_release>());
 }
 
 void bind_quantize_with_amax_extensions(py::module_ &m) {
