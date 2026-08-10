@@ -13,14 +13,8 @@
 import transformer_engine.pytorch as te
 import transformer_engine_torch as tex
 from transformer_engine.pytorch import NVFP4Quantizer
-<<<<<<< HEAD
-from transformer_engine.pytorch.custom_recipes.quantization_nvfp4 import NVFP4QuantizerRef
-from transformer_engine.pytorch.custom_recipes import utils
-from transformer_engine.pytorch.constants import TE_DType
-=======
 from transformer_engine.pytorch.custom_recipes.quantization_ref_nvfp4 import NVFP4QuantizerRef
 from transformer_engine.pytorch.custom_recipes import utils
->>>>>>> dev
 from transformer_engine.common.recipe import NVFP4BlockScaling
 
 import pytest
@@ -33,10 +27,7 @@ from nvfp4_utils import (
     generate_split_sections,
     assert_same_shape_and_dtype,
     reference_group_quantize,
-<<<<<<< HEAD
-=======
     swizzle_nvfp4_scale,
->>>>>>> dev
 )
 
 recipe_available, reason_for_no_recipe = te.is_nvfp4_available(return_reason=True)
@@ -52,16 +43,10 @@ def check_group_quantization_nvfp4_versus_reference(
     with_rht: bool = True,
     with_post_rht_amax: bool = True,
     with_random_sign_mask: bool = True,
-<<<<<<< HEAD
-) -> None:
-
-    te_dtype = tex.DType.kFloat4E2M1
-=======
     optimize_for_gemm: bool = False,
 ) -> None:
 
     te_dtype = te.DType.kFloat4E2M1
->>>>>>> dev
 
     # Setup device and random seed
     device = "cuda"
@@ -75,11 +60,7 @@ def check_group_quantization_nvfp4_versus_reference(
 
     x_splits = torch.split(x, split_sections)
 
-<<<<<<< HEAD
-    # Quantize
-=======
     # Reference quantizers (compact SF, default optimize_for_gemm=False).
->>>>>>> dev
     quantizers = [
         NVFP4Quantizer(
             fp4_dtype=te_dtype,
@@ -97,9 +78,6 @@ def check_group_quantization_nvfp4_versus_reference(
         reference_group_quantize(x, quantizers, split_sections, return_rowwise, return_transpose)
     )
 
-<<<<<<< HEAD
-    split_quantize_outputs = tex.split_quantize(x, split_sections, quantizers)
-=======
     # SUT quantizers: same as reference, but with optimize_for_gemm toggled to
     # request direct swizzled SF emission from the RHT cast-fusion kernel.
     sut_quantizers = [q.copy() for q in quantizers]
@@ -107,7 +85,6 @@ def check_group_quantization_nvfp4_versus_reference(
         q.optimize_for_gemm = optimize_for_gemm
 
     split_quantize_outputs = tex.split_quantize(x, split_sections, sut_quantizers)
->>>>>>> dev
 
     if return_rowwise:
         x_qx = [output._rowwise_data.view(dtype=torch.uint8) for output in split_quantize_outputs]
@@ -128,15 +105,12 @@ def check_group_quantization_nvfp4_versus_reference(
                 valid_scale_shape = get_nvfp4_scale_shape_no_padding(x_splits[i].shape, False)
                 x_sx_valid = x_sx[i][: valid_scale_shape[0], : valid_scale_shape[1]]
                 x_sx_ref_valid = x_sx_ref[i][: valid_scale_shape[0], : valid_scale_shape[1]]
-<<<<<<< HEAD
-=======
                 if optimize_for_gemm:
                     # SUT emits SF in the GEMM-swizzled layout directly; swizzle
                     # the reference compact SF for byte-equal comparison.
                     x_sx_ref_valid = swizzle_nvfp4_scale(
                         split_sections[i], N, x_sx_ref_valid, columnwise=False
                     )
->>>>>>> dev
                 torch.testing.assert_close(x_sx_valid, x_sx_ref_valid, atol=0.0, rtol=0.0)
 
     if return_transpose:
@@ -160,13 +134,10 @@ def check_group_quantization_nvfp4_versus_reference(
                 valid_scale_shape = get_nvfp4_scale_shape_no_padding(x_splits[i].shape, True)
                 x_sx_t_valid = x_sx_t[i][: valid_scale_shape[0], : valid_scale_shape[1]]
                 x_sx_t_ref_valid = x_sx_t_ref[i][: valid_scale_shape[0], : valid_scale_shape[1]]
-<<<<<<< HEAD
-=======
                 if optimize_for_gemm:
                     x_sx_t_ref_valid = swizzle_nvfp4_scale(
                         split_sections[i], N, x_sx_t_ref_valid, columnwise=True
                     )
->>>>>>> dev
                 torch.testing.assert_close(x_sx_t_valid, x_sx_t_ref_valid, atol=0.0, rtol=0.0)
 
 
@@ -203,14 +174,11 @@ def check_group_quantization_nvfp4_versus_reference(
     "with_random_sign_mask", [True, False], ids=["with_random_sign_mask", "no_random_sign_mask"]
 )
 @pytest.mark.parametrize("with_rht", [True, False], ids=["with_rht", "no_rht"])
-<<<<<<< HEAD
-=======
 @pytest.mark.parametrize(
     "optimize_for_gemm",
     [False, True],
     ids=["compact_sf", "swizzled_sf"],
 )
->>>>>>> dev
 def test_rht_with_quantization_block_tiling_versus_reference(
     x_dtype: torch.dtype,
     M: int,
@@ -219,11 +187,6 @@ def test_rht_with_quantization_block_tiling_versus_reference(
     quantize_mode: str,
     with_random_sign_mask: bool,
     with_rht: bool,
-<<<<<<< HEAD
-) -> None:
-
-    split_sections = generate_split_sections(M, N, edge_cases, least_multiple=64)
-=======
     optimize_for_gemm: bool,
 ) -> None:
 
@@ -261,7 +224,6 @@ def test_rht_with_quantization_block_tiling_versus_reference(
 
     least_multiple = 128 if optimize_for_gemm else 64
     split_sections = generate_split_sections(M, N, edge_cases, least_multiple=least_multiple)
->>>>>>> dev
 
     # currently disable pre-RHT amax
     with_post_rht_amax = with_rht
@@ -288,8 +250,5 @@ def test_rht_with_quantization_block_tiling_versus_reference(
         with_rht=with_rht,
         with_post_rht_amax=with_post_rht_amax,
         with_random_sign_mask=with_random_sign_mask,
-<<<<<<< HEAD
-=======
         optimize_for_gemm=optimize_for_gemm,
->>>>>>> dev
     )

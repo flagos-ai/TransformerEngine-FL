@@ -37,10 +37,7 @@ import pytest
 
 import transformer_engine.pytorch as te
 import transformer_engine.common.recipe
-<<<<<<< HEAD
-=======
 from transformer_engine.pytorch.tensor import NVFP4Tensor
->>>>>>> dev
 
 import torch
 import torch.distributed as dist
@@ -228,13 +225,8 @@ def _check_fp8_fsdp2_allgather(model):
             if device_mesh.ndim > 1
             else device_mesh.get_group()
         )
-<<<<<<< HEAD
-        # Perform manual allgather on local_tensor. zeros_like will create hp tensor since torch_dispatch
-        # for local_tensor will go down the dequantization route.
-=======
         # Perform manual allgather on local_tensor. zeros_like will create hp tensor since
         # torch_dispatch for local_tensor will go down the dequantization route.
->>>>>>> dev
         gathered_tensor = [
             torch.zeros_like(local_tensor) for _ in range(dist.get_world_size(group=dist_group))
         ]
@@ -248,9 +240,6 @@ def _check_fp8_fsdp2_allgather(model):
             module.unshard()
     # Make sure allgathered parameters match exactly
     for name, param in model.named_parameters():
-<<<<<<< HEAD
-        torch.testing.assert_close(param.dequantize(), fp32_allgathered_params[name])
-=======
         # NVFP4 scale unpad/repad through FSDP2 introduces small numerical
         # differences vs the manual dequantize-then-allgather path.
         if isinstance(param, NVFP4Tensor):
@@ -258,7 +247,6 @@ def _check_fp8_fsdp2_allgather(model):
         else:
             tols = {}
         torch.testing.assert_close(param.dequantize(), fp32_allgathered_params[name], **tols)
->>>>>>> dev
     # Revert model to original sharded state
     for module in model.modules():
         # Not all modules are wrapped/sharded with FSDP2.
@@ -382,11 +370,6 @@ NUM_PROCS = int(os.environ.get("WORLD_SIZE", "1"))
 @pytest.mark.parametrize("fp8_init", [False, True])
 @pytest.mark.parametrize("layer_type", ["LayerNormLinear", "TransformerLayer"])
 def test_distributed(recipe_name, fp8_init, sharding_dims, layer_type):
-<<<<<<< HEAD
-    if recipe_name in ("Float8BlockScaling", "NVFP4BlockScaling") and fp8_init:
-        pytest.xfail(f"{recipe_name} + fp8_init: test_fp8_fsdp2_allgather is currently failing.")
-
-=======
     if recipe_name == "MXFP8BlockScaling" and fp8_init and len(sharding_dims) == 2:
         pytest.xfail(
             "MXFP8BlockScaling + fp8_init + HSDP: fsdp_post_all_gather receives fewer "
@@ -401,7 +384,6 @@ def test_distributed(recipe_name, fp8_init, sharding_dims, layer_type):
             "Float8BlockScaling + fp8_init: scale inverse padding is not handled "
             "correctly during FSDP2 all-gather slice ops."
         )
->>>>>>> dev
     torch.manual_seed(42)
     torch.cuda.manual_seed(42)
 

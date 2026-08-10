@@ -317,16 +317,10 @@ of context objects for all the corresponding ``BasicOperation`` s.
 
 .. warning::
 
-<<<<<<< HEAD
-   Remember the contract that the fused operation must produce outputs
-   that are interchangeable with the corresponding basic operation
-   outputs.
-=======
    Forward-only and backward-only fused operations must produce outputs
    that are interchangeable with the corresponding basic operations,
    since the opposite pass is fused independently. Joint forward-backward
    fusions (described below) relax this contract.
->>>>>>> dev
 
 In order to make these fused operations useful, they should be
 registered with the operation fuser. To do this, first implement a
@@ -358,8 +352,6 @@ and then register it with the ``register_forward_fusion`` or
 
     # Register fusion with operation fuser
     te.ops.register_forward_fusion(fuse_axpy_ops)
-<<<<<<< HEAD
-=======
 
 Joint forward-backward fusions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -422,4 +414,3 @@ forward/backward pair must be jointly equivalent.
 
     # Register joint fusion with operation fuser
     te.ops.register_forward_backward_fusion(fuse_linear_silu)
->>>>>>> dev

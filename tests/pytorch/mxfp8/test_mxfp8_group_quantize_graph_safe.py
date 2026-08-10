@@ -139,11 +139,7 @@ def check_grouped_tensor_mxfp8_versus_reference(
     optimize_for_gemm: bool = False,
 ) -> None:
 
-<<<<<<< HEAD
-    te_dtype = tex.DType.kFloat8E4M3
-=======
     te_dtype = te.DType.kFloat8E4M3
->>>>>>> dev
 
     split_section_tensor = torch.tensor(split_sections, dtype=torch.int64, device="cuda")
 
@@ -240,11 +236,7 @@ def check_grouped_tensor_mxfp8_with_paged_stashing(
     optimize_for_gemm: bool = False,
 ) -> None:
 
-<<<<<<< HEAD
-    te_dtype = tex.DType.kFloat8E4M3
-=======
     te_dtype = te.DType.kFloat8E4M3
->>>>>>> dev
 
     assert valid_M is not None, "valid_M must be provided when with_paged_stashing is True"
     assert valid_M < M, "valid_M must be less than M when with_paged_stashing is True"

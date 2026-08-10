@@ -20,10 +20,7 @@
 #include "../../util/math.h"
 #include "../../util/ptx.cuh"
 #include "../../utils.cuh"
-<<<<<<< HEAD
-=======
 #include "../mxfp8/swizzle.cuh"
->>>>>>> dev
 
 #if FP4_TYPE_SUPPORTED
 #include <cuda_fp4.h>
@@ -34,19 +31,11 @@ namespace dispatch {
 namespace nvfp4 {
 namespace dequantize_kernel {
 #if FP4_TYPE_SUPPORTED
-<<<<<<< HEAD
-template <typename OType>
-__global__ void __launch_bounds__(512)
-    dequantize_fp4_kernel(const void *const input, OType *output, const fp8e4m3 *const scales,
-                          const float *const tensor_amax, const size_t N, const size_t M,
-                          const size_t scale_stride) {
-=======
 template <typename OType, bool WITH_GEMM_SWIZZLED_SCALES, bool ROW_SCALED_NVFP4, int E4M3_MAX = 448>
 __global__ void __launch_bounds__(512)
     dequantize_fp4_kernel(const void *const input, OType *output, const fp8e4m3 *const scales,
                           const float *const tensor_amax, const size_t N, const size_t M,
                           const size_t scale_stride, const size_t num_scale_tiles_X) {
->>>>>>> dev
   const size_t thread_idx = blockIdx.x * blockDim.x + threadIdx.x;
   const size_t x = thread_idx % M;
   const size_t y = thread_idx / M;
@@ -64,28 +53,19 @@ __global__ void __launch_bounds__(512)
   OVec *output_vec = reinterpret_cast<OVec *>(output);
 
   const size_t my_index = x + y * M;
-<<<<<<< HEAD
-  const size_t my_scale_index = x + y * scale_stride;
-=======
   size_t my_scale_index;
   if constexpr (WITH_GEMM_SWIZZLED_SCALES) {
     my_scale_index = mxfp8::swizzle::gemm_swizzled_scale_idx(y, x, num_scale_tiles_X);
   } else {
     my_scale_index = x + y * scale_stride;
   }
->>>>>>> dev
   const size_t my_output_index = (x + y * M) * 4;
   fp4vec value;
   value.vec = input_vectorized[my_index];
   fp8e4m3 scale = scales[my_scale_index];
-<<<<<<< HEAD
-  float amax = *tensor_amax;
-  constexpr float factor_inv = 1.0 / (6.0 * 448.0);
-=======
   float amax = ROW_SCALED_NVFP4 ? tensor_amax[y] : tensor_amax[0];
   static_assert(E4M3_MAX == 448 || E4M3_MAX == 256, "Unsupported NVFP4 E4M3 max.");
   constexpr float factor_inv = 1.0f / (6.0f * static_cast<float>(E4M3_MAX));
->>>>>>> dev
   float final_scale = static_cast<float>(scale) * amax * factor_inv;
 #pragma unroll
   for (int i = 0; i < 4; i++) {
@@ -107,15 +87,6 @@ inline void dequantize(const Tensor &input, Tensor *output, cudaStream_t stream)
   CheckInputTensor(input, "input");
   CheckOutputTensor(*output, "output");
   NVTE_CHECK(input.data.dtype == DType::kFloat4E2M1, "Input must have FP4 type.");
-<<<<<<< HEAD
-  NVTE_CHECK(!input.with_gemm_swizzled_scales, "Input must have scales in compact format.");
-  NVTE_CHECK(is_high_precision_dtype(output->data.dtype), "Output must be in higher precision.");
-  NVTE_CHECK(output->data.shape == input.data.shape, "Input and output shapes need to match.");
-
-  constexpr int FP4_BLOCK_SIZE = 16;
-  const size_t N = input.flat_first_dim();
-  const size_t M = input.flat_last_dim();
-=======
   NVTE_CHECK(is_high_precision_dtype(output->data.dtype), "Output must be in higher precision.");
   NVTE_CHECK(output->data.shape == input.data.shape, "Input and output shapes need to match.");
 
@@ -125,7 +96,6 @@ inline void dequantize(const Tensor &input, Tensor *output, cudaStream_t stream)
 
   constexpr int FP4_BLOCK_SIZE = 16;
   const auto [N, M] = input.flat_2d_dims();
->>>>>>> dev
 
   NVTE_CHECK(M % FP4_BLOCK_SIZE == 0, "Last dimension of FP4 tensors needs to be divisible by ",
              FP4_BLOCK_SIZE, ", but got ", input.data.shape, ".");
@@ -134,17 +104,6 @@ inline void dequantize(const Tensor &input, Tensor *output, cudaStream_t stream)
   const size_t total = N * Mread;
   const size_t threads = 512;
   const size_t blocks = DIVUP(total, threads);
-<<<<<<< HEAD
-
-  TRANSFORMER_ENGINE_TYPE_SWITCH_NON_FP8ONLY(
-      output->data.dtype, OType,
-
-      dequantize_fp4_kernel<<<blocks, threads, 0, stream>>>(
-          input.data.dptr, reinterpret_cast<OType *>(output->data.dptr),
-          reinterpret_cast<fp8e4m3 *>(input.scale_inv.dptr),
-          reinterpret_cast<float *>(input.amax.dptr), N, Mread,
-          input.scale_inv.shape.back()););  // NOLINT(*)
-=======
   const size_t num_scale_tiles_X = DIVUP(Mread, static_cast<size_t>(4));
   NVTE_CHECK(!row_scaled_nvfp4 || input.amax.numel() == N,
              "Row-scaled NVFP4 dequantization requires one rowwise amax per row.");
@@ -172,7 +131,6 @@ inline void dequantize(const Tensor &input, Tensor *output, cudaStream_t stream)
                         input.scale_inv.shape.back(), num_scale_tiles_X);
               }););  // NOLINT(*)
   );                 // NOLINT(*)
->>>>>>> dev
   NVTE_CHECK_CUDA(cudaGetLastError());
 #else
   NVTE_ERROR("CUDA 12.8 or higher is needed for FP4 calculation!");

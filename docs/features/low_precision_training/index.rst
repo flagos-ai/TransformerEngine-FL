@@ -14,9 +14,5 @@ Low precision training
    fp8_delayed_scaling/fp8_delayed_scaling.rst
    fp8_blockwise_scaling/fp8_blockwise_scaling.rst
    mxfp8/mxfp8.rst
-<<<<<<< HEAD
-   nvfp4/nvfp4.rst
-=======
    nvfp4/nvfp4.rst
    speedups.rst
->>>>>>> dev

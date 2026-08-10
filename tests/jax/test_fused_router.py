@@ -559,8 +559,6 @@ def test_fused_moe_aux_loss(dtype, num_tokens, num_experts, topk):
     assert jnp.allclose(
         grad_ref, grad_fused, atol=1e-5, rtol=1e-5
     ), f"Grad mismatch: max diff = {jnp.abs(grad_ref - grad_fused).max()}"
-<<<<<<< HEAD
-=======
 
 
 # =============================================================================
@@ -697,4 +695,3 @@ def test_score_for_aux_loss_bitmap_vs_bytemap(dtype, num_tokens, num_experts, to
     assert jnp.array_equal(
         routing_map_bit, packed_expected
     ), "Bitmap routing_map (aux-loss path) disagrees with packed bytemap"
->>>>>>> dev

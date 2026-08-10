@@ -7,8 +7,6 @@
 This module provides high-level token dispatch and combine operations for
 Mixture of Experts (MoE) models with proper automatic differentiation support.
 
-<<<<<<< HEAD
-=======
 Two backends are offered:
 
 * Triton-backed ``token_dispatch`` / ``token_combine`` - uses the
@@ -22,7 +20,6 @@ Both backends support optional alignment padding (``align_size > 0``) so each
 expert's group size is a multiple of ``align_size``, which is required for
 quantized grouped GEMMs.
 
->>>>>>> dev
 Token Dispatch (Permute):
     - Forward: Permute tokens according to routing map (scatter to experts)
     - Backward: Unpermute gradients (gather from experts)
@@ -33,28 +30,11 @@ Token Combine (Unpermute):
 """
 
 from functools import partial
-<<<<<<< HEAD
-from typing import Optional, Tuple
-=======
 from typing import NamedTuple, Optional, Tuple
->>>>>>> dev
 
 import jax
 import jax.numpy as jnp
 
-<<<<<<< HEAD
-from transformer_engine.jax.triton_extensions.permutation import (
-    make_row_id_map,
-    permute_with_mask_map,
-    permute_with_mask_map_and_pad,
-    unpermute_with_mask_map,
-    unpermute_with_mask_map_and_unpad,
-    unpermute_bwd_with_merging_probs,
-    unpermute_bwd_with_merging_probs_and_unpad,
-    make_chunk_sort_map,
-    sort_chunks_by_map,
-)
-=======
 # Triton-backed primitives are imported lazily: they require ``triton``
 # which we do not want as a hard install dependency for the pure-JAX
 # permutation backend. Anything that touches one of these symbols must
@@ -103,14 +83,11 @@ def _require_triton_permutation():
             " PermutationBackend.PURE_JAX."
         )
 
->>>>>>> dev
 
 __all__ = [
     "token_dispatch",
     "token_combine",
     "sort_chunks_by_index",
-<<<<<<< HEAD
-=======
     "pure_jax_token_dispatch",
     "pure_jax_token_combine",
     "PureJaxPermState",
@@ -120,7 +97,6 @@ __all__ = [
     "local_permute_after_a2a",
     "local_unpermute_before_a2a",
     "routing_map_to_selected_experts",
->>>>>>> dev
 ]
 
 
@@ -156,13 +132,7 @@ def token_dispatch(
         Routing mask of shape [batch, sequence, num_experts] or [num_tokens, num_experts].
         Values: 1 = routed, 0 = not routed.
     num_out_tokens : int
-<<<<<<< HEAD
-        The number of output tokens after permutation (before padding). For the dropless
-        case, this should be equal to the sum of routing_map. Must be provided explicitly
-        for JIT compatibility since output shape must be known at compile time.
-=======
         Number of output tokens (rows in the permuted buffer, before padding). Must be > 0, e.g. int(jnp.sum(routing_map)) or num_tokens * top_k. Must be a compile-time constant for JIT.
->>>>>>> dev
     probs : Optional[jnp.ndarray]
         Optional routing probabilities of shape [batch, sequence, num_experts] or
         [num_tokens, num_experts]. If provided, permuted_probs will be returned.
@@ -208,11 +178,8 @@ def token_dispatch(
     ((num_out_tokens + num_experts * (align_size - 1)) // align_size) * align_size
     This accounts for the maximum possible padding when each expert needs (align_size - 1)
     extra tokens to align, rounded down to align_size for buffer alignment.
-<<<<<<< HEAD
-=======
 
     Non-positive num_out_tokens (e.g. -1) raises AssertionError.
->>>>>>> dev
     """
     use_padding = align_size is not None
     num_experts = routing_map.shape[-1]
@@ -226,14 +193,11 @@ def token_dispatch(
     else:
         worst_case_out_tokens = num_out_tokens
 
-<<<<<<< HEAD
-=======
     assert num_out_tokens > 0, (
         f"token_dispatch requires num_out_tokens > 0, got {num_out_tokens}. "
         "Use int(jnp.sum(routing_map)) or num_tokens * top_k."
     )
 
->>>>>>> dev
     return _token_dispatch(
         inp, routing_map, probs, num_out_tokens, worst_case_out_tokens, align_size, use_padding
     )
@@ -750,8 +714,6 @@ def _sort_chunks_by_index_bwd_rule(
 
 
 _sort_chunks_by_index.defvjp(_sort_chunks_by_index_fwd_rule, _sort_chunks_by_index_bwd_rule)
-<<<<<<< HEAD
-=======
 
 
 # =============================================================================
@@ -1389,4 +1351,3 @@ def local_unpermute_before_a2a(
         state["inverse_chunk_indices"],
     )
     return out
->>>>>>> dev

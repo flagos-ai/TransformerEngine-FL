@@ -20,12 +20,9 @@ from transformer_engine.pytorch import (
 from transformer_engine.pytorch.constants import TE_DType_To_Torch
 import transformer_engine_torch as tex
 
-<<<<<<< HEAD
-=======
 # Import test utilities
 from utils import assert_close
 
->>>>>>> dev
 # Check available recipes
 fp8_available, reason_for_no_fp8 = te.is_fp8_available(return_reason=True)
 fp8_block_scaling_available, reason_for_no_fp8_block_scaling = te.is_fp8_block_scaling_available(
@@ -67,29 +64,17 @@ def make_quantizer(quantization: str, num_tensors: int, shape: List[Tuple[int, i
         quantizer = Float8Quantizer(
             scale=torch.ones(1, dtype=torch.float32, device="cuda"),
             amax=torch.zeros(1, dtype=torch.float32, device="cuda"),
-<<<<<<< HEAD
-            fp8_dtype=tex.DType.kFloat8E4M3,
-        )
-    elif quantization == "fp8_current_scaling":
-        quantizer = Float8CurrentScalingQuantizer(
-            fp8_dtype=tex.DType.kFloat8E4M3,
-=======
             fp8_dtype=te.DType.kFloat8E4M3,
         )
     elif quantization == "fp8_current_scaling":
         quantizer = Float8CurrentScalingQuantizer(
             fp8_dtype=te.DType.kFloat8E4M3,
->>>>>>> dev
             device="cuda",
         )
         quantizer.set_usage(rowwise=True, columnwise=False)
     elif quantization == "fp8_blockwise":
         quantizer = Float8BlockQuantizer(
-<<<<<<< HEAD
-            fp8_dtype=tex.DType.kFloat8E4M3,
-=======
             fp8_dtype=te.DType.kFloat8E4M3,
->>>>>>> dev
             rowwise=True,
             columnwise=False,
             force_pow_2_scales=True,
@@ -97,11 +82,7 @@ def make_quantizer(quantization: str, num_tensors: int, shape: List[Tuple[int, i
             block_scaling_dim=1,
         )
     elif quantization == "mxfp8":
-<<<<<<< HEAD
-        quantizer = MXFP8Quantizer(fp8_dtype=tex.DType.kFloat8E4M3)
-=======
         quantizer = MXFP8Quantizer(fp8_dtype=te.DType.kFloat8E4M3)
->>>>>>> dev
     elif quantization == "nvfp4":
         quantizer = NVFP4Quantizer(
             with_rht=False,
@@ -185,8 +166,6 @@ class TestGroupedTensor:
             shape[0][1],
         )  # sum of first dims
 
-<<<<<<< HEAD
-=======
     @pytest.mark.parametrize(
         "split_sizes_list,logical_last_dim",
         [
@@ -274,7 +253,6 @@ class TestGroupedTensor:
                 output.data_ptr() % 16 == 0
             ), f"outputs[{idx}] data_ptr is not 16-byte aligned: {output.data_ptr():#x}"
 
->>>>>>> dev
     def test_split_into_quantized_tensors_no_quantization(self) -> None:
         """Test split_into_quantized_tensors for unquantized tensors"""
         num_tensors = 3
@@ -481,11 +459,7 @@ class TestGroupedTensor:
         grouped_input = torch.cat(input_tensors, dim=0)
 
         # Create MXFP8 output grouped tensor (rowwise only for easier validation)
-<<<<<<< HEAD
-        quantizer = MXFP8Quantizer(fp8_dtype=tex.DType.kFloat8E4M3)
-=======
         quantizer = MXFP8Quantizer(fp8_dtype=te.DType.kFloat8E4M3)
->>>>>>> dev
         quantizer.set_usage(rowwise=True, columnwise=False)
         first_dims = torch.tensor(
             [shape[0][0] for _ in range(num_tensors)],
@@ -528,8 +502,6 @@ class TestGroupedTensor:
 
     @pytest.mark.parametrize("output_dbias", [False, True])
     @pytest.mark.skipif(not mxfp8_available, reason=reason_for_no_mxfp8)
-<<<<<<< HEAD
-=======
     def test_group_quantize_precomputed_offsets(self, output_dbias: bool) -> None:
         """Test grouped quantization can reuse caller-provided tensor offsets."""
         num_tensors = 2
@@ -609,7 +581,6 @@ class TestGroupedTensor:
 
     @pytest.mark.parametrize("output_dbias", [False, True])
     @pytest.mark.skipif(not mxfp8_available, reason=reason_for_no_mxfp8)
->>>>>>> dev
     def test_group_quantize_cudagraph_capturable(self, output_dbias: bool) -> None:
         """Ensure group_quantize is CUDA graph capturable."""
         num_tensors = 2
@@ -617,11 +588,7 @@ class TestGroupedTensor:
         input_tensors = [torch.randn(s, dtype=torch.bfloat16, device="cuda") for s in shape]
         grouped_input = torch.cat(input_tensors, dim=0)
 
-<<<<<<< HEAD
-        quantizer = MXFP8Quantizer(fp8_dtype=tex.DType.kFloat8E4M3)
-=======
         quantizer = MXFP8Quantizer(fp8_dtype=te.DType.kFloat8E4M3)
->>>>>>> dev
         quantizer.set_usage(rowwise=True, columnwise=False)
         first_dims = torch.tensor(
             [shape[0][0] for _ in range(num_tensors)],
@@ -681,8 +648,6 @@ class TestGroupedTensor:
         if output_dbias:
             assert torch.allclose(static_dbias, expected_dbias)
 
-<<<<<<< HEAD
-=======
     @pytest.mark.parametrize(
         "shape",
         [[(512, 1024), (512, 1024)], [(256, 512), (512, 512), (768, 512)]],
@@ -764,7 +729,6 @@ class TestGroupedTensor:
         for exp, got in zip(expected_tensors, static_tensors):
             assert torch.equal(got, exp)
 
->>>>>>> dev
     def test_clear(self) -> None:
         """Test clear method"""
         num_tensors = 3

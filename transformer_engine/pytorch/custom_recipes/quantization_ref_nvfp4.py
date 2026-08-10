@@ -18,18 +18,12 @@ def nvfp4_ref_rht_2d_quantizer_factory(role):
     """
     Quantizer factory for NVFP4 recipe reference implementation (RHT and 2D quantization for weights).
 
-<<<<<<<< HEAD:transformer_engine/pytorch/custom_recipes/quantization_nvfp4.py
-    Usage with CustomRecipe and autocast:
-        custom_recipe = recipe.CustomRecipe(qfactory=nvfp4_ref_rht_2d_quantizer_factory)
-        with autocast(fp8_recipe=custom_recipe):
-========
     Receives a :class:`~transformer_engine.pytorch.quantization.QuantizerRole`.
 
     Usage with CustomRecipe and autocast::
 
         custom_recipe = recipe.CustomRecipe(qfactory=nvfp4_ref_rht_2d_quantizer_factory)
         with autocast(recipe=custom_recipe):
->>>>>>>> dev:transformer_engine/pytorch/custom_recipes/quantization_ref_nvfp4.py
             output = model(input)
     """
     is_weight_tensor_in_gemm = (
@@ -738,10 +732,6 @@ class NVFP4QuantizerRef(Quantizer):
                     global_encode_scale,
                 )
             global_decode_scale = torch.div(1.0, global_encode_scale)
-<<<<<<<< HEAD:transformer_engine/pytorch/custom_recipes/quantization_nvfp4.py
-            global_encode_scale_multiplier = global_encode_scale * torch.reciprocal(FLOAT4_E2M1_MAX)
-
-========
             if nvfp4_use_4over6:
                 # FourOverSix compares map-to-4 and map-to-6 candidates using
                 # the configured error mode, while keeping TE-style FP4
@@ -761,7 +751,6 @@ class NVFP4QuantizerRef(Quantizer):
 
             global_encode_scale_multiplier = global_encode_scale * torch.reciprocal(FLOAT4_E2M1_MAX)
 
->>>>>>>> dev:transformer_engine/pytorch/custom_recipes/quantization_ref_nvfp4.py
             # Match the kernel's default path: fold the FP4 reciprocal into the
             # global scale multiplier, but keep the final reciprocal exact.
             decode_scale = vec_max * global_encode_scale_multiplier
@@ -869,11 +858,8 @@ class NVFP4QuantizerRef(Quantizer):
                 raise ValueError(
                     f"MXFP4 only supports 1x32 tile shape, got {self.quant_tile_shape}"
                 )
-<<<<<<<< HEAD:transformer_engine/pytorch/custom_recipes/quantization_nvfp4.py
-========
             if self.row_scaled_nvfp4:
                 raise ValueError("Row-scaled NVFP4 is only supported for NVFP4 (non-pow2) mode.")
->>>>>>>> dev:transformer_engine/pytorch/custom_recipes/quantization_ref_nvfp4.py
             # TODO(etsykunov): Fix bug where global_amax_row and
             # global_amax_col are not defined
             # global_amax = torch.empty(0, device=tensor.device, dtype=torch.float32)

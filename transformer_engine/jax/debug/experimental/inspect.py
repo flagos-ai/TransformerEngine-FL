@@ -8,10 +8,7 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 from jax import ffi
-<<<<<<< HEAD
-=======
 from jax.sharding import NamedSharding, PartitionSpec
->>>>>>> dev
 
 from transformer_engine.jax.cpp_extensions.base import BasePrimitive, register_primitive
 
@@ -25,13 +22,9 @@ class InspectPrimitive(BasePrimitive):
 
     name = "te_inspect_ffi"
     multiple_results = False
-<<<<<<< HEAD
-    impl_static_args = ()
-=======
     # ``name`` is positional (index 5 in ``impl``) so ``custom_partitioning``
     # can resolve ``bind(..., name=...)`` kwargs back to that position.
     impl_static_args = (5,)
->>>>>>> dev
     inner_primitive = None
     outer_primitive = None
 
@@ -42,19 +35,13 @@ class InspectPrimitive(BasePrimitive):
         x_max_aval,
         x_mean_aval,
         x_std_aval,
-<<<<<<< HEAD
-=======
         *,
         name,
->>>>>>> dev
     ):
         """
         inspect abstract
         """
-<<<<<<< HEAD
-=======
         del name
->>>>>>> dev
         assert (
             x_min_aval.shape == () and x_min_aval.dtype == jnp.float32
         ), "x_min must be a scalar with dtype float32"
@@ -77,11 +64,8 @@ class InspectPrimitive(BasePrimitive):
         x_max,
         x_mean,
         x_std,
-<<<<<<< HEAD
-=======
         *,
         name,
->>>>>>> dev
     ):
         """
         inspect lowering rules
@@ -97,10 +81,7 @@ class InspectPrimitive(BasePrimitive):
             x_max,
             x_mean,
             x_std,
-<<<<<<< HEAD
-=======
             name=name,
->>>>>>> dev
         )
 
     @staticmethod
@@ -110,30 +91,16 @@ class InspectPrimitive(BasePrimitive):
         x_max,
         x_mean,
         x_std,
-<<<<<<< HEAD
-    ):
-        """
-        inspect implementation
-        """
-        assert InspectPrimitive.inner_primitive is not None
-        (x) = InspectPrimitive.inner_primitive.bind(
-=======
         name,
     ):
         """inspect implementation"""
         assert InspectPrimitive.inner_primitive is not None
         x = InspectPrimitive.inner_primitive.bind(
->>>>>>> dev
             x,
             x_min,
             x_max,
             x_mean,
             x_std,
-<<<<<<< HEAD
-        )
-        return x
-
-=======
             name=name,
         )
         return x
@@ -164,16 +131,11 @@ class InspectPrimitive(BasePrimitive):
         del args
         return "..., , , , -> ..."
 
->>>>>>> dev
 
 register_primitive(InspectPrimitive)
 
 
-<<<<<<< HEAD
-def _inspect_array_inner(x: jnp.ndarray) -> jnp.ndarray:
-=======
 def _inspect_array_inner(x: jnp.ndarray, name: str) -> jnp.ndarray:
->>>>>>> dev
     assert InspectPrimitive.outer_primitive is not None, (
         "InspectPrimitive FFI is not registered. Please ensure the C++ extension is properly built"
         " and registered."
@@ -184,37 +146,6 @@ def _inspect_array_inner(x: jnp.ndarray, name: str) -> jnp.ndarray:
         jnp.max(x).astype(jnp.float32),
         jnp.mean(x.astype(jnp.float32)),
         jnp.std(x.astype(jnp.float32)),
-<<<<<<< HEAD
-    )
-
-
-@partial(jax.custom_vjp, nondiff_argnums=())
-def _inspect(
-    x,
-):
-    """ """
-    output, _ = _inspect_fwd_rule(
-        x,
-    )
-    return output
-
-
-def _inspect_fwd_rule(
-    x,
-):
-    """"""
-    ctx = ()
-    x = _inspect_array_inner(x)
-    return x, ctx
-
-
-def _inspect_bwd_rule(
-    ctx,
-    grad,
-):
-    """"""
-    del ctx
-=======
         name=name,
     )
 
@@ -238,7 +169,6 @@ def _inspect_fwd_rule(x, name):
 def _inspect_bwd_rule(name, ctx, grad):
     """"""
     del name, ctx
->>>>>>> dev
     return (grad,)
 
 
@@ -246,16 +176,6 @@ _inspect.defvjp(_inspect_fwd_rule, _inspect_bwd_rule)
 
 
 def inspect_array(x: jnp.ndarray, name: str) -> jnp.ndarray:
-<<<<<<< HEAD
-    """Utility function to inspect JAX arrays by printing their name, shape, dtype, and statistics.
-
-    Args:
-        x (jnp.ndarray): The JAX array to inspect.
-        name (str): The name of the array for identification in the output.
-    """
-    del name  # Name is currently unused, but can be included in the future for more informative output
-    return _inspect(x)
-=======
     """Inspect a JAX array by dumping its data and stats to disk per-rank.
 
     Each call writes two files per rank, keyed by ``name`` so multiple
@@ -276,7 +196,6 @@ def inspect_array(x: jnp.ndarray, name: str) -> jnp.ndarray:
         name (str): Identifier for this probe; used in filenames and logs.
     """
     return _inspect(x, name)
->>>>>>> dev
 
 
 def load_array_dump(filename: str, shape: tuple, dtype: jnp.dtype) -> jnp.ndarray:

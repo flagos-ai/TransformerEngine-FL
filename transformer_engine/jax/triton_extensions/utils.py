@@ -28,14 +28,11 @@ Environment Variables:
         pytorch-triton for JAX Triton kernels (suppresses warnings). This is
         useful when both JAX and PyTorch are installed in the same environment.
         Default is "0".
-<<<<<<< HEAD
-=======
     NVTE_JAX_ENFORCE_TRITON_AUTOTUNING: If set to "1", raise a RuntimeError when
         the installed JAX is too old to safely run TritonAutotunedKernelCall
         (jax-ml/jax#35218) instead of silently falling back to non-autotuned
         dispatch. Useful for CI or debugging to ensure autotuning is active.
         Default is "0" (silent compatibility fallback).
->>>>>>> dev
 """
 
 import hashlib
@@ -47,25 +44,17 @@ import zlib
 from packaging import version
 
 from jax import core
-<<<<<<< HEAD
-=======
 from jaxlib.mlir import ir
->>>>>>> dev
 import jax
 import jax.numpy as jnp
 
 from ..version_utils import (
-<<<<<<< HEAD
-    TRITON_EXTENSION_MIN_JAX_VERSION,
-    is_triton_extension_supported,
-=======
     TRITON_AUTOTUNED_INPUT_OUTPUT_ALIAS_MIN_JAX_VERSION,
     TRITON_EXTENSION_CUDA_GRAPH_MIN_JAX_VERSION,
     TRITON_EXTENSION_MIN_JAX_VERSION,
     is_triton_autotuned_alias_safe,
     is_triton_extension_supported,
     jax_version_meet_requirement,
->>>>>>> dev
 )
 
 
@@ -150,9 +139,6 @@ def _check_triton_compatibility():
             "If you don't need Triton, use transformer_engine.jax.cpp_extensions instead."
         )
 
-<<<<<<< HEAD
-    use_pytorch_triton_explicit = bool(int(os.environ.get("NVTE_USE_PYTORCH_TRITON", "0")))
-=======
     val = os.environ.get("NVTE_USE_PYTORCH_TRITON", "0")
     try:
         use_pytorch_triton_explicit = bool(int(val))
@@ -160,7 +146,6 @@ def _check_triton_compatibility():
         raise ValueError(
             f"NVTE_USE_PYTORCH_TRITON must be an integer (0 or 1), got: {val!r}"
         ) from e
->>>>>>> dev
 
     if is_pytorch_triton:
         if use_pytorch_triton_explicit:
@@ -238,9 +223,6 @@ def get_triton_info():
         if info['is_pytorch_triton']:
              print("Using pytorch-triton - compatible with both PyTorch and JAX")
     """
-<<<<<<< HEAD
-    env_acknowledged = bool(int(os.environ.get("NVTE_USE_PYTORCH_TRITON", "0")))
-=======
     val = os.environ.get("NVTE_USE_PYTORCH_TRITON", "0")
     try:
         env_acknowledged = bool(int(val))
@@ -248,7 +230,6 @@ def get_triton_info():
         raise ValueError(
             f"NVTE_USE_PYTORCH_TRITON must be an integer (0 or 1), got: {val!r}"
         ) from e
->>>>>>> dev
 
     return {
         "version": _TRITON_VERSION,
@@ -412,9 +393,6 @@ def triton_call_lowering(
         ctx: MLIR lowering context
         kernel_fn: Triton kernel function
         *array_args: Input arrays (from ctx)
-<<<<<<< HEAD
-        grid: Grid dimensions (int or tuple)
-=======
         grid: Grid dimensions. May be either:
             - an int or tuple (fixed grid for every config), or
             - a callable ``meta -> int|tuple`` (evaluated per autotune config).
@@ -425,7 +403,6 @@ def triton_call_lowering(
             kernel will either over-launch (waste) or under-cover. ``meta`` is
             the merged dict ``{**constexprs, **config.kwargs}`` for the chosen
             config — the same convention as jax-triton's ``triton_call``.
->>>>>>> dev
         input_output_aliases: Mapping of input to output aliases
         constexprs: Compile-time constants for the kernel. This includes both
                     tl.constexpr arguments AND scalar runtime arguments (like
@@ -439,22 +416,12 @@ def triton_call_lowering(
         def lowering(ctx, x, *, block_size):
             from ..triton_extensions import triton_call_lowering
             n = ctx.avals_in[0].size
-<<<<<<< HEAD
-            return triton_call_lowering(
-                ctx, my_kernel, x,
-                grid=(triton.cdiv(n, block_size),),
-                constexprs={
-                    "n_elements": n,  # scalar arg (not tl.constexpr in kernel)
-                    "BLOCK_SIZE": block_size,  # tl.constexpr arg
-                },
-=======
 
             def grid(meta):
                 return (triton.cdiv(n, meta["BLOCK_SIZE"]),)
 
             return triton_call_lowering(
                 ctx, my_kernel, x, grid=grid, constexprs={"n_elements": n},
->>>>>>> dev
             )
     """
     # Get compute capability using gpu_triton
@@ -475,29 +442,6 @@ def triton_call_lowering(
     tensor_arg_names = [n for n in arg_names if n not in constexpr_names]
     signature = {n: get_triton_dtype(a) for n, a in zip(tensor_arg_names, all_avals)}
 
-<<<<<<< HEAD
-    # Normalize grid to 3D
-    if isinstance(grid, int):
-        grid_tuple = (grid, 1, 1)
-    elif len(grid) == 1:
-        grid_tuple = (grid[0], 1, 1)
-    elif len(grid) == 2:
-        grid_tuple = (grid[0], grid[1], 1)
-    else:
-        grid_tuple = grid[:3]
-
-    # Default values for the kernel
-    actual_kernel_fn = kernel_fn
-    num_warps = 32
-    num_stages = (
-        1  # TODO(Phuong): consider if it is beneficial to expose num_warps, num_stages, num_ctas
-    )
-    num_ctas = 1
-    kernel_constexprs = constexprs if constexprs is not None else {}
-
-    # Handle autotuned kernels - compile all configs
-    is_autotuned = isinstance(kernel_fn, autotuner.Autotuner)
-=======
     assert callable(grid) or isinstance(grid, tuple), (
         "Argument 'grid' must be a tuple or a callable but received: "
         f"type={type(grid)}, value={grid}"
@@ -562,7 +506,6 @@ def triton_call_lowering(
         # CUDA_ERROR_INVALID_VALUE from the unfixed save/restore loop.
         is_autotuned = False
 
->>>>>>> dev
     if is_autotuned:
         # Compile all configs for runtime selection
         kernel_calls = []
@@ -574,15 +517,10 @@ def triton_call_lowering(
             config_num_stages = config.num_stages if config.num_stages is not None else num_stages
             config_num_ctas = config.num_ctas if config.num_ctas is not None else num_ctas
 
-<<<<<<< HEAD
-            # Merge config kwargs with user constexprs
-            config_constexprs = {**config.kwargs, **(constexprs if constexprs else {})}
-=======
             # Config kwargs (e.g. BLOCK_SIZE) take priority over caller constexprs so that
             # each autotuning candidate actually compiles with its own BLOCK_SIZE rather than
             # having the caller-supplied grid BLOCK_SIZE override every config.
             config_constexprs = {**(constexprs if constexprs else {}), **config.kwargs}
->>>>>>> dev
 
             # Compile this config
             config_kernel = compile_triton(
@@ -601,13 +539,6 @@ def triton_call_lowering(
             for _ in list(ctx.avals_in) + list(ctx.avals_out):
                 config_params.append(gpu_triton.create_array_parameter(0, 16))
 
-<<<<<<< HEAD
-            config_call = gpu_triton.TritonKernelCall(
-                config_kernel,
-                grid_tuple[0],
-                grid_tuple[1],
-                grid_tuple[2],
-=======
             # Per-config grid: evaluate `grid(meta)` if grid is a callable so
             # the launch shape matches this config's BLOCK_SIZE (etc.).
             if grid_callable is not None:
@@ -620,35 +551,11 @@ def triton_call_lowering(
                 config_grid[0],
                 config_grid[1],
                 config_grid[2],
->>>>>>> dev
                 config_params,
             )
 
             kernel_calls.append((config_call, str(config)))
 
-<<<<<<< HEAD
-        # IMPORTANT: We pass an empty tuple for input_output_aliases_with_sizes.
-        #
-        # Background:
-        # 1. jax.ffi.ffi_lowering(operand_output_aliases=...) is a HINT to XLA that an
-        #    output can reuse an input's buffer. XLA may or may not honor this.
-        # 2. TritonAutotunedKernelCall's input_output_aliases_with_sizes triggers
-        #    save/restore logic during autotuning (see jaxlib/gpu/triton_kernels.cc:630-701).
-        #
-        # The problem: The save phase (triton_kernels.cc:632) only saves if buffers[input_idx] == buffers[output_idx],
-        # but the restore phase (triton_kernels.cc:697-700) unconditionally iterates over all aliases and tries
-        # to access input_copies[input_idx]. If XLA didn't actually alias the buffers, input_copies[input_idx] doesn't exist, creating an empty vector whose .data() returns nullptr, causing CUDA_ERROR_INVALID_VALUE during the restore memcpy.
-        #
-        # WAR: Don't pass aliases to TritonAutotunedKernelCall.
-        kernel_call = gpu_triton.TritonAutotunedKernelCall(
-            f"{actual_kernel_fn.__name__}_autotuned",
-            kernel_calls,
-            (),  # Empty to avoid buggy save/restore in jaxlib/gpu/triton_kernels.cc
-        )
-
-    else:
-        # Regular kernel: compile single config
-=======
         input_output_aliases_with_sizes = ()
         if input_output_aliases:
             # JAX version is guaranteed >= TRITON_AUTOTUNED_INPUT_OUTPUT_ALIAS_MIN_JAX_VERSION
@@ -686,7 +593,6 @@ def triton_call_lowering(
                 )
                 num_ctas = first_cfg.num_ctas if first_cfg.num_ctas is not None else num_ctas
 
->>>>>>> dev
         kernel = compile_triton(
             actual_kernel_fn,
             signature,
@@ -702,13 +608,6 @@ def triton_call_lowering(
         for _ in list(ctx.avals_in) + list(ctx.avals_out):
             kernel_params.append(gpu_triton.create_array_parameter(0, 16))
 
-<<<<<<< HEAD
-        kernel_call = gpu_triton.TritonKernelCall(
-            kernel,
-            grid_tuple[0],
-            grid_tuple[1],
-            grid_tuple[2],
-=======
         # Non-autotuned dispatch: evaluate `grid(meta)` once with the merged
         # constexprs (which already reflect the single config we'll launch).
         if grid_callable is not None:
@@ -721,7 +620,6 @@ def triton_call_lowering(
             single_grid[0],
             single_grid[1],
             single_grid[2],
->>>>>>> dev
             kernel_params,
         )
 
@@ -733,15 +631,6 @@ def triton_call_lowering(
     else:
         ffi_operand_output_aliases = None
 
-<<<<<<< HEAD
-    # Use JAX FFI lowering with compressed protobuf
-    rule = jax.ffi.ffi_lowering(
-        "triton_kernel_call",  # Custom call target registered in gpu_triton.py
-        api_version=2,
-        backend_config=zlib.compress(call_proto),
-        operand_output_aliases=ffi_operand_output_aliases,
-    )
-=======
     compressed_call_proto = zlib.compress(call_proto)
     if not used_autotuned_launch and jax_version_meet_requirement(
         TRITON_EXTENSION_CUDA_GRAPH_MIN_JAX_VERSION
@@ -758,6 +647,5 @@ def triton_call_lowering(
             backend_config=compressed_call_proto,
             operand_output_aliases=ffi_operand_output_aliases,
         )
->>>>>>> dev
 
     return rule(ctx, *array_args)

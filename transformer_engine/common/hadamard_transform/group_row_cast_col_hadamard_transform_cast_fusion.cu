@@ -46,13 +46,8 @@ namespace {
 
 using namespace cute;
 
-<<<<<<< HEAD
-// Ensure Tensor refers to cute::Tensor, not transformer_engine::Tensor
-using cute::Tensor;
-=======
 using cute::Shape;   // Avoid conflict with transformer_engine::Shape
 using cute::Tensor;  // Avoid conflict with transformer_engine::Tensor
->>>>>>> dev
 
 constexpr int kMaxTensorsPerKernel = 64;
 
@@ -1378,11 +1373,7 @@ void group_hadamard_transform_cast_fusion(const Tensor &input_, std::vector<Tens
     const Tensor &rng_state_tensor = *convertNVTETensorCheck(quant_config.rng_state);
     NVTE_CHECK(rng_state_tensor.dtype() == DType::kInt64,
                "RNG state should contain 2 64-bit values.");
-<<<<<<< HEAD
-    NVTE_CHECK(rng_state_tensor.data.shape == std::vector<size_t>{2},
-=======
     NVTE_CHECK(rng_state_tensor.data.shape == Shape{2},
->>>>>>> dev
                "Shape of the RNG state should be [2], but got ", rng_state_tensor.data.shape);
     rng_state = reinterpret_cast<const size_t *>(rng_state_tensor.data.dptr);
   }
@@ -1410,17 +1401,9 @@ void group_hadamard_transform_cast_fusion(const Tensor &input_, std::vector<Tens
              "Hadamard matrix must be BF16 tensor, but dtype is ",
              to_string(hadamard_matrix_.dtype()), ".");
   const SimpleTensor &hadamard_matrix = hadamard_matrix_.data;
-<<<<<<< HEAD
-  NVTE_CHECK(
-      (hadamard_matrix_.shape() == std::vector<size_t>{kHadamardDimension, kHadamardDimension}),
-      "Hadamard matrix must have shape=",
-      std::vector<size_t>{kHadamardDimension, kHadamardDimension},
-      ", but got shape=", hadamard_matrix_.shape(), ".");
-=======
   NVTE_CHECK((hadamard_matrix_.shape() == Shape{kHadamardDimension, kHadamardDimension}),
              "Hadamard matrix must have shape=", Shape{kHadamardDimension, kHadamardDimension},
              ", but got shape=", hadamard_matrix_.shape(), ".");
->>>>>>> dev
   const size_t hadamard_dimension = hadamard_matrix.shape[0];
 
   const size_t ndim = input.shape.size();
@@ -1438,9 +1421,6 @@ void group_hadamard_transform_cast_fusion(const Tensor &input_, std::vector<Tens
 
   int k_tile_size = 1024;
 
-<<<<<<< HEAD
-  const bool use_swizzle_sf_output = false;
-=======
   // Honor the per-tensor with_gemm_swizzled_scales flag. The SF layout is
   // selected at compile time via the kEnableSwizzleSFOutput template
   // parameter, so all output tensors in the group must share the same flag
@@ -1455,7 +1435,6 @@ void group_hadamard_transform_cast_fusion(const Tensor &input_, std::vector<Tens
                "with_gemm_swizzled_scales flag (mismatch at index ",
                i, ").");
   }
->>>>>>> dev
 
   TRANSFORMER_ENGINE_SWITCH_CONDITION(
       use_stochastic_rounding, kEnableStochasticRounding,

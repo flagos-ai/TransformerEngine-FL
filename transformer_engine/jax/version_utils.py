@@ -25,8 +25,6 @@ def jax_version_meet_requirement(version: str):
 # Minimum JAX version required for Triton kernel dispatch (jaxlib < 0.8.0 segfaults).
 TRITON_EXTENSION_MIN_JAX_VERSION = "0.8.0"
 
-<<<<<<< HEAD
-=======
 # Minimum JAX version for non-legacy Triton kernel FFI (supports CUDA graph capture).
 TRITON_EXTENSION_CUDA_GRAPH_MIN_JAX_VERSION = "0.10.1"
 
@@ -65,7 +63,6 @@ def is_triton_autotuned_alias_safe() -> bool:
         return v >= PkgVersion(_TRITON_AUTOTUNED_ALIAS_NIGHTLY_FLOOR)
     return v >= PkgVersion(_TRITON_AUTOTUNED_ALIAS_STABLE_FLOOR)
 
->>>>>>> dev
 
 def is_triton_extension_supported() -> bool:
     """Return True if the current JAX version supports Triton kernel dispatch.
@@ -79,14 +76,9 @@ def is_triton_extension_supported() -> bool:
 
 __all__ = [
     "jax_version_meet_requirement",
-<<<<<<< HEAD
-    "is_triton_extension_supported",
-    "TRITON_EXTENSION_MIN_JAX_VERSION",
-=======
     "is_triton_autotuned_alias_safe",
     "is_triton_extension_supported",
     "TRITON_EXTENSION_MIN_JAX_VERSION",
     "TRITON_EXTENSION_CUDA_GRAPH_MIN_JAX_VERSION",
     "TRITON_AUTOTUNED_INPUT_OUTPUT_ALIAS_MIN_JAX_VERSION",
->>>>>>> dev
 ]

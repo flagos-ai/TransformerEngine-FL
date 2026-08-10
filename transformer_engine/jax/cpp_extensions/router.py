@@ -7,21 +7,14 @@ from enum import IntEnum
 import jax.numpy as jnp
 from jax import dtypes, ffi
 from jax.sharding import NamedSharding, PartitionSpec
-<<<<<<< HEAD
-from transformer_engine_jax import JAXX_Score_Function
-=======
 from transformer_engine_jax import JAXX_Routing_Map_Format, JAXX_Score_Function
->>>>>>> dev
 
 from .base import BasePrimitive, register_primitive
 from .misc import get_padded_spec
 
 __all__ = [
     "ScoreFunction",
-<<<<<<< HEAD
-=======
     "RoutingMapFormat",
->>>>>>> dev
     "fused_topk_with_score_function_fwd",
     "fused_topk_with_score_function_bwd",
     "fused_moe_aux_loss_fwd",
@@ -36,8 +29,6 @@ class ScoreFunction(IntEnum):
     SOFTMAX = int(JAXX_Score_Function.SOFTMAX)
 
 
-<<<<<<< HEAD
-=======
 class RoutingMapFormat(IntEnum):
     """Routing-map output layout, synced with C++ JAXX_Routing_Map_Format / NVTERoutingMapFormat.
 
@@ -51,7 +42,6 @@ class RoutingMapFormat(IntEnum):
     BITMAP_U8 = int(JAXX_Routing_Map_Format.BITMAP_U8)
 
 
->>>>>>> dev
 # =========================================== ==================================
 # Fused Top-K with Score Function - Forward
 # =============================================================================
@@ -74,13 +64,9 @@ class FusedTopkWithScoreFunctionFwdPrimitive(BasePrimitive):
         6,
         7,
         8,
-<<<<<<< HEAD
-    )  # topk, use_pre_softmax, num_groups, group_topk, scaling_factor, score_function, compute_aux_scores
-=======
         9,
     )  # topk, use_pre_softmax, num_groups, group_topk, scaling_factor, score_function,
     #   compute_aux_scores, routing_map_format
->>>>>>> dev
     inner_primitive = None
     outer_primitive = None
 
@@ -95,10 +81,7 @@ class FusedTopkWithScoreFunctionFwdPrimitive(BasePrimitive):
         scaling_factor,
         score_function,
         compute_aux_scores,
-<<<<<<< HEAD
-=======
         routing_map_format,
->>>>>>> dev
     ):
         """Abstract evaluation: describe output shapes and dtypes."""
         del expert_bias_aval, topk, use_pre_softmax, num_groups, group_topk
@@ -106,9 +89,6 @@ class FusedTopkWithScoreFunctionFwdPrimitive(BasePrimitive):
         i_dtype = dtypes.canonicalize_dtype(logits_aval.dtype)
         i_shape = logits_aval.shape
         probs_aval = logits_aval.update(shape=i_shape, dtype=i_dtype)
-<<<<<<< HEAD
-        routing_map_aval = logits_aval.update(shape=i_shape, dtype=jnp.bool_)
-=======
         # routing_map shape/dtype depends on the format. In BITMAP_U8 mode the
         # expert axis is bit-packed LSB-first into uint8 bytes, so the trailing
         # dim becomes ceil(num_experts/8).
@@ -118,7 +98,6 @@ class FusedTopkWithScoreFunctionFwdPrimitive(BasePrimitive):
             routing_map_aval = logits_aval.update(shape=routing_map_shape, dtype=jnp.uint8)
         else:
             routing_map_aval = logits_aval.update(shape=i_shape, dtype=jnp.bool_)
->>>>>>> dev
         # The CUDA kernel always uses float32 (CompType) for intermediate
         # computations (softmax/sigmoid values saved for backward).
         intermediate_aval = logits_aval.update(shape=i_shape, dtype=jnp.float32)
@@ -137,10 +116,7 @@ class FusedTopkWithScoreFunctionFwdPrimitive(BasePrimitive):
         scaling_factor,
         score_function,
         compute_aux_scores,
-<<<<<<< HEAD
-=======
         routing_map_format,
->>>>>>> dev
     ):
         return ffi.ffi_lowering(FusedTopkWithScoreFunctionFwdPrimitive.name)(
             ctx,
@@ -153,10 +129,7 @@ class FusedTopkWithScoreFunctionFwdPrimitive(BasePrimitive):
             scaling_factor=scaling_factor,
             score_function=score_function,
             compute_aux_scores=compute_aux_scores,
-<<<<<<< HEAD
-=======
             routing_map_format=routing_map_format,
->>>>>>> dev
         )
 
     @staticmethod
@@ -170,10 +143,7 @@ class FusedTopkWithScoreFunctionFwdPrimitive(BasePrimitive):
         scaling_factor,
         score_function,
         compute_aux_scores,
-<<<<<<< HEAD
-=======
         routing_map_format,
->>>>>>> dev
     ):
         if FusedTopkWithScoreFunctionFwdPrimitive.inner_primitive is None:
             raise RuntimeError(
@@ -189,10 +159,7 @@ class FusedTopkWithScoreFunctionFwdPrimitive(BasePrimitive):
             scaling_factor=scaling_factor,
             score_function=score_function,
             compute_aux_scores=compute_aux_scores,
-<<<<<<< HEAD
-=======
             routing_map_format=routing_map_format,
->>>>>>> dev
         )
 
     @staticmethod
@@ -207,10 +174,7 @@ class FusedTopkWithScoreFunctionFwdPrimitive(BasePrimitive):
         scaling_factor,
         score_function,
         compute_aux_scores,
-<<<<<<< HEAD
-=======
         routing_map_format,
->>>>>>> dev
     ):
         if FusedTopkWithScoreFunctionFwdPrimitive.outer_primitive is None:
             raise RuntimeError(
@@ -229,10 +193,7 @@ class FusedTopkWithScoreFunctionFwdPrimitive(BasePrimitive):
                 scaling_factor=scaling_factor,
                 score_function=score_function,
                 compute_aux_scores=compute_aux_scores,
-<<<<<<< HEAD
-=======
                 routing_map_format=routing_map_format,
->>>>>>> dev
             ),
             (logits_bdim, logits_bdim, logits_bdim),
         )
@@ -246,10 +207,7 @@ class FusedTopkWithScoreFunctionFwdPrimitive(BasePrimitive):
         scaling_factor,
         score_function,
         compute_aux_scores,
-<<<<<<< HEAD
-=======
         routing_map_format,
->>>>>>> dev
         mesh,
         arg_infos,
         result_infos,
@@ -257,9 +215,6 @@ class FusedTopkWithScoreFunctionFwdPrimitive(BasePrimitive):
         del result_infos
         logits_spec = get_padded_spec(arg_infos[0])
         out_sharding = NamedSharding(mesh, PartitionSpec(*logits_spec))
-<<<<<<< HEAD
-        routing_sharding = NamedSharding(mesh, PartitionSpec(*logits_spec))
-=======
         # For bitmap mode the trailing dim is ceil(E/8) instead of E. We keep the
         # routing_map sharded the same way logits is along all non-trailing dims
         # and replicate the (now packed) expert axis to avoid sharding mid-byte.
@@ -268,7 +223,6 @@ class FusedTopkWithScoreFunctionFwdPrimitive(BasePrimitive):
         else:
             routing_spec = logits_spec
         routing_sharding = NamedSharding(mesh, PartitionSpec(*routing_spec))
->>>>>>> dev
         intermediate_sharding = NamedSharding(mesh, PartitionSpec(*logits_spec))
         out_shardings = [out_sharding, routing_sharding, intermediate_sharding]
         arg_shardings = (arg_infos[0].sharding, arg_infos[1].sharding)
@@ -284,19 +238,12 @@ class FusedTopkWithScoreFunctionFwdPrimitive(BasePrimitive):
                 scaling_factor,
                 score_function,
                 compute_aux_scores,
-<<<<<<< HEAD
-=======
                 routing_map_format,
->>>>>>> dev
             )
 
         return mesh, sharded_impl, out_shardings, arg_shardings
 
     @staticmethod
-<<<<<<< HEAD
-    def shardy_sharding_rule(*args):
-        del args
-=======
     def shardy_sharding_rule(*args, **kwargs):
         # Static args arrive in impl_static_args order: routing_map_format is the
         # last (8th) static arg. Be defensive about positional-vs-kwarg passing
@@ -313,7 +260,6 @@ class FusedTopkWithScoreFunctionFwdPrimitive(BasePrimitive):
                 "num_tokens num_experts, bias_dim ->"
                 " num_tokens num_experts, num_tokens packed_experts, num_tokens num_experts"
             )
->>>>>>> dev
         return (
             "num_tokens num_experts, bias_dim -> num_tokens num_experts, num_tokens num_experts,"
             " num_tokens num_experts"
@@ -342,12 +288,8 @@ class FusedTopkWithScoreFunctionBwdPrimitive(BasePrimitive):
         5,
         6,
         7,
-<<<<<<< HEAD
-    )  # topk, use_pre_softmax, scaling_factor, score_function, compute_aux_scores
-=======
         8,
     )  # topk, use_pre_softmax, scaling_factor, score_function, compute_aux_scores, routing_map_format
->>>>>>> dev
     inner_primitive = None
     outer_primitive = None
 
@@ -361,16 +303,10 @@ class FusedTopkWithScoreFunctionBwdPrimitive(BasePrimitive):
         scaling_factor,
         score_function,
         compute_aux_scores,
-<<<<<<< HEAD
-    ):
-        del topk, use_pre_softmax, scaling_factor, score_function
-        del compute_aux_scores, routing_map_aval
-=======
         routing_map_format,
     ):
         del topk, use_pre_softmax, scaling_factor, score_function
         del compute_aux_scores, routing_map_aval, routing_map_format
->>>>>>> dev
         return intermediate_aval.update(
             shape=intermediate_aval.shape,
             dtype=dtypes.canonicalize_dtype(grad_probs_aval.dtype),
@@ -388,10 +324,7 @@ class FusedTopkWithScoreFunctionBwdPrimitive(BasePrimitive):
         scaling_factor,
         score_function,
         compute_aux_scores,
-<<<<<<< HEAD
-=======
         routing_map_format,
->>>>>>> dev
     ):
         return ffi.ffi_lowering(FusedTopkWithScoreFunctionBwdPrimitive.name)(
             ctx,
@@ -403,10 +336,7 @@ class FusedTopkWithScoreFunctionBwdPrimitive(BasePrimitive):
             scaling_factor=scaling_factor,
             score_function=score_function,
             compute_aux_scores=compute_aux_scores,
-<<<<<<< HEAD
-=======
             routing_map_format=routing_map_format,
->>>>>>> dev
         )
 
     @staticmethod
@@ -419,10 +349,7 @@ class FusedTopkWithScoreFunctionBwdPrimitive(BasePrimitive):
         scaling_factor,
         score_function,
         compute_aux_scores,
-<<<<<<< HEAD
-=======
         routing_map_format,
->>>>>>> dev
     ):
         if FusedTopkWithScoreFunctionBwdPrimitive.inner_primitive is None:
             raise RuntimeError(
@@ -437,10 +364,7 @@ class FusedTopkWithScoreFunctionBwdPrimitive(BasePrimitive):
             scaling_factor=scaling_factor,
             score_function=score_function,
             compute_aux_scores=compute_aux_scores,
-<<<<<<< HEAD
-=======
             routing_map_format=routing_map_format,
->>>>>>> dev
         )
 
     @staticmethod
@@ -453,10 +377,7 @@ class FusedTopkWithScoreFunctionBwdPrimitive(BasePrimitive):
         scaling_factor,
         score_function,
         compute_aux_scores,
-<<<<<<< HEAD
-=======
         routing_map_format,
->>>>>>> dev
     ):
         if FusedTopkWithScoreFunctionBwdPrimitive.outer_primitive is None:
             raise RuntimeError(
@@ -474,10 +395,7 @@ class FusedTopkWithScoreFunctionBwdPrimitive(BasePrimitive):
                 scaling_factor=scaling_factor,
                 score_function=score_function,
                 compute_aux_scores=compute_aux_scores,
-<<<<<<< HEAD
-=======
                 routing_map_format=routing_map_format,
->>>>>>> dev
             ),
             grad_probs_bdim,
         )
@@ -489,10 +407,7 @@ class FusedTopkWithScoreFunctionBwdPrimitive(BasePrimitive):
         scaling_factor,
         score_function,
         compute_aux_scores,
-<<<<<<< HEAD
-=======
         routing_map_format,
->>>>>>> dev
         mesh,
         arg_infos,
         result_infos,
@@ -512,19 +427,12 @@ class FusedTopkWithScoreFunctionBwdPrimitive(BasePrimitive):
                 scaling_factor,
                 score_function,
                 compute_aux_scores,
-<<<<<<< HEAD
-=======
                 routing_map_format,
->>>>>>> dev
             )
 
         return mesh, sharded_impl, out_sharding, arg_shardings
 
     @staticmethod
-<<<<<<< HEAD
-    def shardy_sharding_rule(*args):
-        del args
-=======
     def shardy_sharding_rule(*args, **kwargs):
         # routing_map_format is the 6th static arg (impl_static_args index 5).
         routing_map_format = kwargs.get("routing_map_format")
@@ -537,7 +445,6 @@ class FusedTopkWithScoreFunctionBwdPrimitive(BasePrimitive):
                 "num_tokens packed_experts, num_tokens num_experts, num_tokens num_experts ->"
                 " num_tokens num_experts"
             )
->>>>>>> dev
         return (
             "num_tokens num_experts, num_tokens num_experts, num_tokens num_experts -> num_tokens"
             " num_experts"
@@ -568,11 +475,7 @@ class FusedMoEAuxLossFwdPrimitive(BasePrimitive):
         del topk, coeff, tokens_per_expert_aval
         i_dtype = dtypes.canonicalize_dtype(probs_aval.dtype)
         aux_loss_aval = probs_aval.update(shape=(), dtype=i_dtype)
-<<<<<<< HEAD
-        const_buf_aval = probs_aval.update(shape=(1,), dtype=jnp.float32)
-=======
         const_buf_aval = probs_aval.update(shape=(2,), dtype=jnp.float32)
->>>>>>> dev
         return aux_loss_aval, const_buf_aval
 
     @staticmethod
@@ -763,10 +666,7 @@ def fused_topk_with_score_function_fwd(
     score_function,
     expert_bias: jnp.ndarray,
     compute_aux_scores: bool = False,
-<<<<<<< HEAD
-=======
     routing_map_format: int = int(RoutingMapFormat.BYTEMAP),
->>>>>>> dev
 ):
     """
     Fused top-k with score function forward pass.
@@ -795,12 +695,9 @@ def fused_topk_with_score_function_fwd(
         Expert bias (only used with sigmoid). Pass empty array if unused.
     compute_aux_scores : bool
         If True, compute clean scores for aux loss instead of full top-k.
-<<<<<<< HEAD
-=======
     routing_map_format : int
         RoutingMapFormat.BYTEMAP (default, bool[T, E]) or RoutingMapFormat.BITMAP_U8
         (uint8[T, ceil(E/8)], LSB-first along the expert axis).
->>>>>>> dev
 
     Returns
     -------
@@ -816,10 +713,7 @@ def fused_topk_with_score_function_fwd(
         scaling_factor=float(scaling_factor),
         score_function=int(score_function),
         compute_aux_scores=int(compute_aux_scores),
-<<<<<<< HEAD
-=======
         routing_map_format=int(routing_map_format),
->>>>>>> dev
     )
 
 
@@ -832,23 +726,17 @@ def fused_topk_with_score_function_bwd(
     scaling_factor: float,
     score_function,
     compute_aux_scores: bool = False,
-<<<<<<< HEAD
-=======
     routing_map_format: int = int(RoutingMapFormat.BYTEMAP),
->>>>>>> dev
 ):
     """
     Fused top-k with score function backward pass.
 
     When compute_aux_scores=True, routing_map is ignored and the
     score-for-aux-loss backward kernel is used instead.
-<<<<<<< HEAD
-=======
 
     routing_map_format must match the layout produced by the matching forward
     call (BYTEMAP or BITMAP_U8). The CUDA kernel branches per-lane on this flag
     when loading bits into shmem.
->>>>>>> dev
     """
     return FusedTopkWithScoreFunctionBwdPrimitive.outer_primitive.bind(
         routing_map,
@@ -859,10 +747,7 @@ def fused_topk_with_score_function_bwd(
         scaling_factor=float(scaling_factor),
         score_function=int(score_function),
         compute_aux_scores=int(compute_aux_scores),
-<<<<<<< HEAD
-=======
         routing_map_format=int(routing_map_format),
->>>>>>> dev
     )
 
 

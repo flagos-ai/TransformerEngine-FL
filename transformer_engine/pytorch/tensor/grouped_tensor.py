@@ -10,10 +10,6 @@ from typing import List, Optional, Tuple
 import torch
 from torch.utils._pytree import tree_map
 
-<<<<<<< HEAD
-from transformer_engine import te_device_type
-=======
->>>>>>> dev
 from ..quantized_tensor import QuantizedTensorStorage, Quantizer
 from .storage.grouped_tensor_storage import GroupedTensorStorage
 
@@ -96,12 +92,9 @@ class GroupedTensor(GroupedTensorStorage, torch.Tensor):
         requires_grad: bool = False,
         stride: Optional[List[int]] = None,
         with_gemm_swizzled_scales: bool = False,
-<<<<<<< HEAD
-=======
         row_scaled_nvfp4: bool = False,
         nvfp4_use_4over6: bool = False,
         nvfp4_e4m3_max: int = 448,
->>>>>>> dev
     ):
         if (
             shapes is not None
@@ -138,11 +131,7 @@ class GroupedTensor(GroupedTensorStorage, torch.Tensor):
                 device = maybe_tensor.device
                 break
         if device is None:
-<<<<<<< HEAD
-            device = torch.device(te_device_type())
-=======
             device = torch.device("cuda")
->>>>>>> dev
 
         # Match QuantizedTensor __new__: accept externally-computed stride to
         # avoid Python-side stride computation overhead for C++ construction.
@@ -178,12 +167,9 @@ class GroupedTensor(GroupedTensorStorage, torch.Tensor):
             scale_inv_offsets=scale_inv_offsets,
             columnwise_scale_inv_offsets=columnwise_scale_inv_offsets,
             with_gemm_swizzled_scales=with_gemm_swizzled_scales,
-<<<<<<< HEAD
-=======
             row_scaled_nvfp4=row_scaled_nvfp4,
             nvfp4_use_4over6=nvfp4_use_4over6,
             nvfp4_e4m3_max=nvfp4_e4m3_max,
->>>>>>> dev
         )
         return instance
 
@@ -215,12 +201,9 @@ class GroupedTensor(GroupedTensorStorage, torch.Tensor):
             dst.logical_shape = src.logical_shape
             dst.quantized_tensors = src.quantized_tensors
             dst._with_gemm_swizzled_scales = src._with_gemm_swizzled_scales
-<<<<<<< HEAD
-=======
             dst.row_scaled_nvfp4 = src.row_scaled_nvfp4
             dst.nvfp4_use_4over6 = src.nvfp4_use_4over6
             dst.nvfp4_e4m3_max = src.nvfp4_e4m3_max
->>>>>>> dev
 
         def make_wrapper_like(src: GroupedTensor, requires_grad: bool) -> GroupedTensor:
             """Create a wrapper of the same type and tensor metadata as src."""

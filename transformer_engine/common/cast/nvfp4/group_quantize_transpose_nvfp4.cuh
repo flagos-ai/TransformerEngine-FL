@@ -783,12 +783,7 @@ void group_quantize_transpose(const Tensor &input, const Tensor *noop,
 
   NVTE_CHECK(input.has_data(), "Cannot quantize tensor without rowwise data.");
 
-<<<<<<< HEAD
-  const size_t rows = input.flat_first_dim();
-  const size_t cols = input.flat_last_dim();
-=======
   const auto [rows, cols] = input.flat_2d_dims();
->>>>>>> dev
 
   NVTE_CHECK(rows % 32 == 0,
              "Number of tensor rows must be a multiple of 32");  // 16B alignment for TMA
@@ -839,11 +834,7 @@ void group_quantize_transpose(const Tensor &input, const Tensor *noop,
     Tensor &rng_state_te_tensor = *convertNVTETensor(rng_state_tensor);
     NVTE_CHECK(rng_state_te_tensor.dtype() == DType::kInt64,
                "RNG state should contain 2 64-bit values.");
-<<<<<<< HEAD
-    NVTE_CHECK(rng_state_te_tensor.data.shape == std::vector<size_t>{2},
-=======
     NVTE_CHECK(rng_state_te_tensor.data.shape == Shape{2},
->>>>>>> dev
                "Shape of the RNG state should be [2], but got ", rng_state_te_tensor.data.shape);
     rng_state = reinterpret_cast<const size_t *>(rng_state_te_tensor.data.dptr);
   }
