@@ -14,6 +14,7 @@ from typing import List, Tuple
 
 import setuptools
 from wheel.bdist_wheel import bdist_wheel
+from setuptools.command.install import install as InstallCommand
 
 from build_tools.build_ext import CMakeExtension, get_build_ext
 from build_tools.te_version import te_version
