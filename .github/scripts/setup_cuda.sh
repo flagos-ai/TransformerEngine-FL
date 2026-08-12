@@ -36,6 +36,7 @@ pip uninstall transformer_engine transformer_engine_torch -y || true
 
 echo "===== Step 2: Build & Install TransformerEngine ====="
 cd $GITHUB_WORKSPACE
+git submodule update --init --recursive
 
 pip install nvdlfw-inspect --quiet
 pip install expecttest --quiet

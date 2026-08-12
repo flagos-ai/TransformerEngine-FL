@@ -48,6 +48,7 @@ python3 -m pip install nvdlfw-inspect --no-deps || true
 echo "===== Step 5: Install TE-FL Plugin Layer ====="
 # Install TransformerEngine-FL Python layer (plugin logic)
 cd $GITHUB_WORKSPACE
+git submodule update --init --recursive
 TE_FL_SKIP_CUDA=1 python3 setup.py install
 
 echo "===== Step 6: Final Verification ====="

@@ -98,6 +98,7 @@ fi
 
 echo "===== Install TransformerEngine-FL Python/plugin layer ====="
 cd "$WORKSPACE"
+git submodule update --init --recursive
 python3 -m pip uninstall -y transformer_engine transformer_engine_torch || true
 TE_FL_SKIP_CUDA=1 python3 setup.py install
 

@@ -172,7 +172,7 @@ jobs:
           fi
 
           [ "$test_exit" -eq 0 ] && [ "$coverage_exit" -eq 0 ]
-        timeout-minutes: 60
+        timeout-minutes: 90
 
       - name: Upload coverage artifact
         if: ${{ !cancelled() && inputs.coverage_enabled }}

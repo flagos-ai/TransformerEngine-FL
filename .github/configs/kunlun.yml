@@ -1,0 +1,72 @@
+# KunlunXin Hardware Configuration for TransformerEngine-FL.
+# The CI image points at the Harbor tag validated for KunlunXin QA.
+
+hardware_name: kunlunxin
+display_name: 'KunlunXin XPU'
+checkout_submodules: recursive
+container_pull_policy: always
+
+ci_image: harbor.baai.ac.cn/flagos-dev/transformerengine-fl:b98d43b-kunlun-dev
+
+# Runner labels for the self-hosted KunlunXin node.
+runner_labels:
+  - kl-8g-cicd-te
+
+container_volumes: []
+
+container_options: >-
+  --privileged
+  --ipc=host
+  --shm-size=100g
+  --ulimit memlock=-1
+  --ulimit stack=67108864
+  --ulimit nofile=65535:65535
+  --user root
+  --group-add video
+  --device=/dev/xpu0
+  --device=/dev/xpu1
+  --device=/dev/xpu2
+  --device=/dev/xpu3
+  --device=/dev/xpu4
+  --device=/dev/xpu5
+  --device=/dev/xpu6
+  --device=/dev/xpu7
+  --device=/dev/xpuctrl
+  --device=/dev/knem
+
+setup_script: .github/scripts/setup_kunlun.sh
+
+device_types:
+  - kunlunxin
+
+coverage:
+  enabled: true
+  required: false
+  python: python3
+  sources:
+    - transformer_engine
+  include:
+    - transformer_engine/pytorch/*
+    - transformer_engine/debug/*
+    - transformer_engine/plugin/*
+  omit:
+    - '*/setup.py'
+    - '*/transformer_engine/plugin/core/_build_config.py'
+
+unit_test_matrix:
+  - name: pytorch_debug
+    runner: script
+    path: tests/plugin/backend/kunlun/run_native_tests.sh
+  - name: pytorch_unittest
+    runner: script
+    path: tests/plugin/backend/kunlun/run_native_tests.sh
+  - name: pytorch_distributed_unittest
+    runner: script
+    path: tests/plugin/backend/kunlun/run_native_tests.sh
+  - name: pytorch_onnx_unittest
+    runner: script
+    path: tests/plugin/backend/kunlun/run_native_tests.sh
+
+integration_test_matrix:
+  - name: pytorch_mcore_integration
+    path: tests/integration/kunlun/run_mcore.sh

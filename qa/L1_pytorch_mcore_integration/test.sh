@@ -44,6 +44,8 @@ detect_platform() {
 : "${MCORE_PATH:=/workspace/Megatron-LM-FL}"
 : "${MCORE_REPO_URL:=https://github.com/flagos-ai/Megatron-LM-FL.git}"
 : "${MCORE_REF:=175ae90ec92a9e6fea2d74ccd24d6a1835d3ae82}"
+: "${MCORE_ENTRYPOINT:=${MCORE_PATH}/pretrain_gpt.py}"
+: "${MCORE_USE_CUDA_ENV_DEFAULTS:=1}"
 : "${OUTPUT_DIR:=${TE_PATH}/qa/L1_pytorch_mcore_integration/output}"
 : "${DATA_CACHE_PATH:=/tmp/data_cache}"
 : "${PLATFORM:=$(detect_platform)}"
@@ -66,17 +68,19 @@ else
     : "${MICRO_BATCH_SIZE:=4}"
     : "${GLOBAL_BATCH_SIZE:=32}"
     : "${ENABLE_DIAGNOSTICS:=1}"
-    : "${CUDA_DEVICE_MAX_CONNECTIONS:=1}"
-    : "${CUBLAS_WORKSPACE_CONFIG:=:4096:8}"
+    if [ "${MCORE_USE_CUDA_ENV_DEFAULTS}" = "1" ]; then
+        : "${CUDA_DEVICE_MAX_CONNECTIONS:=1}"
+        : "${CUBLAS_WORKSPACE_CONFIG:=:4096:8}"
+    fi
 fi
 
 export PLATFORM TE_FL_PREFER MCORE_REPO_URL MCORE_REF DISTRIBUTED_BACKEND
 export NUM_LAYERS HIDDEN_SIZE NUM_ATTENTION_HEADS SEQ_LENGTH
 export MICRO_BATCH_SIZE GLOBAL_BATCH_SIZE ENABLE_DIAGNOSTICS
-if [ -n "${CUDA_DEVICE_MAX_CONNECTIONS:-}" ]; then
+if [ "${MCORE_USE_CUDA_ENV_DEFAULTS}" = "1" ] && [ -n "${CUDA_DEVICE_MAX_CONNECTIONS:-}" ]; then
     export CUDA_DEVICE_MAX_CONNECTIONS
 fi
-if [ -n "${CUBLAS_WORKSPACE_CONFIG:-}" ]; then
+if [ "${MCORE_USE_CUDA_ENV_DEFAULTS}" = "1" ] && [ -n "${CUBLAS_WORKSPACE_CONFIG:-}" ]; then
     export CUBLAS_WORKSPACE_CONFIG
 fi
 
@@ -110,6 +114,10 @@ else
     exit 1
 fi
 
+if [ "${DISTRIBUTED_BACKEND}" = "mccl" ]; then
+    python3 "${TE_PATH}/tests/integration/musa/patch_megatron_mccl.py" "${MCORE_PATH}"
+fi
+
 # Megatron-LM-FL tokenizer imports happen at module import time, so direct
 # source execution needs these Python deps available before pretrain_gpt.py
 # starts.
@@ -131,6 +139,11 @@ CHECKPOINT_DIR=${OUTPUT_DIR}/checkpoints
 TENSORBOARD_DIR=${OUTPUT_DIR}/tensorboard
 mkdir -p "${CHECKPOINT_DIR}" "${TENSORBOARD_DIR}" "${DATA_CACHE_PATH}" /tmp/checkpoints
 
+if [ ! -f "${MCORE_ENTRYPOINT}" ]; then
+    echo "Megatron entrypoint does not exist: ${MCORE_ENTRYPOINT}" >&2
+    exit 1
+fi
+
 echo "Using Megatron-LM-FL repo: ${MCORE_REPO_URL}"
 echo "Using Megatron-LM-FL ref: ${MCORE_REF}"
 git -C "${MCORE_PATH}" rev-parse --short HEAD
@@ -146,11 +159,11 @@ fi
 # previously validated tp1/pp1 mock-data GPT functional case while letting CI
 # exit after a few steps.
 DEVICE_ENV="NCCL_ALGO=${NCCL_ALGO:-Ring}"
-if [ -n "${CUDA_DEVICE_MAX_CONNECTIONS:-}" ]; then
+if [ "${MCORE_USE_CUDA_ENV_DEFAULTS}" = "1" ] && [ -n "${CUDA_DEVICE_MAX_CONNECTIONS:-}" ]; then
     DEVICE_ENV="${DEVICE_ENV}
 CUDA_DEVICE_MAX_CONNECTIONS=${CUDA_DEVICE_MAX_CONNECTIONS}"
 fi
-if [ -n "${CUBLAS_WORKSPACE_CONFIG:-}" ]; then
+if [ "${MCORE_USE_CUDA_ENV_DEFAULTS}" = "1" ] && [ -n "${CUBLAS_WORKSPACE_CONFIG:-}" ]; then
     DEVICE_ENV="${DEVICE_ENV}
 CUBLAS_WORKSPACE_CONFIG=${CUBLAS_WORKSPACE_CONFIG}"
 fi
@@ -166,13 +179,15 @@ fi
 COMMAND="
 NVTE_TORCH_COMPILE=0
 NVTE_ALLOW_NONDETERMINISTIC_ALGO=0
+TORCHDYNAMO_DISABLE=1
+TORCH_COMPILE_DISABLE=1
 ${DEVICE_ENV}
 
 torchrun
 --nnodes=1
 --nproc_per_node=1
 
-${MCORE_PATH}/pretrain_gpt.py
+${MCORE_ENTRYPOINT}
 --tensor-model-parallel-size 1
 --pipeline-model-parallel-size 1
 --num-layers ${NUM_LAYERS}

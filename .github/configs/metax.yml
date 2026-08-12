@@ -4,7 +4,7 @@
 
 hardware_name: metax
 display_name: 'Metax Tests'
-checkout_submodules: 'false'
+checkout_submodules: recursive
 
 # CI image for Metax dev env
 # ci_image: localhost:5000/megatron-lm-with-te:v1
