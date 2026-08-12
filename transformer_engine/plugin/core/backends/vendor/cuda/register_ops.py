@@ -1158,7 +1158,6 @@ def register_builtins(registry) -> None:
             vendor="CUDA",
             priority=100,
         ),
-
         OpImpl(
             op_name="ubuf_built_with_mpi",
             impl_id="vendor.cuda",
