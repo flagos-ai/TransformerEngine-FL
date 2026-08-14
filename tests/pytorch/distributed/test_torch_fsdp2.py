@@ -26,15 +26,6 @@ from conftest import _parametrize_recipes
 sys.path.pop(0)
 
 
-@pytest.mark.skip(
-    reason=(
-        "Test fails with exitcode 3 in CI environment. "
-        "Root cause: All FP8 recipes are skipped due to insufficient GPU compute capability, "
-        "but torchrun multi-process pytest collection fails with internal error (exitcode 3) "
-        "instead of gracefully handling all-skipped scenario. "
-        "This is a known issue with nested pytest runs under torchrun when all tests are skipped."
-    )
-)
 @pytest.mark.skipif(NUM_PROCS % 2 != 0, reason="Requires even number of GPUs")
 @pytest.mark.skipif(not te.torch_version() >= (2, 4, 0), reason="Requires PyTorch 2.4.0+")
 def test_fsdp2_model_tests():

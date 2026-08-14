@@ -11,7 +11,6 @@ from typing import Any, Optional
 import torch
 
 from transformer_engine_torch import CommOverlapType
-from transformer_engine import te_device_type
 from ...cpp_extensions import general_gemm
 from ...cpu_offload import is_cpu_offload_enabled, mark_activation_offload
 from ...distributed import get_distributed_world_size
@@ -156,7 +155,7 @@ class UserbuffersForwardLinear(FusedOperation):
         """
 
         # Check device
-        if device.type != te_device_type():
+        if device.type != "cuda":
             raise ValueError(f"Only CUDA devices are supported (got {device})")
 
         # Check datatype
@@ -252,7 +251,9 @@ class UserbuffersForwardLinear(FusedOperation):
             extra_output=reduce_scatter_output,
         )
         if with_ub_reduce_scatter:
-            y_local = reduce_scatter_output
+            # cuBLASMp writes the reduce-scattered output directly into the GEMM
+            # output tensor; Userbuffers writes it into the extra-output buffer.
+            y_local = gemm_output if ub_comm.with_cublasmp() else reduce_scatter_output
         else:
             y_local = gemm_output
 
@@ -321,7 +322,7 @@ class UserbuffersForwardLinear(FusedOperation):
 
         # Get autocast dtype if needed
         if torch.is_autocast_enabled():
-            dtype = torch.get_autocast_dtype(te_device_type())
+            dtype = torch.get_autocast_dtype("cuda")
         else:
             dtype = linear_op.weight.dtype
 
@@ -388,6 +389,19 @@ class UserbuffersForwardLinear(FusedOperation):
             Updated forward pass operations
 
         """
+
+        # Disable Userbuffers for backward overrides.
+        # In high_precision/dequantized modes we want to avoid all UB-specific overlap
+        # paths and run through the standard non-UB operator sequence instead.
+        recipe = unused.get("recipe", None)
+        if recipe is not None:
+            backward_override = recipe.backward_override
+        elif FP8GlobalStateManager.is_fp8_enabled():
+            backward_override = FP8GlobalStateManager.get_fp8_recipe().backward_override
+        else:
+            backward_override = None
+        if backward_override is not None:
+            return ops
 
         # Return immediately if environment is not distributed
         if not torch.distributed.is_initialized() or torch.distributed.get_world_size() == 1:
