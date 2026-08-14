@@ -24,7 +24,7 @@ from transformer_engine.debug.features.api import TEConfigAPIMapper
 
 
 def per_tensor_cast(
-    tensor: torch.Tensor, fp8_dtype: tex.DType, out: Float8Tensor = None
+    tensor: torch.Tensor, fp8_dtype: DType, out: Float8Tensor = None
 ) -> Float8Tensor:
     """
     This function computes the scaling factors based on the tensor amax and then casts it to the fp8
@@ -39,8 +39,8 @@ def per_tensor_cast(
         tensor.device.type == te_device_type()
     ), f"[NVTORCH INSPECT ERROR] Must be a {te_device_type()} tensor."
     assert fp8_dtype in {
-        tex.DType.kFloat8E4M3,
-        tex.DType.kFloat8E5M2,
+        DType.kFloat8E4M3,
+        DType.kFloat8E5M2,
     }, "[NVTORCH INSPECT ERROR] Only 2 FP8 types: E4M3 and E5M2 are supported in TE."
     tensor = tensor.contiguous()
 
