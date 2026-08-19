@@ -24,6 +24,14 @@ try:
 except Exception as e:
     pass
 
+# Apply TXDA (VENDOR) such as torch.cuda.device -> torch.txda.device
+try:
+    from .plugin.core.backends.vendor.tsingmicro.patches import apply_patch as _txda_apply_patch
+
+    _txda_apply_patch()
+except Exception as e:
+    pass
+
 # Apply NPU (VENDOR) Patches, such as torch.cuda.device -> torch_npu.npu.device
 try:
     from .plugin.core.backends.vendor.npu.patches import apply_patch as _npu_apply_patch

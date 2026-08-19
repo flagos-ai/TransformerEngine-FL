@@ -11,6 +11,8 @@ from string import Template
 
 import pytest
 import torch
+from transformer_engine import te_device_type
+
 
 import nvdlfw_inspect.api as debug_api
 import transformer_engine.debug
@@ -241,7 +243,9 @@ def _cmp(ground_truth, output):
 
 
 def _init_model(weight):
-    model = transformer_engine.pytorch.Linear(IN_SIZE, OUT_SIZE, name="linear")
+    model = transformer_engine.pytorch.Linear(
+        IN_SIZE, OUT_SIZE, name="linear", device=weight.device
+    )
     with torch.no_grad():
         model.weight.copy_(weight.contiguous())
     return model
@@ -257,9 +261,10 @@ def _run_forward_backward(x, model, loss_scale=1.0, is_first_microbatch=None, fp
 
 def _get_tensors():
     torch.manual_seed(SEED)
-    x = torch.randn((SEQ_LEN * BATCH_SIZE, IN_SIZE), requires_grad=True).cuda()
+    device = te_device_type()
+    x = torch.randn((SEQ_LEN * BATCH_SIZE, IN_SIZE), requires_grad=True, device=device)
     x.retain_grad()
-    weight = torch.randn((OUT_SIZE, IN_SIZE)).cuda()
+    weight = torch.randn((OUT_SIZE, IN_SIZE), device=device)
     return x, weight
 
 

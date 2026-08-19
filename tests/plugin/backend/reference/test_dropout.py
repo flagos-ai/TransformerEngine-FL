@@ -1,4 +1,4 @@
-# transformer_engine/plugin/tests/test_backend_reference_dropout.py
+# Reference backend dropout tests.
 import pytest
 import torch
 

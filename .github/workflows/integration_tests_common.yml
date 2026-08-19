@@ -3,15 +3,16 @@ name: Common Integration Tests
 on:
   workflow_call:
     inputs:
-      platform:
-        required: true
-        type: string
       device:
         required: true
         type: string
       image:
         required: true
         type: string
+      container_pull_policy:
+        required: false
+        type: string
+        default: never
       runs_on:
         required: true
         type: string
@@ -21,16 +22,25 @@ on:
       container_options:
         required: true
         type: string
-      # Platform-specific environment setup script path (from platform config)
       setup_script:
         required: false
         type: string
         default: ''
-      # Platform-specific build environment variables (JSON object from config)
-      build_env:
+      test_artifact_name:
         required: false
         type: string
-        default: '{}'
+        default: ''
+      test_artifact_path:
+        required: false
+        type: string
+        default: ''
+      checkout_submodules:
+        required: false
+        type: string
+        default: 'false'
+      test_matrix:
+        required: true
+        type: string
 
 jobs:
   integration_test:
@@ -41,94 +51,44 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        test_group:
-          - name: pytorch_mcore_integration
-            path: "qa/L1_pytorch_mcore_integration/test.sh"
-            test_type: "integration"
+        test_group: ${{ fromJson(inputs.test_matrix) }}
     name: integration-${{ inputs.device }}-${{ matrix.test_group.name }}
     container:
       image: ${{ inputs.image }}
       volumes: ${{ fromJson(inputs.container_volumes) }}
-      options: --pull never ${{ inputs.container_options }}
+      options: --pull ${{ inputs.container_pull_policy }} ${{ inputs.container_options }}
 
     steps:
-      # Cuda requires git safe.directory configuration and 3 checkout attempts to handle submodule-heavy repos
-      - name: Configure Git Safe Directory on Cuda
-        if: inputs.platform == 'cuda'
-        run: /usr/bin/git config --global safe.directory '*'
-
-      - name: Checkout Source Code on Cuda (attempt 1)
-        id: checkout1
-        if: inputs.platform == 'cuda'
-        uses: actions/checkout@v4
-        continue-on-error: true
-        with:
-          fetch-depth: 0
-          submodules: recursive
-          set-safe-directory: true
-
-      - name: Checkout Source Code on Cuda (attempt 2)
-        id: checkout2
-        if: inputs.platform == 'cuda' && steps.checkout1.outcome == 'failure'
-        uses: actions/checkout@v4
-        continue-on-error: true
-        with:
-          fetch-depth: 0
-          submodules: recursive
-          set-safe-directory: true
-
-      - name: Checkout Source Code on Cuda (attempt 3)
-        id: checkout3
-        if: inputs.platform == 'cuda' && steps.checkout2.outcome == 'failure'
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          submodules: recursive
-          set-safe-directory: true
-
-      # Metax requires to clean vscode-remote-container
-      - name: Configure Clean Git Env on Metax
-        if: inputs.platform == 'metax'
+      - name: Prepare Checkout Environment
         run: |
-          git config --global --unset-all credential.helper 2>/dev/null || true
-          git config --system --unset-all credential.helper 2>/dev/null || true
+          /usr/bin/git config --global safe.directory '*'
+          /usr/bin/git config --global --unset-all credential.helper 2>/dev/null || true
+          /usr/bin/git config --system --unset-all credential.helper 2>/dev/null || true
 
-      # Metax no need submodules
-      - name: Checkout Source Code on Metax
-        if: inputs.platform == 'metax'
+      - name: Checkout Source Code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      
+          submodules: ${{ inputs.checkout_submodules }}
+          set-safe-directory: true
+
+      - name: Download prebuilt test artifact
+        if: inputs.test_artifact_name != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.test_artifact_name }}
+          path: ${{ github.workspace }}/${{ inputs.test_artifact_path }}
+
       - name: Environment Setup
         if: inputs.setup_script != ''
-        run: |
-          bash $GITHUB_WORKSPACE/${{ inputs.setup_script }}
+        env:
+          TE_CI_ARTIFACT_DIR: ${{ inputs.test_artifact_path }}
+        run: bash "$GITHUB_WORKSPACE/${{ inputs.setup_script }}"
 
       - name: Execute Tests
-        env:
-          TE_PATH: ${{ github.workspace }}
-          TE_FL_PREFER: vendor
-          MCORE_REPO_URL: https://github.com/flagos-ai/Megatron-LM-FL.git
-          MCORE_REF: main
         run: |
           set -euo pipefail
-
-          # Activate conda environment
-          if ${{inputs.platform == 'metax'}}; then
-            source /opt/conda/etc/profile.d/conda.sh
-            conda activate base
-          else
-            source /opt/miniconda3/etc/profile.d/conda.sh
-            conda activate flagscale-train
-          fi
-          echo "PATH=$PATH" >> $GITHUB_ENV
-          export TE_LIB_PATH=$(python -c "import site; print(site.getsitepackages()[0])")/transformer_engine
-
-          echo "=== Running L1 PyTorch Megatron-FL MCore Integration Test ==="
-          # python3 --version
-          # pip list | grep -E "regex|six|torch" || true
-
-          bash ${{ matrix.test_group.path }}
+          export TE_LIB_PATH="${TE_LIB_PATH:-$(python3 -c 'import site; print(site.getsitepackages()[0])')/transformer_engine}"
+          test -f "${{ matrix.test_group.path }}"
+          bash "${{ matrix.test_group.path }}"
         timeout-minutes: 30
-        

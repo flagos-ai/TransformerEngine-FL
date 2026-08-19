@@ -1,4 +1,4 @@
-# transformer_engine/plugin/tests/test_backend_reference_gemm.py
+# Reference backend GEMM tests.
 import pytest
 import torch
 import torch.nn.functional as F

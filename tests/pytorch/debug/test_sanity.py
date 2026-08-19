@@ -2,15 +2,20 @@
 #
 # See LICENSE for license information.
 
+import contextlib
+import os
+
 import pytest
 import torch
 
+from transformer_engine import te_device_type
 import nvdlfw_inspect.api as debug_api
 import transformer_engine.pytorch as te
 
 from test_numerics import create_config_file
 
 fp8_available, reason_for_no_fp8 = te.is_fp8_available(return_reason=True)
+_is_ascend = os.environ.get("PLATFORM") == "ascend" or te_device_type() == "npu"
 
 B, S, H, D = 64, 64, 64, 64
 
@@ -63,22 +68,23 @@ fp8_required_configs = {"log_fp8"}
 
 
 def _get_model(model_key):
+    device = te_device_type()
     if model_key == "linear":
-        return te.Linear(D, D, name="layer")
+        return te.Linear(D, D, name="layer", device=device)
     if model_key == "layernorm_linear":
-        return te.LayerNormLinear(D, D, name="layer")
+        return te.LayerNormLinear(D, D, name="layer", device=device)
     if model_key == "layernorm_mlp":
-        return te.LayerNormMLP(D, D, D, name="layer")
+        return te.LayerNormMLP(D, D, D, name="layer", device=device)
     if model_key == "mha_attention":
-        return te.MultiheadAttention(D, H, name="layer")
+        return te.MultiheadAttention(D, H, name="layer", device=device)
     if model_key == "transformer_layer":
-        return te.TransformerLayer(D, D, H, name="layer")
+        return te.TransformerLayer(D, D, H, name="layer", device=device)
 
 
 def _run_forward_backward(model, fp8):
     for _ in range(3):
-        inp = torch.randn((S, B, H)).cuda()
-        with te.autocast(enabled=fp8):
+        inp = torch.randn((S, B, H)).to(device=te_device_type())
+        with te.autocast(enabled=True) if fp8 else contextlib.nullcontext():
             out = model(inp)
         out.sum().backward()
         debug_api.step()
@@ -106,6 +112,10 @@ def _run_test(model_key, fp8, config, feature_dirs, config_file, log_dir):
 def test_sanity_debug(model_key, fp8, config_key, feature_dirs):
     if fp8 and not fp8_available:
         pytest.skip(reason_for_no_fp8)
+    if _is_ascend and config_key == "fake_quant":
+        pytest.skip(
+            "Ascend TE-FL backend does not provide the quantize operator required by fake quant"
+        )
     if not fp8 and config_key in fp8_required_configs:
         pytest.skip(f"Config '{config_key}' requires FP8")
     _run_test(model_key, fp8, configs[config_key], feature_dirs)

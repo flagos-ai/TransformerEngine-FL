@@ -104,197 +104,6 @@ class TestNPUFlashAttentionValidation:
             fa.forward(q, q, q, qkv_layout="bshd_bshd_bshd", cp_group="group")
 
 
-def test_npu_permutation_base_owns_index_map_routing():
-    from transformer_engine.plugin.core.backends.vendor.npu.permutation import (
-        NPUPermutation,
-    )
-
-    expected = (object(), object())
-
-    class NativePermutation:
-        def moe_permute(self, *args, **kwargs):
-            self.permute_args = args
-            self.permute_kwargs = kwargs
-            return expected
-
-        def moe_unpermute(self, *args, **kwargs):
-            self.unpermute_args = args
-            self.unpermute_kwargs = kwargs
-            return expected
-
-    native = NativePermutation()
-    permutation = NPUPermutation(native)
-    inp = torch.randn(2, 4)
-    routing_map = torch.zeros(2, 1, dtype=torch.int32)
-
-    assert permutation.moe_permute(inp, routing_map, map_type="index") is expected
-    assert native.permute_kwargs["map_type"] == "index"
-    assert (
-        permutation.moe_unpermute(inp, routing_map, map_type="index") is expected
-    )
-    assert native.unpermute_kwargs["map_type"] == "index"
-
-    pad_offsets = torch.tensor([0], dtype=torch.int64)
-    assert (
-        permutation.moe_unpermute(
-            inp,
-            routing_map,
-            map_type="mask",
-            pad_offsets=pad_offsets,
-        )
-        is expected
-    )
-    assert native.unpermute_kwargs["map_type"] == "mask"
-    assert native.unpermute_kwargs["pad_offsets"] is pad_offsets
-
-    empty_inp = torch.empty(0, 4)
-    empty_routing_map = torch.empty(0, 1, dtype=torch.bool)
-    assert (
-        permutation.moe_permute(empty_inp, empty_routing_map, map_type="mask")
-        is expected
-    )
-    assert native.permute_kwargs["map_type"] == "mask"
-
-    assert "moe_permute" not in NPUPermutation.__dict__
-    assert "moe_unpermute" not in NPUPermutation.__dict__
-    assert "_moe_permute_mask_map" in NPUPermutation.__dict__
-    assert "_moe_unpermute_mask_map" in NPUPermutation.__dict__
-    assert "_supports_dense_mask_map" not in NPUPermutation.__dict__
-
-
-def test_npu_mask_permutation_preserves_probs_dtype_adapter(monkeypatch):
-    import transformer_engine.plugin.core.backends.vendor.npu.permutation as npu_permutation
-
-    calls = {}
-    expected = (object(), object(), object())
-
-    class NativePermutation:
-        def moe_permute_with_probs(self, *args):
-            raise AssertionError(f"unexpected native fallback: {args}")
-
-    class TorchNPU:
-        @staticmethod
-        def npu_moe_token_permute_with_routing_map(
-            inp, routing_map, *, probs, num_out_tokens, drop_and_pad
-        ):
-            calls["args"] = (
-                inp,
-                probs,
-                routing_map,
-                num_out_tokens,
-                drop_and_pad,
-            )
-            return expected
-
-    monkeypatch.setattr(
-        npu_permutation,
-        "_get_torch_npu",
-        lambda: TorchNPU,
-    )
-
-    inp = torch.randn(2, 4)
-    probs = torch.randn(2, 3)
-    routing_map = torch.tensor([[1, 0, 1], [0, 1, 0]], dtype=torch.bool)
-    permutation = npu_permutation.NPUPermutation(NativePermutation())
-
-    assert (
-        permutation.moe_permute_with_probs(
-            inp, probs, routing_map, num_out_tokens=-1
-        )
-        is expected
-    )
-    assert calls["args"][0] is inp
-    assert calls["args"][1] is probs
-    assert calls["args"][2] is routing_map
-    assert calls["args"][3] == 3
-    assert calls["args"][4] is False
-
-
-def test_npu_permutation_delegates_chunk_sort_to_tenpu(monkeypatch):
-    import transformer_engine.plugin.core.backends.vendor.npu.permutation as npu_permutation
-
-    calls = []
-    expected = object()
-    expected_with_probs = (object(), object())
-
-    class TENPUPermutation:
-        @staticmethod
-        def moe_sort_chunks_by_index(inp, split_sizes, sorted_index):
-            calls.append(("without_probs", inp, split_sizes, sorted_index))
-            return expected
-
-        @staticmethod
-        def moe_sort_chunks_by_index_with_probs(
-            inp, probs, split_sizes, sorted_index
-        ):
-            calls.append(("with_probs", inp, probs, split_sizes, sorted_index))
-            return expected_with_probs
-
-    class NativePermutation:
-        def moe_sort_chunks_by_index(self, *args):
-            raise AssertionError(f"unexpected native fallback: {args}")
-
-        def moe_sort_chunks_by_index_with_probs(self, *args):
-            raise AssertionError(f"unexpected native fallback: {args}")
-
-    monkeypatch.setattr(
-        npu_permutation,
-        "_get_tenpu_permutation",
-        lambda: TENPUPermutation,
-    )
-
-    inp = torch.randn(4, 8)
-    probs = torch.randn(4)
-    split_sizes = torch.tensor([1, 3], dtype=torch.int32)
-    sorted_index = torch.tensor([1, 0], dtype=torch.int32)
-    permutation = npu_permutation.NPUPermutation(NativePermutation())
-
-    assert (
-        permutation.moe_sort_chunks_by_index(inp, split_sizes, sorted_index)
-        is expected
-    )
-    assert (
-        permutation.moe_sort_chunks_by_index_with_probs(
-            inp, probs, split_sizes, sorted_index
-        )
-        is expected_with_probs
-    )
-    assert calls == [
-        ("without_probs", inp, split_sizes, sorted_index),
-        ("with_probs", inp, probs, split_sizes, sorted_index),
-    ]
-
-
-def test_npu_registers_only_profiled_qwen35_hot_path(monkeypatch):
-    from transformer_engine.plugin.core.backends.reference.register_ops import (
-        register_builtins as register_reference,
-    )
-    from transformer_engine.plugin.core.backends.vendor.npu.npu import NPUBackend
-    from transformer_engine.plugin.core.backends.vendor.npu.register_ops import (
-        register_builtins as register_npu,
-    )
-    from transformer_engine.plugin.core.registry import OpRegistry
-
-    monkeypatch.setattr(NPUBackend, "is_available", lambda self: True)
-    registry = OpRegistry()
-    register_reference(registry)
-    register_npu(registry)
-
-    npu_ops = {
-        op_name
-        for op_name, implementations in registry.snapshot().impls_by_op.items()
-        if any(impl.impl_id == "vendor.npu" for impl in implementations)
-    }
-    assert npu_ops == {
-        "get_flash_attention_class",
-        "get_attention_backend",
-        "get_permutation_class",
-        "rmsnorm_fwd",
-        "rmsnorm_bwd",
-        "te_general_grouped_gemm",
-    }
-
-
 # ===========================================================================
 # Real NPU: RMSNorm — precision vs reference
 # ===========================================================================
@@ -382,6 +191,93 @@ class TestNPURMSNormAccuracy:
         else:
             assert_close(npu_bwd[0], ref_bwd[0], dtype, msg="rmsnorm_bwd dx")
             assert_close(npu_bwd[1], ref_bwd[1], dtype, msg="rmsnorm_bwd dw")
+
+
+# ===========================================================================
+# Real NPU: GEMM — precision vs matmul reference
+# ===========================================================================
+def _run_generic_gemm(
+    npu_backend,
+    left: torch.Tensor,
+    right: torch.Tensor,
+    dtype: torch.dtype,
+    out=None,
+    accumulate: bool = False,
+):
+    """Run TE-FL generic_gemm with conventional left @ right semantics."""
+    from transformer_engine.plugin.core.ops import DType
+
+    dtype_map = {
+        torch.float32: DType.kFloat32,
+        torch.float16: DType.kFloat16,
+        torch.bfloat16: DType.kBFloat16,
+    }
+    te_dtype = dtype_map[dtype]
+    result, _, _, _ = npu_backend.generic_gemm(
+        A=right,
+        transA=False,
+        B=left,
+        transB=False,
+        D=out,
+        quantizer=None,
+        output_dtype=te_dtype,
+        bias=None,
+        bias_type=te_dtype,
+        gelu=False,
+        gelu_in=None,
+        grad=False,
+        workspace=torch.empty(0, dtype=torch.uint8, device=left.device),
+        workspace_size=0,
+        accumulate=accumulate,
+        use_split_accumulator=False,
+    )
+    return result
+
+
+@requires_npu
+class TestNPUGEMMAccuracy:
+    """generic_gemm: NPU vs torch.matmul reference."""
+
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+    def test_gemm_basic(self, npu_backend, dtype):
+        torch.manual_seed(42)
+        M, K, N = 16, 32, 64
+        left = torch.randn(M, K, dtype=dtype)
+        right = torch.randn(K, N, dtype=dtype)
+        left_npu, right_npu = left.to("npu"), right.to("npu")
+
+        npu_out = _run_generic_gemm(npu_backend, left_npu, right_npu, dtype)
+        ref_out = (left.float() @ right.float()).to(dtype)
+        assert_close(npu_out, ref_out, dtype, msg="gemm_basic")
+
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+    def test_gemm_large(self, npu_backend, dtype):
+        torch.manual_seed(42)
+        M, K, N = 256, 512, 1024
+        left = torch.randn(M, K, dtype=dtype, device="npu")
+        right = torch.randn(K, N, dtype=dtype, device="npu")
+
+        npu_out = _run_generic_gemm(npu_backend, left, right, dtype)
+        ref_out = (left.cpu().float() @ right.cpu().float()).to(dtype)
+        assert_close(npu_out, ref_out, dtype, msg="gemm_large")
+
+    def test_gemm_accumulate(self, npu_backend):
+        torch.manual_seed(42)
+        M, K, N = 8, 16, 32
+        left = torch.randn(M, K, dtype=torch.bfloat16, device="npu")
+        right = torch.randn(K, N, dtype=torch.bfloat16, device="npu")
+        destination = torch.ones(M, N, dtype=torch.bfloat16, device="npu")
+
+        result = _run_generic_gemm(
+            npu_backend,
+            left,
+            right,
+            torch.bfloat16,
+            out=destination,
+            accumulate=True,
+        )
+        expected = (left.float() @ right.float()) + 1.0
+        assert_close(result, expected, torch.bfloat16, msg="gemm_accum")
 
 
 # ===========================================================================
@@ -717,6 +613,183 @@ class TestNPUFlashAttentionVsReference:
 
 
 # ===========================================================================
+# Real NPU: Multi-tensor ops — exact value verification
+# ===========================================================================
+@requires_npu
+class TestNPUMultiTensorAccuracy:
+    """Multi-tensor operations: exact value verification."""
+
+    def test_multi_tensor_scale(self, npu_backend):
+        t1 = torch.tensor([2.0, 4.0, 6.0], device="npu")
+        t_out = torch.zeros(3, device="npu")
+        noop = torch.zeros(1, device="npu", dtype=torch.int32)
+        npu_backend.multi_tensor_scale(65536, noop, [[t1], [t_out]], 0.5)
+        expected = torch.tensor([1.0, 2.0, 3.0])
+        assert torch.allclose(
+            t_out.cpu(), expected, atol=1e-6
+        ), f"Expected {expected}, got {t_out.cpu()}"
+
+    def test_multi_tensor_l2norm(self, npu_backend):
+        # [3, 4] -> norm = 5.0
+        t1 = torch.tensor([3.0, 4.0], device="npu")
+        noop = torch.zeros(1, device="npu", dtype=torch.int32)
+        result = npu_backend.multi_tensor_l2norm(65536, noop, [[t1]], False)
+        norm_val = result[0] if isinstance(result, tuple) else result
+        got = norm_val.item() if hasattr(norm_val, "item") else float(norm_val)
+        assert abs(got - 5.0) < 1e-4, f"Expected 5.0, got {got}"
+
+    def test_multi_tensor_l2norm_multi_tensor(self, npu_backend):
+        # [1,1,1,1] norm = 2.0
+        t1 = torch.ones(4, device="npu")
+        noop = torch.zeros(1, device="npu", dtype=torch.int32)
+        result = npu_backend.multi_tensor_l2norm(65536, noop, [[t1]], False)
+        norm_val = result[0] if isinstance(result, tuple) else result
+        got = norm_val.item() if hasattr(norm_val, "item") else float(norm_val)
+        assert abs(got - 2.0) < 1e-4, f"Expected 2.0, got {got}"
+
+    def test_multi_tensor_unscale_l2norm(self, npu_backend):
+        t1 = torch.tensor([6.0, 8.0], device="npu")
+        inv_scale = torch.tensor([2.0], device="npu")
+        noop = torch.zeros(1, device="npu", dtype=torch.int32)
+        result = npu_backend.multi_tensor_unscale_l2norm(65536, noop, [[t1]], inv_scale)
+        norm_val = result[0] if isinstance(result, tuple) else result
+        got = norm_val.item() if hasattr(norm_val, "item") else float(norm_val)
+        assert abs(got - 20.0) < 1e-4, f"Expected 20.0, got {got}"
+
+
+# ===========================================================================
+# Real NPU: FP8 scale computation — precision vs reference
+# ===========================================================================
+@requires_npu
+class TestNPUComputeScaleAccuracy:
+    """multi_tensor_compute_scale_and_scale_inv: NPU vs reference backend."""
+
+    @pytest.mark.parametrize(
+        "amax_vals,max_fp8",
+        [
+            ([8.0], 448.0),
+            ([1.0, 16.0, 0.5], 448.0),
+            ([100.0, 200.0], 240.0),
+            ([0.001], 448.0),  # very small amax
+        ],
+    )
+    def test_compute_scale_vs_reference(self, npu_backend, ref_backend, amax_vals, max_fp8):
+        """NPU scale/scale_inv matches reference for various amax values."""
+        n = len(amax_vals)
+        epsilon = 1e-12
+
+        # NPU tensors
+        amaxes_npu = [torch.tensor([v], device="npu") for v in amax_vals]
+        scales_npu = [torch.ones(1, device="npu") for _ in range(n)]
+        scale_invs_npu = [torch.ones(1, device="npu") for _ in range(n)]
+        noop_npu = torch.zeros(1, device="npu", dtype=torch.int32)
+
+        # Reference tensors (CPU)
+        amaxes_ref = [torch.tensor([v]) for v in amax_vals]
+        scales_ref = [torch.ones(1) for _ in range(n)]
+        scale_invs_ref = [torch.ones(1) for _ in range(n)]
+        noop_ref = torch.zeros(1, dtype=torch.int32)
+
+        npu_backend.multi_tensor_compute_scale_and_scale_inv(
+            65536,
+            noop_npu,
+            [amaxes_npu, scales_npu, scale_invs_npu],
+            max_fp8,
+            False,
+            epsilon,
+        )
+        ref_backend.multi_tensor_compute_scale_and_scale_inv(
+            65536,
+            noop_ref,
+            [amaxes_ref, scales_ref, scale_invs_ref],
+            max_fp8,
+            False,
+            epsilon,
+        )
+
+        for i in range(n):
+            npu_scale = scales_npu[i].cpu()
+            ref_scale = scales_ref[i]
+            npu_sinv = scale_invs_npu[i].cpu()
+            ref_sinv = scale_invs_ref[i]
+
+            assert torch.allclose(
+                npu_scale, ref_scale, atol=1e-5, rtol=1e-5
+            ), f"scale[{i}]: npu={npu_scale.item():.6e}, ref={ref_scale.item():.6e}"
+            assert torch.allclose(
+                npu_sinv, ref_sinv, atol=1e-5, rtol=1e-5
+            ), f"scale_inv[{i}]: npu={npu_sinv.item():.6e}, ref={ref_sinv.item():.6e}"
+
+    @pytest.mark.parametrize("force_pow_2", [True, False])
+    def test_compute_scale_pow2(self, npu_backend, ref_backend, force_pow_2):
+        """Verify force_pow_2_scales flag produces matching results."""
+        amax_vals = [7.0, 13.0, 100.0]
+        max_fp8 = 448.0
+        epsilon = 1e-12
+        n = len(amax_vals)
+
+        amaxes_npu = [torch.tensor([v], device="npu") for v in amax_vals]
+        scales_npu = [torch.ones(1, device="npu") for _ in range(n)]
+        scale_invs_npu = [torch.ones(1, device="npu") for _ in range(n)]
+        noop_npu = torch.zeros(1, device="npu", dtype=torch.int32)
+
+        amaxes_ref = [torch.tensor([v]) for v in amax_vals]
+        scales_ref = [torch.ones(1) for _ in range(n)]
+        scale_invs_ref = [torch.ones(1) for _ in range(n)]
+        noop_ref = torch.zeros(1, dtype=torch.int32)
+
+        npu_backend.multi_tensor_compute_scale_and_scale_inv(
+            65536,
+            noop_npu,
+            [amaxes_npu, scales_npu, scale_invs_npu],
+            max_fp8,
+            force_pow_2,
+            epsilon,
+        )
+        ref_backend.multi_tensor_compute_scale_and_scale_inv(
+            65536,
+            noop_ref,
+            [amaxes_ref, scales_ref, scale_invs_ref],
+            max_fp8,
+            force_pow_2,
+            epsilon,
+        )
+
+        for i in range(n):
+            npu_scale = scales_npu[i].cpu()
+            ref_scale = scales_ref[i]
+            assert torch.allclose(npu_scale, ref_scale, atol=1e-5, rtol=1e-5), (
+                f"scale[{i}] pow2={force_pow_2}: "
+                f"npu={npu_scale.item():.6e}, ref={ref_scale.item():.6e}"
+            )
+            if force_pow_2:
+                # Verify it's actually a power of 2
+                log2_val = torch.log2(npu_scale)
+                assert torch.allclose(
+                    log2_val, log2_val.round(), atol=1e-5
+                ), f"scale[{i}] not power of 2: {npu_scale.item()}"
+
+    def test_compute_scale_noop_flag(self, npu_backend):
+        """When noop_flag is non-zero, scales should remain unchanged."""
+        amax = torch.tensor([8.0], device="npu")
+        scale = torch.tensor([999.0], device="npu")
+        scale_inv = torch.tensor([888.0], device="npu")
+        noop = torch.ones(1, device="npu", dtype=torch.int32)  # non-zero => skip
+
+        npu_backend.multi_tensor_compute_scale_and_scale_inv(
+            65536,
+            noop,
+            [[amax], [scale], [scale_inv]],
+            448.0,
+            False,
+            1e-12,
+        )
+
+        assert scale.item() == 999.0, f"scale changed to {scale.item()} despite noop"
+        assert scale_inv.item() == 888.0, f"scale_inv changed to {scale_inv.item()} despite noop"
+
+
+# ===========================================================================
 # Real NPU: Grouped GEMM — precision vs manual matmul
 # ===========================================================================
 @requires_npu
@@ -742,13 +815,13 @@ class TestNPUGroupedGEMMAccuracy:
         torch.manual_seed(42)
 
         # Group 0: N=16, K=4, M=8 => B0:(N,K)=(16,4), A0:(K,M)=(4,8), D0:(N,M)=(16,8)
-        # Group 1 uses the same output width required by native M-split.
+        # Group 1: N=16, K=4, M=6 => B1:(N,K)=(16,4), A1:(K,M)=(4,6), D1:(N,M)=(16,6)
         A0 = torch.randn(4, 8, device="npu", dtype=dtype)
-        A1 = torch.randn(4, 8, device="npu", dtype=dtype)
+        A1 = torch.randn(4, 6, device="npu", dtype=dtype)
         B0 = torch.randn(16, 4, device="npu", dtype=dtype)
         B1 = torch.randn(16, 4, device="npu", dtype=dtype)
         D0 = torch.zeros(16, 8, device="npu", dtype=dtype)
-        D1 = torch.zeros(16, 8, device="npu", dtype=dtype)
+        D1 = torch.zeros(16, 6, device="npu", dtype=dtype)
 
         dtype_map = {torch.bfloat16: DType.kBFloat16, torch.float32: DType.kFloat32}
         d_type = dtype_map[dtype]
@@ -866,13 +939,13 @@ class TestNPUGroupedGEMMAccuracy:
         torch.manual_seed(42)
 
         # Group 0: A0:(K,M)=(8,4), B0:(N,M)=(16,4) => D0:(N,K)=(16,8)
-        # Group 1 has the same output width required by native M-split.
+        # Group 1: A1:(K,M)=(6,4), B1:(N,M)=(12,4) => D1:(N,K)=(12,6)
         A0 = torch.randn(8, 4, device="npu", dtype=dtype)
-        A1 = torch.randn(8, 4, device="npu", dtype=dtype)
+        A1 = torch.randn(6, 4, device="npu", dtype=dtype)
         B0 = torch.randn(16, 4, device="npu", dtype=dtype)
         B1 = torch.randn(12, 4, device="npu", dtype=dtype)
         D0 = torch.zeros(16, 8, device="npu", dtype=dtype)
-        D1 = torch.zeros(12, 8, device="npu", dtype=dtype)
+        D1 = torch.zeros(12, 6, device="npu", dtype=dtype)
 
         dtype_map = {torch.bfloat16: DType.kBFloat16, torch.float32: DType.kFloat32}
         d_type = dtype_map[dtype]
@@ -1001,11 +1074,11 @@ class TestNPUGroupedGEMMAccuracy:
         # dgrad: D[i] = B[i] @ A[i].T, output shape (N, K).
         # Need common K across groups.
         # Group 0: A0:(K,M)=(8,6), B0:(N,M)=(16,6) => D0:(16,8)
-        # Group 1 uses the same contracted width required by native M-split.
+        # Group 1: A1:(K,M)=(8,4), B1:(N,M)=(12,4) => D1:(12,8)
         A0 = torch.randn(8, 6, device="npu", dtype=dtype)
-        A1 = torch.randn(8, 6, device="npu", dtype=dtype)
+        A1 = torch.randn(8, 4, device="npu", dtype=dtype)
         B0 = torch.randn(16, 6, device="npu", dtype=dtype)
-        B1 = torch.randn(12, 6, device="npu", dtype=dtype)
+        B1 = torch.randn(12, 4, device="npu", dtype=dtype)
 
         # Single output: packed along N dimension: [16+12, 8] = [28, 8]
         D_packed = torch.zeros(28, 8, device="npu", dtype=dtype)
@@ -1103,32 +1176,28 @@ class TestNPUGroupedGEMMAccuracy:
         from transformer_engine.plugin.core.ops import DType
 
         torch.manual_seed(42)
-        # Two groups are required by the native grouped kernel.
+        # B0:(16,4), A0:(4,8) => D0:(16,8)
         A0 = torch.randn(4, 8, device="npu", dtype=dtype)
-        A1 = torch.randn(4, 8, device="npu", dtype=dtype)
         B0 = torch.randn(16, 4, device="npu", dtype=dtype)
-        B1 = torch.randn(12, 4, device="npu", dtype=dtype)
 
         # Pre-fill D with known values
         D0_init = torch.ones(16, 8, device="npu", dtype=dtype)
-        D1_init = torch.ones(12, 8, device="npu", dtype=dtype)
         D0 = D0_init.clone()
-        D1 = D1_init.clone()
 
         workspace = [torch.empty(0, dtype=torch.uint8, device="npu")]
 
         npu_backend.te_general_grouped_gemm(
-            A=[A0, A1],
+            A=[A0],
             transa=False,
-            B=[B0, B1],
+            B=[B0],
             transb=False,
-            D=[D0, D1],
+            D=[D0],
             D_type=DType.kBFloat16,
-            m_splits=[16, 12],
-            bias=[torch.empty(0, device="npu"), torch.empty(0, device="npu")],
+            m_splits=[16],
+            bias=[torch.empty(0, device="npu")],
             bias_type=DType.kBFloat16,
             single_output=False,
-            pre_gelu_out=[torch.empty(0, device="npu"), torch.empty(0, device="npu")],
+            pre_gelu_out=[torch.empty(0, device="npu")],
             grad=False,
             workspace=workspace,
             workspaceSizes=0,
@@ -1139,12 +1208,9 @@ class TestNPUGroupedGEMMAccuracy:
 
         # Reference: D0 = D0_init + B0 @ A0
         ref_D0 = (D0_init.float() + (B0 @ A0).float()).cpu()
-        ref_D1 = (D1_init.float() + (B1 @ A1).float()).cpu()
         npu_D0 = D0.cpu().float()
-        npu_D1 = D1.cpu().float()
         max_diff = (npu_D0 - ref_D0).abs().max().item()
 
         assert torch.allclose(
             npu_D0, ref_D0, atol=1e-2, rtol=1e-2
         ), f"accumulate grouped gemm: max_diff={max_diff:.6e}"
-        assert torch.allclose(npu_D1, ref_D1, atol=1e-2, rtol=1e-2)

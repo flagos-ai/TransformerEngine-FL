@@ -3,6 +3,7 @@
 # See LICENSE for license information.
 
 import nvdlfw_inspect.api as debug_api
+from transformer_engine import te_device_type
 import transformer_engine.debug
 import transformer_engine.pytorch as te
 import torch
@@ -74,8 +75,7 @@ for r in recipes:
             ):
                 # hopper is needed for current-scaling, block-scaling
                 continue
-            if r == "mxfp8" and torch.cuda.get_device_capability()[0] < 10:
-                # blackwell is needed for mxfp8
+            if r == "mxfp8" and not mxfp8_available:
                 continue
             if (
                 r in ["fp8_delayed_scaling", "fp8_current_scaling"]
@@ -134,8 +134,8 @@ def test_sanity(feature_dirs):
 
     log_all_stats_config = LOG_QUANTIZED_CONFIG_BASE.format(stats=", ".join(all_stats))
     with debug_session(log_all_stats_config, feature_dirs) as log_dir:
-        model = te.Linear(128, 128, params_dtype=torch.bfloat16)
-        inp = torch.zeros(128, 128, dtype=torch.bfloat16).cuda()
+        model = te.Linear(128, 128, params_dtype=torch.bfloat16, device=te_device_type())
+        inp = torch.zeros(128, 128, dtype=torch.bfloat16).to(device=te_device_type())
 
         for _ in range(10):
             with te.autocast(recipe=recipe.DelayedScaling()):
@@ -190,8 +190,8 @@ def test_sanity_log_fp8_model_parameters(feature_dirs):
 
     with debug_session(LOG_FP8_MODEL_PARAMETERS_CONFIG_BASE, feature_dirs) as log_dir:
         with te.fp8_model_init(recipe=recipe.DelayedScaling()):
-            model = te.Linear(128, 128, params_dtype=torch.bfloat16)
-        inp = torch.zeros(128, 128, dtype=torch.bfloat16).cuda()
+            model = te.Linear(128, 128, params_dtype=torch.bfloat16, device=te_device_type())
+        inp = torch.zeros(128, 128, dtype=torch.bfloat16).to(device=te_device_type())
         for _ in range(10):
             with te.fp8_autocast(fp8_recipe=recipe.DelayedScaling()):
                 output = model(inp)
@@ -229,7 +229,7 @@ def test_log_quantized_stats_numerics(fp8_recipe, feature_dirs):
             num_quantizers=3,
         )
 
-        tensor = torch.randn(1024, 1024).cuda()
+        tensor = torch.randn(1024, 1024).to(device=te_device_type())
         tensor[0, 100:200] = -0.0
         quantizer = recipe_state.make_quantizers()[0]
         quantized_tensor = quantizer(tensor)
@@ -308,7 +308,7 @@ def test_log_stats_numerics(feature_dirs, tensor_name):
         epsilon = 1e-10
         A = 1000
         B = 50
-        tensor = torch.zeros(1024, 1024).cuda() + epsilon
+        tensor = torch.zeros(1024, 1024).to(device=te_device_type()) + epsilon
         tensor[0, :] = A
         tensor[1:4, :] = B
 
@@ -387,14 +387,14 @@ def test_log_every_3_or_5_layers(layer, configs_dir, feature_dirs):
         )
 
         if layer == "linear":
-            model = te.Linear(128, 128, name="linear1")
+            model = te.Linear(128, 128, name="linear1", device=te_device_type())
         elif layer == "transformer":
-            model = te.TransformerLayer(128, 128, 4, name="transformer1")
+            model = te.TransformerLayer(128, 128, 4, name="transformer1", device=te_device_type())
         else:
             raise ValueError(f"Invalid layer: {layer}")
 
         for i in range(20):
-            x = torch.randn(4, 128, 128).cuda()
+            x = torch.randn(4, 128, 128).to(device=te_device_type())
             with te.autocast(enabled=True):
                 y = model(x)
             y.sum().backward()
@@ -456,7 +456,7 @@ def test_nvfp4_numeric(feature_dirs):
 
         # Create test tensor with known distribution
         torch.manual_seed(42)
-        tensor = torch.randn(128, 128, dtype=torch.bfloat16).cuda()
+        tensor = torch.randn(128, 128, dtype=torch.bfloat16).to(device=te_device_type())
         # Add some small values that should underflow to zero in FP4
         tensor[0, :16] = 0.0001
 
@@ -519,8 +519,8 @@ def test_fp8_stats_allows_nvfp4_with_recipe_prefix(feature_dirs):
     log_fp8_config = LOG_QUANTIZED_CONFIG_BASE.format(stats="mxfp8_mse")
 
     with debug_session(log_fp8_config, feature_dirs) as log_dir:
-        model = te.Linear(128, 128, params_dtype=torch.bfloat16)
-        inp = torch.randn(128, 128, dtype=torch.bfloat16).cuda()
+        model = te.Linear(128, 128, params_dtype=torch.bfloat16, device=te_device_type())
+        inp = torch.randn(128, 128, dtype=torch.bfloat16).to(device=te_device_type())
 
         # Should work - recipe-prefixed stats compute MXFP8 separately for comparison
         for _ in range(2):
@@ -541,8 +541,10 @@ def test_log_grouped_gemm(feature_dirs):
 
     log_all_stats_config = LOG_QUANTIZED_CONFIG_BASE.format(stats=", ".join(all_stats))
     with debug_session(log_all_stats_config, feature_dirs) as log_dir:
-        model = te.GroupedLinear(3, 128, 128, name="linear1", params_dtype=torch.bfloat16)
-        inp = torch.randn((1, 128, 128), dtype=torch.bfloat16).cuda()
+        model = te.GroupedLinear(
+            3, 128, 128, name="linear1", params_dtype=torch.bfloat16, device=te_device_type()
+        )
+        inp = torch.randn((1, 128, 128), dtype=torch.bfloat16).to(device=te_device_type())
         m_splits = [64, 32, 32]
         with te.fp8_autocast(fp8_recipe=recipe.DelayedScaling()):
             output = model(inp, m_splits=m_splits)
@@ -568,7 +570,7 @@ def test_compute_max_blockwise_dynamic_range_direct():
     epsilon = 0.01
     A = 1000.0
     B = 50.0
-    tensor = torch.zeros(1024, 1024).cuda() + epsilon
+    tensor = torch.zeros(1024, 1024).to(device=te_device_type()) + epsilon
     tensor[0, :] = A
     tensor[1:4, :] = B
 
@@ -611,7 +613,7 @@ def test_compute_max_blockwise_dynamic_range_direct():
     ), f"Block size 8 should work correctly, expected {expected}, got {result.item()}"
 
     # Test 5: Tensor with all uniform values -> dynamic_range should be 0
-    uniform_tensor = torch.ones(64, 64).cuda() * 42.0
+    uniform_tensor = torch.ones(64, 64).to(device=te_device_type()) * 42.0
     stat_config = BlockwiseDynamicRangeStat(block_size=4, dims=1, max_over_orientations=True)
     result = compute_max_blockwise_dynamic_range(uniform_tensor, stat_config)
     assert result.item() == pytest.approx(
@@ -628,7 +630,7 @@ def test_compute_max_blockwise_dynamic_range_direct():
             [100.0, 100.0, 1000.0, 1000.0],
             [100.0, 100.0, 1000.0, 1000.0],
         ]
-    ).cuda()
+    ).to(device=te_device_type())
 
     # Compute on 2D tensor: 4 blocks of 2x2, max range is log2(1000/100)
     stat_config = BlockwiseDynamicRangeStat(block_size=2, dims=2, max_over_orientations=False)

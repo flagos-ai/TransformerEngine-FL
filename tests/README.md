@@ -1,5 +1,8 @@
 # TransformerEngine-FL Test Suite
 
+For CI architecture, platform runner conventions, and local reproduction, see
+[`CI_TESTING_GUIDE.md`](CI_TESTING_GUIDE.md).
+
 ## Quick Start
 
 ```bash

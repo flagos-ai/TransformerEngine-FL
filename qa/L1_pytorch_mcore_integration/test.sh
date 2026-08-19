@@ -2,7 +2,7 @@
 #
 # See LICENSE for license information.
 
-set -e
+set -euo pipefail
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 
@@ -27,13 +27,62 @@ retry_command() {
     return 1
 }
 
+detect_platform() {
+    if command -v nvidia-smi &>/dev/null; then
+        echo cuda
+    elif command -v mx-smi &>/dev/null || [ -d /opt/maca ]; then
+        echo metax
+    elif command -v npu-smi &>/dev/null || [ -d /usr/local/Ascend ]; then
+        echo ascend
+    else
+        echo unknown
+    fi
+}
+
 # Paths
 : "${TE_PATH:=$(cd -- "${SCRIPT_DIR}/../.." && pwd)}"
 : "${MCORE_PATH:=/workspace/Megatron-LM-FL}"
 : "${MCORE_REPO_URL:=https://github.com/flagos-ai/Megatron-LM-FL.git}"
-: "${MCORE_REF:=main}"
+: "${MCORE_REF:=175ae90ec92a9e6fea2d74ccd24d6a1835d3ae82}"
+: "${MCORE_ENTRYPOINT:=${MCORE_PATH}/pretrain_gpt.py}"
+: "${MCORE_USE_CUDA_ENV_DEFAULTS:=1}"
 : "${OUTPUT_DIR:=${TE_PATH}/qa/L1_pytorch_mcore_integration/output}"
 : "${DATA_CACHE_PATH:=/tmp/data_cache}"
+: "${PLATFORM:=$(detect_platform)}"
+: "${TE_FL_PREFER:=vendor}"
+
+: "${DISTRIBUTED_BACKEND:=nccl}"
+if [ "${PLATFORM}" = "ascend" ]; then
+    : "${NUM_LAYERS:=2}"
+    : "${HIDDEN_SIZE:=128}"
+    : "${NUM_ATTENTION_HEADS:=4}"
+    : "${SEQ_LENGTH:=128}"
+    : "${MICRO_BATCH_SIZE:=1}"
+    : "${GLOBAL_BATCH_SIZE:=1}"
+    : "${ENABLE_DIAGNOSTICS:=0}"
+else
+    : "${NUM_LAYERS:=12}"
+    : "${HIDDEN_SIZE:=512}"
+    : "${NUM_ATTENTION_HEADS:=8}"
+    : "${SEQ_LENGTH:=1024}"
+    : "${MICRO_BATCH_SIZE:=4}"
+    : "${GLOBAL_BATCH_SIZE:=32}"
+    : "${ENABLE_DIAGNOSTICS:=1}"
+    if [ "${MCORE_USE_CUDA_ENV_DEFAULTS}" = "1" ]; then
+        : "${CUDA_DEVICE_MAX_CONNECTIONS:=1}"
+        : "${CUBLAS_WORKSPACE_CONFIG:=:4096:8}"
+    fi
+fi
+
+export PLATFORM TE_FL_PREFER MCORE_REPO_URL MCORE_REF DISTRIBUTED_BACKEND
+export NUM_LAYERS HIDDEN_SIZE NUM_ATTENTION_HEADS SEQ_LENGTH
+export MICRO_BATCH_SIZE GLOBAL_BATCH_SIZE ENABLE_DIAGNOSTICS
+if [ "${MCORE_USE_CUDA_ENV_DEFAULTS}" = "1" ] && [ -n "${CUDA_DEVICE_MAX_CONNECTIONS:-}" ]; then
+    export CUDA_DEVICE_MAX_CONNECTIONS
+fi
+if [ "${MCORE_USE_CUDA_ENV_DEFAULTS}" = "1" ] && [ -n "${CUBLAS_WORKSPACE_CONFIG:-}" ]; then
+    export CUBLAS_WORKSPACE_CONFIG
+fi
 
 # Check whether FP8 is supported
 WITH_FP8=
@@ -49,17 +98,28 @@ fi
 
 # Download or sync Megatron-LM-FL to the requested repo/ref.
 if [ ! -d "${MCORE_PATH}" ]; then
-    pushd $(dirname ${MCORE_PATH})
+    mkdir -p "$(dirname "${MCORE_PATH}")"
     git config --global --unset-all credential.helper 2>/dev/null || true
     git config --system --unset-all credential.helper 2>/dev/null || true
-    retry_command 3 5 git clone --depth 1 -b "${MCORE_REF}" "${MCORE_REPO_URL}" $(basename ${MCORE_PATH})
-    popd
+    retry_command 3 5 git clone --filter=blob:none --no-checkout \
+        "${MCORE_REPO_URL}" "${MCORE_PATH}"
 fi
 
 if [ -d "${MCORE_PATH}/.git" ]; then
     git -C "${MCORE_PATH}" remote set-url origin "${MCORE_REPO_URL}"
     retry_command 3 5 git -C "${MCORE_PATH}" fetch --depth 1 origin "${MCORE_REF}"
-    git -C "${MCORE_PATH}" checkout -B "${MCORE_REF}" "FETCH_HEAD"
+    git -C "${MCORE_PATH}" checkout --detach --force "FETCH_HEAD"
+else
+    echo "Megatron-LM-FL checkout is not a Git repository: ${MCORE_PATH}" >&2
+    exit 1
+fi
+
+if [ -n "${MCORE_PREPARE_SCRIPT:-}" ]; then
+    if [ ! -f "${MCORE_PREPARE_SCRIPT}" ]; then
+        echo "MCore preparation script does not exist: ${MCORE_PREPARE_SCRIPT}" >&2
+        exit 1
+    fi
+    python3 "${MCORE_PREPARE_SCRIPT}" "${MCORE_PATH}"
 fi
 
 # Megatron-LM-FL tokenizer imports happen at module import time, so direct
@@ -72,42 +132,78 @@ print(f"six available: {six.__version__}")
 print(f"regex available: {regex.__version__}")
 PY
 
+# Megatron's mock dataset requires its pybind11 helper extension. Source-only
+# checkouts do not provide the compiled module.
+if ! PYTHONPATH="${MCORE_PATH}:${PYTHONPATH:-}" python3 -c \
+    "import megatron.core.datasets.helpers_cpp" 2>/dev/null; then
+    (cd "${MCORE_PATH}" && python3 setup.py build_ext --inplace)
+fi
+
 CHECKPOINT_DIR=${OUTPUT_DIR}/checkpoints
 TENSORBOARD_DIR=${OUTPUT_DIR}/tensorboard
 mkdir -p "${CHECKPOINT_DIR}" "${TENSORBOARD_DIR}" "${DATA_CACHE_PATH}" /tmp/checkpoints
 
+if [ ! -f "${MCORE_ENTRYPOINT}" ]; then
+    echo "Megatron entrypoint does not exist: ${MCORE_ENTRYPOINT}" >&2
+    exit 1
+fi
+
 echo "Using Megatron-LM-FL repo: ${MCORE_REPO_URL}"
 echo "Using Megatron-LM-FL ref: ${MCORE_REF}"
 git -C "${MCORE_PATH}" rev-parse --short HEAD
+echo "Platform: ${PLATFORM}"
+echo "Distributed backend: ${DISTRIBUTED_BACKEND}"
+if [ -n "${WITH_FP8}" ]; then
+    echo "FP8 enabled: yes"
+else
+    echo "FP8 enabled: no"
+fi
 
 # Megatron-LM-FL invocation. Keep the argument shape aligned with the
 # previously validated tp1/pp1 mock-data GPT functional case while letting CI
 # exit after a few steps.
+DEVICE_ENV="NCCL_ALGO=${NCCL_ALGO:-Ring}"
+if [ "${MCORE_USE_CUDA_ENV_DEFAULTS}" = "1" ] && [ -n "${CUDA_DEVICE_MAX_CONNECTIONS:-}" ]; then
+    DEVICE_ENV="${DEVICE_ENV}
+CUDA_DEVICE_MAX_CONNECTIONS=${CUDA_DEVICE_MAX_CONNECTIONS}"
+fi
+if [ "${MCORE_USE_CUDA_ENV_DEFAULTS}" = "1" ] && [ -n "${CUBLAS_WORKSPACE_CONFIG:-}" ]; then
+    DEVICE_ENV="${DEVICE_ENV}
+CUBLAS_WORKSPACE_CONFIG=${CUBLAS_WORKSPACE_CONFIG}"
+fi
+
+DIAGNOSTIC_ARGS=""
+if [ "${ENABLE_DIAGNOSTICS}" = "1" ]; then
+    DIAGNOSTIC_ARGS="
+--log-params-norm
+--log-num-zeros-in-grad
+--log-memory-to-tensorboard"
+fi
+
 COMMAND="
 NVTE_TORCH_COMPILE=0
 NVTE_ALLOW_NONDETERMINISTIC_ALGO=0
-CUDA_DEVICE_MAX_CONNECTIONS=1
-NCCL_ALGO=Ring
-CUBLAS_WORKSPACE_CONFIG=:4096:8
+TORCHDYNAMO_DISABLE=1
+TORCH_COMPILE_DISABLE=1
+${DEVICE_ENV}
 
 torchrun
 --nnodes=1
 --nproc_per_node=1
 
-${MCORE_PATH}/pretrain_gpt.py
+${MCORE_ENTRYPOINT}
 --tensor-model-parallel-size 1
 --pipeline-model-parallel-size 1
---num-layers 12
---hidden-size 512
---num-attention-heads 8
---log-params-norm
---log-num-zeros-in-grad
+--num-layers ${NUM_LAYERS}
+--hidden-size ${HIDDEN_SIZE}
+--num-attention-heads ${NUM_ATTENTION_HEADS}
+${DIAGNOSTIC_ARGS}
 --log-validation-ppl-to-tensorboard
 --log-timers-to-tensorboard
---seq-length 1024
---max-position-embeddings 1024
---micro-batch-size 4
---global-batch-size 32
+--seq-length ${SEQ_LENGTH}
+--max-position-embeddings ${SEQ_LENGTH}
+--micro-batch-size ${MICRO_BATCH_SIZE}
+--global-batch-size ${GLOBAL_BATCH_SIZE}
 --train-iters 50
 --eval-iters 10
 --timing-log-level 0
@@ -117,7 +213,7 @@ ${MCORE_PATH}/pretrain_gpt.py
 --tokenizer-type NullTokenizer
 --vocab-size 8192
 --mock-data
---distributed-backend nccl
+--distributed-backend ${DISTRIBUTED_BACKEND}
 --lr 0.00015
 --lr-decay-style cosine
 --min-lr 1.0e-5
@@ -141,7 +237,6 @@ ${MCORE_PATH}/pretrain_gpt.py
 --data-cache-path ${DATA_CACHE_PATH}
 --bf16
 --attention-backend unfused
---log-memory-to-tensorboard
 --tensorboard-dir ${TENSORBOARD_DIR}
 --exit-interval 4
 ${WITH_FP8:+--fp8-format hybrid}

@@ -1,16 +1,67 @@
-# Configuration Template
-# This file describes the structure for hardware-specific configurations.
-#
-# Fields:
-# - image: Docker image to use for the runner
-# - labels: List of labels for the runner
-# - docker_options: Additional Docker options for mounting devices, volumes, etc.
-#
-# Example:
-# image: <docker_image>
-# labels:
-#   - <label1>
-#   - <label2>
-# docker_options: |
-#   --option1 value1
-#   --option2 value2
+# Hardware configuration template for TransformerEngine-FL CI.
+# Copy this file and provide a setup script when adding a platform.
+
+hardware_name: example
+display_name: 'Example Accelerator'
+checkout_submodules: 'false'
+
+ci_image: registry.example.com/transformer-engine:latest
+container_pull_policy: never
+
+runner_labels:
+  - example-runner
+
+container_volumes: []
+container_options: >-
+  --privileged
+  --ipc=host
+  --user root
+
+# The script owns Python activation, accelerator runtime paths, dependency
+# installation, and platform preflight checks. Persist variables needed by
+# later steps through GITHUB_ENV.
+setup_script: .github/scripts/setup_example.sh
+
+# Optional: build one installable artifact before the test matrices and reuse
+# it in every unit and integration job. Keep device options out of this build
+# container when compilation does not execute accelerator kernels.
+test_artifact:
+  enabled: false
+  build_script: .github/scripts/build_example_test_artifact.sh
+  path: ci-artifacts/example
+  runner_labels:
+    - example-build-runner
+  container_options: >-
+    --user root
+
+device_types:
+  - example
+
+coverage:
+  enabled: true
+  required: false
+  python: python3
+  sources:
+    # Importable package or source directory passed to pytest-cov --cov.
+    - transformer_engine
+  include:
+    # Optional file patterns used to limit generated coverage reports.
+    - transformer_engine/pytorch/*
+    - transformer_engine/debug/*
+    - transformer_engine/plugin/*
+  omit:
+    - '*/setup.py'
+    - '*/transformer_engine/plugin/core/_build_config.py'
+
+# Platform-owned launchers live under tests/plugin/backend/<platform>/.
+# A pytest group may instead declare pytest_args, env, log_dir, and steps.
+unit_test_matrix:
+  - name: pytorch_unittest
+    runner: script
+    path: tests/plugin/backend/example/run_unit_tests.sh
+
+# Integration groups use the same common workflow. Put test-specific
+# environment defaults in the test script, not in the workflow.
+integration_test_matrix:
+  - name: pytorch_mcore_integration
+    path: tests/plugin/backend/example/run_integration_tests.sh

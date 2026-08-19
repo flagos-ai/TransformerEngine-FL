@@ -6,6 +6,7 @@ import os
 
 import pytest
 import torch
+from transformer_engine import te_device_type
 from transformer_engine.pytorch import Float8Tensor, Float8Quantizer
 
 import nvdlfw_inspect.api as debug_api
@@ -22,13 +23,20 @@ _skip_metax_quantize = pytest.mark.skipif(
     os.environ.get("PLATFORM") == "metax",
     reason="FP8 quantize requires NVRTC CUDA headers that are unavailable on MetaX CI",
 )
+_is_ascend = os.environ.get("PLATFORM") == "ascend" or te_device_type() == "npu"
+_skip_ascend_quantize = pytest.mark.skipif(
+    _is_ascend,
+    reason=(
+        "Ascend TE-FL backend does not provide the quantize operator required by this FP8 API path"
+    ),
+)
 
 
 def test_transformer_engine_no_config(feature_dirs):
     debug_api.initialize("", feature_dirs=feature_dirs)
     try:
 
-        tensor = torch.rand(24, 2046).cuda()
+        tensor = torch.rand(24, 2046).to(device=te_device_type())
 
         # FP8 enabled - true by the default
         assert debug_api.transformer_engine.fp8_gemm_enabled(
@@ -105,12 +113,13 @@ def test_disable_fp8_layer(configs_dir, feature_dirs):
         debug_api.end_debug()
 
 
+@_skip_ascend_quantize
 def test_per_tensor_scaling(configs_dir, feature_dirs):
     try:
 
         debug_api.initialize(configs_dir + "per_tensor_scaling.yaml", feature_dirs=feature_dirs)
 
-        tensor = torch.rand(24, 2046).cuda()
+        tensor = torch.rand(24, 2046).to(device=te_device_type())
 
         # check modify_tensor_enabled
         assert debug_api.transformer_engine.modify_tensor_enabled(
@@ -135,13 +144,13 @@ def test_per_tensor_scaling(configs_dir, feature_dirs):
         # check modify_tensor
 
         default_quantizer1 = Float8Quantizer(
-            scale=torch.tensor([1]).cuda(),
-            amax=torch.tensor([0]).cuda(),
+            scale=torch.tensor([1]).to(device=te_device_type()),
+            amax=torch.tensor([0]).to(device=te_device_type()),
             fp8_dtype=tex.DType.kFloat8E4M3,
         )
         default_quantizer2 = Float8Quantizer(
-            scale=torch.tensor([1]).cuda(),
-            amax=torch.tensor([0]).cuda(),
+            scale=torch.tensor([1]).to(device=te_device_type()),
+            amax=torch.tensor([0]).to(device=te_device_type()),
             fp8_dtype=tex.DType.kFloat8E5M2,
         )
 
@@ -184,13 +193,14 @@ def test_per_tensor_scaling(configs_dir, feature_dirs):
         debug_api.end_debug()
 
 
+@_skip_ascend_quantize
 def test_fake_quant(configs_dir, feature_dirs):
     try:
         debug_api.initialize(
             configs_dir + "fake_quantization_config.yaml", feature_dirs=feature_dirs
         )
 
-        tensor = torch.rand(24, 2046).cuda()
+        tensor = torch.rand(24, 2046).to(device=te_device_type())
 
         # modify_tensor_enabled
         assert debug_api.transformer_engine.modify_tensor_enabled(
@@ -232,6 +242,7 @@ def test_fake_quant(configs_dir, feature_dirs):
 
 
 @_skip_metax_quantize
+@_skip_ascend_quantize
 def test_statistics_collection(configs_dir, feature_dirs):
     try:
         debug_api.initialize(
@@ -240,10 +251,10 @@ def test_statistics_collection(configs_dir, feature_dirs):
             default_logging_enabled=False,
         )
 
-        tensor = torch.randn((100, 100, 5)).cuda()
+        tensor = torch.randn((100, 100, 5)).to(device=te_device_type())
         quantizer = Float8Quantizer(
-            scale=torch.full([1], 1.0).cuda(),
-            amax=torch.full([1], 1.0).cuda(),
+            scale=torch.full([1], 1.0).to(device=te_device_type()),
+            amax=torch.full([1], 1.0).to(device=te_device_type()),
             fp8_dtype=tex.DType.kFloat8E4M3,
         )
         tensor_fp8 = quantizer(tensor)
@@ -315,7 +326,7 @@ def test_statistics_collection(configs_dir, feature_dirs):
         )[0]
 
         # Second config in same yaml
-        tensor = torch.rand((100, 100, 5)).cuda()
+        tensor = torch.rand((100, 100, 5)).to(device=te_device_type())
         debug_api.transformer_engine.inspect_tensor(
             "decoder.6.mlp.fc1",
             tensor_name="activation",
@@ -358,6 +369,7 @@ def test_statistics_collection(configs_dir, feature_dirs):
 
 
 @_skip_metax_quantize
+@_skip_ascend_quantize
 def test_statistics_multi_run(configs_dir, feature_dirs):
     try:
         debug_api.initialize(
@@ -386,23 +398,23 @@ def test_statistics_multi_run(configs_dir, feature_dirs):
             return STATS_BUFFERS.log_stats()
 
         quantizer = Float8Quantizer(
-            scale=torch.full([1], 1.0).cuda(),
-            amax=torch.full([1], 1.0).cuda(),
+            scale=torch.full([1], 1.0).to(device=te_device_type()),
+            amax=torch.full([1], 1.0).to(device=te_device_type()),
             fp8_dtype=tex.DType.kFloat8E4M3,
         )
 
         def fp8_tensor(t):
-            return quantizer(t.cuda())
+            return quantizer(t.to(device=te_device_type()))
 
         shape = [1024, 1024]
-        tensors = [torch.randn(shape).cuda() for _ in range(2)]
+        tensors = [torch.randn(shape).to(device=te_device_type()) for _ in range(2)]
         tensors_fp8 = [fp8_tensor(tensors[i]) for i in range(2)]
 
         feed(tensors[0], tensors_fp8[0], quantizer)
         feed(tensors[1], tensors_fp8[1], quantizer)
         stats1 = log_stats()
 
-        tensor2 = torch.cat((tensors[0], tensors[1])).cuda()
+        tensor2 = torch.cat((tensors[0], tensors[1])).to(device=te_device_type())
         fp8tensor2 = fp8_tensor(tensor2)
         feed(tensor2, fp8tensor2, quantizer)
         stats2 = log_stats()

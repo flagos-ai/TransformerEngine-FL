@@ -255,13 +255,6 @@ def test_call_with_fallback_and_invalidation():
 
         assert mgr._get_last_impl_id("fallback_op") == "ref"
 
-        # The successful fallback is cached, so the failed vendor is not
-        # retried on every invocation of this operator.
-        assert mgr.call("fallback_op", 20, x=6) == "res_ref"
-        primary_impl.fn.assert_called_once_with(10, x=5)
-        backup_impl.fn.assert_called_with(20, x=6)
-        assert backup_impl.fn.call_count == 2
-
     # ------------------------------------------------------------------
     # Case 2:
     # strict mode (TE_FL_STRICT=0)

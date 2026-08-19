@@ -8,3 +8,4 @@ from .fused_adam import *
 from .multi_tensor import *
 from .softmax import *
 from .normalization import *
+from .trition import *

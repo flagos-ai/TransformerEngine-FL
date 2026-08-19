@@ -15,6 +15,7 @@ from .impl import (
     layernorm_bwd_torch,
     gelu_torch,
     geglu_torch,
+    glu_torch,
     qgelu_torch,
     qgeglu_torch,
     relu_torch,
@@ -26,6 +27,7 @@ from .impl import (
     clamped_swiglu_torch,
     dgelu_torch,
     dgeglu_torch,
+    dglu_torch,
     dqgelu_torch,
     dqgeglu_torch,
     drelu_torch,
@@ -161,6 +163,9 @@ class ReferenceBackend(TEFLBackendBase):
     def geglu(self, input: torch.Tensor, quantizer: Any) -> Any:
         return geglu_torch(input, quantizer)
 
+    def glu(self, input: torch.Tensor, quantizer: Any) -> Any:
+        return glu_torch(input, quantizer)
+
     def qgelu(self, input: torch.Tensor, quantizer: Any) -> Any:
         return qgelu_torch(input, quantizer)
 
@@ -202,6 +207,9 @@ class ReferenceBackend(TEFLBackendBase):
 
     def dgeglu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> Any:
         return dgeglu_torch(grad, fwd_input, quantizer)
+
+    def dglu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> Any:
+        return dglu_torch(grad, fwd_input, quantizer)
 
     def dqgelu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> Any:
         return dqgelu_torch(grad, fwd_input, quantizer)

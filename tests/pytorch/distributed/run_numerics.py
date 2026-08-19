@@ -11,6 +11,17 @@ import sys
 from functools import wraps
 import math
 
+if os.environ.get("PLATFORM") == "ascend":
+    sys.path.insert(
+        0,
+        os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "../..", "plugin", "backend", "npu")
+        ),
+    )
+    from npu_patch import apply_ascend_npu_patch
+
+    apply_ascend_npu_patch()
+
 import transformer_engine.pytorch as te
 import torch
 from torch import nn
@@ -107,6 +118,7 @@ def main(argv=None, namespace=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("-l", "--layer-type", type=str)
     parser.add_argument("--quantization", type=str, default=None)
+    parser.add_argument("--test-suite", choices=("full", "ascend_smoke"), default="full")
     args = parser.parse_args(argv, namespace)
 
     # Quantization scheme
@@ -125,15 +137,18 @@ def main(argv=None, namespace=None):
         BATCH_SIZE = 128
         HIDDEN_SIZE = 512
 
-    test_dict = [
-        test_quantizer,
-        test_quantized_all_gather,
-        test_linear,
-        test_layernorm,
-        test_layernorm_linear,
-        test_layernorm_mlp,
-        test_transformer_layer,
-    ]
+    if args.test_suite == "ascend_smoke":
+        test_dict = [test_ascend_distributed_numerics_subset]
+    else:
+        test_dict = [
+            test_quantizer,
+            test_quantized_all_gather,
+            test_linear,
+            test_layernorm,
+            test_layernorm_linear,
+            test_layernorm_mlp,
+            test_transformer_layer,
+        ]
 
     for test in test_dict:
         test()
@@ -1044,6 +1059,11 @@ def test_layernorm_mlp():
         for set_parallel_mode in [True]:
             for sequence_parallel in [False, True]:
                 _test_layernorm_mlp(set_parallel_mode, sequence_parallel, **kwargs)
+
+
+def test_ascend_distributed_numerics_subset():
+    """Run Ascend-compatible distributed numerics without CUDA-only paths."""
+    _test_linear("column", False)
 
 
 ############################################

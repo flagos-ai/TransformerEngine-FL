@@ -101,6 +101,45 @@ class KunLunXinBackend(TEFLBackendBase):
         tex = self._get_tex()
         return tex.rmsnorm_bwd(dz, x, rsigma, gamma, sm_margin, zero_centered_gamma)
 
+    def layernorm_fwd(
+        self,
+        input: torch.Tensor,
+        weight: torch.Tensor,
+        bias: Optional[torch.Tensor],
+        eps: float,
+        ln_out: Any,
+        quantizer: Any,
+        otype: DType,
+        sm_margin: int,
+        zero_centered_gamma: bool,
+    ) -> List[Any]:
+        tex = self._get_tex()
+        otype = tex.DType(int(otype)) if otype is not None else None
+        return tex.layernorm_fwd(
+            input,
+            weight,
+            bias,
+            eps,
+            ln_out,
+            quantizer,
+            otype,
+            sm_margin,
+            zero_centered_gamma,
+        )
+
+    def layernorm_bwd(
+        self,
+        dz: torch.Tensor,
+        x: torch.Tensor,
+        mu: torch.Tensor,
+        rsigma: torch.Tensor,
+        gamma: torch.Tensor,
+        sm_margin: int,
+        zero_centered_gamma: bool,
+    ) -> List[Any]:
+        tex = self._get_tex()
+        return tex.layernorm_bwd(dz, x, mu, rsigma, gamma, sm_margin, zero_centered_gamma)
+
     def multi_tensor_adam(
         self,
         chunk_size: int,
@@ -298,17 +337,16 @@ class KunLunXinBackend(TEFLBackendBase):
         return 0
 
     def get_attention_backend(self, attention_params=None):
-        from transformer_engine_klx.pytorch import attention
+        tex = self._get_tex()
 
         (
             use_flash_attention,
+            flash_attention_backend,
             use_fused_attention,
             fused_attention_backend,
             use_unfused_attention,
             available_backends,
-        ) = attention.get_attention_backend(attention_params)
-
-        flash_attention_backend = None
+        ) = tex.get_attention_backend(attention_params)
 
         return (
             use_flash_attention,
@@ -374,4 +412,96 @@ class KunLunXinBackend(TEFLBackendBase):
             noop_flag,
             tensor_lists,
             block_len,
+        )
+
+    def generic_gemm(
+        self,
+        A: Any,
+        transA: bool,
+        B: Any,
+        transB: bool,
+        D: Any,
+        quantizer: Any,
+        output_dtype: Optional[DType],
+        bias: Optional[torch.Tensor],
+        bias_type: DType,
+        gelu: bool,
+        gelu_in: Optional[torch.Tensor],
+        grad: bool,
+        workspace: torch.Tensor,
+        workspace_size: int,
+        accumulate: bool,
+        use_split_accumulator: bool,
+        comm_overlap: Optional[Any] = None,
+        comm_type: Optional[CommOverlapType] = None,
+        extra_output: Optional[torch.Tensor] = None,
+        bulk_overlap: bool = False,
+        alpha: float = 1.0,
+        beta: Optional[float] = None,
+    ) -> List[Any]:
+        tex = self._get_tex()
+        return tex.generic_gemm(
+            A,
+            transA,
+            B,
+            transB,
+            D,
+            quantizer,
+            output_dtype,
+            bias,
+            bias_type,
+            gelu,
+            gelu_in,
+            grad,
+            workspace,
+            workspace_size,
+            accumulate,
+            use_split_accumulator,
+            comm_overlap,
+            comm_type,
+            extra_output,
+            bulk_overlap,
+            alpha,
+            beta,
+        )
+
+    def te_general_grouped_gemm(
+        self,
+        A: List[torch.Tensor],
+        transa: bool,
+        B: List[torch.Tensor],
+        transb: bool,
+        D: Optional[List[torch.Tensor]],
+        D_type,
+        m_splits: List[int],
+        bias: List[torch.Tensor],
+        bias_type,
+        single_output: bool,
+        pre_gelu_out: List[torch.Tensor],
+        grad: bool,
+        workspace: List[torch.Tensor],
+        workspaceSizes: int,
+        accumulate: bool,
+        use_split_accumulator: bool,
+        math_sm_count: int,
+    ) -> Optional[List[torch.Tensor]]:
+        tex = self._get_tex()
+        return tex.te_general_grouped_gemm(
+            A,
+            transa,
+            B,
+            transb,
+            D,
+            D_type,
+            m_splits,
+            bias,
+            bias_type,
+            single_output,
+            pre_gelu_out,
+            grad,
+            workspace,
+            workspaceSizes,
+            accumulate,
+            use_split_accumulator,
+            math_sm_count,
         )

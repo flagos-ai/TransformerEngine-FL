@@ -4,19 +4,12 @@
 
 hardware_name: cuda
 display_name: 'NVIDIA CUDA (A100)'
+checkout_submodules: recursive
 
 # CI image for online env
 ci_image: harbor.baai.ac.cn/flagscale/cuda12.8.1-torch2.7.1-python3.10-te2.9:20260209
 
-# Runner labels for self-hosted A100 node
-runner_labels:
-  - self-hosted
-  - Linux
-  - X64
-  - nvidia
-  - gpu-8
-
-# Runner labels for online env
+# Runner labels for the current online A100 environment
 runner_labels:
   - nv-8g-cicd-te
 
@@ -36,21 +29,47 @@ container_options: >-
 
 # Platform-specific environment setup script
 setup_script: .github/scripts/setup_cuda.sh
+unit_test_timeout_minutes: 240
 
-# Build environment variables (platform-specific)
-build_env:
-  TE_FL_SKIP_CUDA: '0'
-  SKIP_CUDA_BUILD: '0'
-  NVTE_WITH_CUDA: '1'
-  NVTE_WITH_MACA: '0'
-  TE_WITH_NCCL: '1'
-  NVTE_FRAMEWORK: pytorch
-  CUDA_HOME: /usr/local/cuda-12.8
-  NVCC: /usr/local/cuda-12.8/bin/nvcc
+# Build the PR wheel once without exposing a GPU, then reuse it in every test
+# matrix job. The build still runs in the CUDA CI image on the self-hosted
+# runner because that image contains the matching compiler and Python ABI.
+test_artifact:
+  enabled: true
+  build_script: .github/scripts/build_cuda_test_wheel.sh
+  path: ci-artifacts/cuda-wheel
+  runner_labels:
+    - nv-8g-cicd-te
+  container_options: >-
+    --shm-size=16g
+    --user root
 
 # Device types to run tests on
 device_types:
   - a100
+
+coverage:
+  enabled: true
+  required: false
+  python: /opt/miniconda3/envs/flagscale-train/bin/python3
+  sources:
+    - transformer_engine
+  include:
+    - transformer_engine/pytorch/*
+    - transformer_engine/debug/*
+    - transformer_engine/plugin/*
+  omit:
+    - '*/setup.py'
+    - '*/transformer_engine/plugin/core/_build_config.py'
+
+unit_test_matrix:
+  - name: pytorch_unittest
+    runner: script
+    path: tests/plugin/backend/cuda/run_unit_tests.sh
+
+integration_test_matrix:
+  - name: pytorch_mcore_integration
+    path: qa/L1_pytorch_mcore_integration/test.sh
 
 # Test matrix configuration
 test_matrix:

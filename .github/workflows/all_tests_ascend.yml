@@ -1,10 +1,10 @@
 name: ascend_tests
 
 on:
-  # push:
-  #   branches: ["main"]
-  # pull_request:
-  #   branches: ["main"]
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
   workflow_dispatch:
 
 concurrency:
@@ -17,6 +17,8 @@ jobs:
     uses: ./.github/workflows/all_tests_common.yml
     with:
       platform: ascend
+      run_unit_tests: true
+      run_integration_tests: true
 
   all_tests:
     needs: run_tests
@@ -26,7 +28,7 @@ jobs:
       - name: Verify workflow status
         run: |
           if [ "${{ needs.run_tests.result }}" != "success" ]; then
-            echo "❌ Tests workflow failed"
+            echo "❌ Ascend tests workflow failed"
             exit 1
           fi
-          echo "✅ All tests passed!"
+          echo "✅ All Ascend tests passed!"

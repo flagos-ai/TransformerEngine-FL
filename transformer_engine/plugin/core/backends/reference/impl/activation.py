@@ -46,6 +46,11 @@ def geglu_torch(input: torch.Tensor, quantizer: Any) -> torch.Tensor:
     return F.gelu(a, approximate="tanh") * b
 
 
+def glu_torch(input: torch.Tensor, quantizer: Any) -> torch.Tensor:
+    a, b = input.chunk(2, dim=-1)
+    return torch.sigmoid(a) * b
+
+
 def qgelu_torch(input: torch.Tensor, quantizer: Any) -> torch.Tensor:
     return input * torch.sigmoid(1.702 * input)
 
@@ -118,6 +123,18 @@ def dgeglu_torch(grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) ->
 
     with torch.enable_grad():
         y = F.gelu(a, approximate="tanh") * b
+        y.backward(grad)
+
+    return torch.cat([a.grad, b.grad], dim=-1)
+
+
+def dglu_torch(grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> torch.Tensor:
+    a, b = fwd_input.chunk(2, dim=-1)
+    a = a.detach().requires_grad_(True)
+    b = b.detach().requires_grad_(True)
+
+    with torch.enable_grad():
+        y = torch.sigmoid(a) * b
         y.backward(grad)
 
     return torch.cat([a.grad, b.grad], dim=-1)

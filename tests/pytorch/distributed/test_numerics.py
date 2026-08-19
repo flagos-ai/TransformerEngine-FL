@@ -34,16 +34,18 @@ fp8_block_scaling_available, reason_for_no_fp8_block_scaling = te.is_fp8_block_s
 nvfp4_available, reason_for_no_nvfp4 = te.is_nvfp4_available(return_reason=True)
 
 TEST_ROOT = Path(__file__).parent.resolve()
-NUM_PROCS: int = min(4, torch.cuda.device_count())
-LAUNCH_CMD = ["torchrun", f"--nproc_per_node={NUM_PROCS}"]
 
 
-def _run_test(quantization):
+def _run_test(quantization, *, num_procs=None, extra_args=None):
     test_path = TEST_ROOT / "run_numerics.py"
-    test_cmd = LAUNCH_CMD + [str(test_path)]
+    requested_procs = 4 if num_procs is None else num_procs
+    launch_cmd = ["torchrun", f"--nproc_per_node={min(requested_procs, torch.cuda.device_count())}"]
+    test_cmd = launch_cmd + [str(test_path)]
 
     if quantization is not None:
         test_cmd += ["--quantization", quantization]
+    if extra_args:
+        test_cmd += list(extra_args)
 
     result = subprocess.run(test_cmd, env=os.environ, check=False)
     assert result.returncode == 0
@@ -56,6 +58,8 @@ all_boolean = [True, False]
     "quantization", [None, "fp8", "mxfp8", "fp8_cs", "fp8_block_scaling", "nvfp4"]
 )
 def test_distributed(quantization):
+    if os.environ.get("PLATFORM") == "ascend":
+        pytest.skip("Use test_ascend_distributed_smoke for Ascend distributed coverage.")
     if quantization == "fp8" and not fp8_available:
         pytest.skip(reason_for_no_fp8)
     if quantization == "fp8_cs" and not fp8_available:
@@ -67,3 +71,9 @@ def test_distributed(quantization):
     if quantization == "nvfp4" and not nvfp4_available:
         pytest.skip(reason_for_no_nvfp4)
     _run_test(quantization)
+
+
+def test_ascend_distributed_smoke():
+    if os.environ.get("PLATFORM") != "ascend":
+        pytest.skip("Ascend-only distributed smoke test.")
+    _run_test(None, num_procs=2, extra_args=["--test-suite", "ascend_smoke"])
