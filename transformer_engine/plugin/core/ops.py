@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, Type
 from enum import IntEnum
 from contextlib import nullcontext
+import warnings
 import torch
 
 from .logger_manager import get_logger
@@ -385,6 +386,176 @@ class FlashAttentionBase(torch.nn.Module, ABC):
     @property
     def backend_name(self) -> str:
         return self.__class__.__name__
+
+
+class PermutationBase:
+    """Base class for backend-specific MoE permutation adapters.
+
+    This class owns public API routing: index-map always delegates to native
+    Transformer Engine, while backends may override private mask-map hooks.
+    All unsupported operations delegate to the native implementation.
+    """
+
+    def __init__(self, native_impl: Any) -> None:
+        self._native_impl = native_impl
+
+    def moe_permute(
+        self,
+        inp: torch.Tensor,
+        routing_map: torch.Tensor,
+        num_out_tokens: int = -1,
+        max_token_num: int = -1,
+        map_type: str = "mask",
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        if map_type == "index":
+            return self._native_impl.moe_permute(
+                inp, routing_map, num_out_tokens, max_token_num, map_type="index"
+            )
+        if map_type == "mask":
+            return self._moe_permute_mask_map(
+                inp, routing_map, num_out_tokens, max_token_num
+            )
+        raise ValueError("map_type should be one of 'mask' or 'index'")
+
+    def _moe_permute_mask_map(
+        self,
+        inp: torch.Tensor,
+        routing_map: torch.Tensor,
+        num_out_tokens: int,
+        max_token_num: int,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        return self._native_impl.moe_permute(
+            inp, routing_map, num_out_tokens, max_token_num, map_type="mask"
+        )
+
+    def moe_permute_with_probs(
+        self,
+        inp: torch.Tensor,
+        probs: torch.Tensor,
+        routing_map: torch.Tensor,
+        num_out_tokens: int = -1,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        return self._moe_permute_mask_map_with_probs(
+            inp, probs, routing_map, num_out_tokens
+        )
+
+    def _moe_permute_mask_map_with_probs(
+        self,
+        inp: torch.Tensor,
+        probs: torch.Tensor,
+        routing_map: torch.Tensor,
+        num_out_tokens: int,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        return self._native_impl.moe_permute_with_probs(
+            inp, probs, routing_map, num_out_tokens
+        )
+
+    def moe_permute_and_pad_with_probs(
+        self,
+        inp: torch.Tensor,
+        probs: torch.Tensor,
+        routing_map: torch.Tensor,
+        tokens_per_expert: torch.Tensor,
+        align_size: int,
+    ) -> Tuple[
+        torch.Tensor,
+        torch.Tensor,
+        torch.Tensor,
+        Optional[torch.Tensor],
+        torch.Tensor,
+    ]:
+        return self._moe_permute_and_pad_mask_map_with_probs(
+            inp, probs, routing_map, tokens_per_expert, align_size
+        )
+
+    def _moe_permute_and_pad_mask_map_with_probs(
+        self,
+        inp: torch.Tensor,
+        probs: torch.Tensor,
+        routing_map: torch.Tensor,
+        tokens_per_expert: torch.Tensor,
+        align_size: int,
+    ) -> Tuple[
+        torch.Tensor,
+        torch.Tensor,
+        torch.Tensor,
+        Optional[torch.Tensor],
+        torch.Tensor,
+    ]:
+        return self._native_impl.moe_permute_and_pad_with_probs(
+            inp, probs, routing_map, tokens_per_expert, align_size
+        )
+
+    def moe_unpermute(
+        self,
+        inp: torch.Tensor,
+        row_id_map: torch.Tensor,
+        merging_probs: Optional[torch.Tensor] = None,
+        restore_shape: Optional[torch.Size] = None,
+        map_type: str = "mask",
+        probs: Optional[torch.Tensor] = None,
+        pad_offsets: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        if probs is not None:
+            if merging_probs is not None:
+                raise ValueError(
+                    "Both merging_probs and probs kwarg are provided. probs is deprecated."
+                )
+            warnings.warn("probs kwarg is deprecated. Use merging_probs kwarg instead.")
+            merging_probs = probs
+
+        if map_type == "index":
+            return self._native_impl.moe_unpermute(
+                inp,
+                row_id_map,
+                merging_probs,
+                restore_shape,
+                map_type="index",
+                pad_offsets=pad_offsets,
+            )
+        if map_type == "mask":
+            return self._moe_unpermute_mask_map(
+                inp, row_id_map, merging_probs, restore_shape, pad_offsets
+            )
+        raise ValueError("map_type should be one of 'mask' or 'index'")
+
+    def _moe_unpermute_mask_map(
+        self,
+        inp: torch.Tensor,
+        row_id_map: torch.Tensor,
+        merging_probs: Optional[torch.Tensor],
+        restore_shape: Optional[torch.Size],
+        pad_offsets: Optional[torch.Tensor],
+    ) -> torch.Tensor:
+        return self._native_impl.moe_unpermute(
+            inp,
+            row_id_map,
+            merging_probs,
+            restore_shape,
+            map_type="mask",
+            pad_offsets=pad_offsets,
+        )
+
+    def moe_sort_chunks_by_index(
+        self,
+        inp: torch.Tensor,
+        split_sizes: torch.Tensor,
+        sorted_index: torch.Tensor,
+    ) -> torch.Tensor:
+        return self._native_impl.moe_sort_chunks_by_index(
+            inp, split_sizes, sorted_index
+        )
+
+    def moe_sort_chunks_by_index_with_probs(
+        self,
+        inp: torch.Tensor,
+        probs: torch.Tensor,
+        split_sizes: torch.Tensor,
+        sorted_index: torch.Tensor,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        return self._native_impl.moe_sort_chunks_by_index_with_probs(
+            inp, probs, split_sizes, sorted_index
+        )
 
 
 ############ Base  ###################
@@ -1787,6 +1958,9 @@ class TEFLBackendBase(ABC):
     def get_flash_attention_class(self) -> Type["FlashAttentionBase"]:
         raise NotImplementedError
 
+    def get_permutation_class(self) -> Type["PermutationBase"]:
+        raise NotImplementedError
+
 
 ############ Wapper  #################
 class TEFLModule:
@@ -1915,6 +2089,15 @@ class TEFLModule:
         instance._init_params = init_params
 
         return instance
+
+    def permutation(self, native_impl_class: Type[Any]) -> PermutationBase:
+        """Instantiate the selected permutation adapter around native TE code."""
+        self._manager.ensure_initialized()
+        if "get_permutation_class" not in self._manager.registry.list_operators():
+            return native_impl_class()
+
+        permutation_class = self._manager.call("get_permutation_class")
+        return permutation_class(native_impl=native_impl_class())
 
     def __repr__(self) -> str:
         op_count = len(self._manager.registry.list_operators())

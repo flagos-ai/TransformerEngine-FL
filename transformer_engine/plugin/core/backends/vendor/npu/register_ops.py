@@ -43,106 +43,26 @@ def register_builtins(registry) -> None:
 
     is_avail = backend.is_available
 
+    # Keep this list limited to kernels used by the profiled Qwen3.5 MoE
+    # training path and backed by a meaningful Ascend-specific implementation.
+    op_names = (
+        "get_flash_attention_class",
+        "get_attention_backend",
+        "get_permutation_class",
+        "rmsnorm_fwd",
+        "rmsnorm_bwd",
+        "te_general_grouped_gemm",
+    )
     impls = [
-        # FlashAttention class getter
         OpImpl(
-            op_name="get_flash_attention_class",
+            op_name=op_name,
             impl_id="vendor.npu",
             kind=BackendImplKind.VENDOR,
-            fn=_bind_is_available(backend.get_flash_attention_class, is_avail),
+            fn=_bind_is_available(getattr(backend, op_name), is_avail),
             vendor="NPU",
             priority=100,
-        ),
-        # RMSNorm forward
-        OpImpl(
-            op_name="rmsnorm_fwd",
-            impl_id="vendor.npu",
-            kind=BackendImplKind.VENDOR,
-            fn=_bind_is_available(backend.rmsnorm_fwd, is_avail),
-            vendor="NPU",
-            priority=100,
-        ),
-        # RMSNorm backward
-        OpImpl(
-            op_name="rmsnorm_bwd",
-            impl_id="vendor.npu",
-            kind=BackendImplKind.VENDOR,
-            fn=_bind_is_available(backend.rmsnorm_bwd, is_avail),
-            vendor="NPU",
-            priority=100,
-        ),
-        # Multi-tensor scale
-        OpImpl(
-            op_name="multi_tensor_scale",
-            impl_id="vendor.npu",
-            kind=BackendImplKind.VENDOR,
-            fn=_bind_is_available(backend.multi_tensor_scale, is_avail),
-            vendor="NPU",
-            priority=100,
-        ),
-        # Multi-tensor L2 norm
-        OpImpl(
-            op_name="multi_tensor_l2norm",
-            impl_id="vendor.npu",
-            kind=BackendImplKind.VENDOR,
-            fn=_bind_is_available(backend.multi_tensor_l2norm, is_avail),
-            vendor="NPU",
-            priority=100,
-        ),
-        # Multi-tensor compute scale and scale_inv
-        OpImpl(
-            op_name="multi_tensor_compute_scale_and_scale_inv",
-            impl_id="vendor.npu",
-            kind=BackendImplKind.VENDOR,
-            fn=_bind_is_available(backend.multi_tensor_compute_scale_and_scale_inv, is_avail),
-            vendor="NPU",
-            priority=100,
-        ),
-        # Multi-tensor compute scale_inv E8M0
-        OpImpl(
-            op_name="multi_tensor_compute_scale_inv_e8m0",
-            impl_id="vendor.npu",
-            kind=BackendImplKind.VENDOR,
-            fn=_bind_is_available(backend.multi_tensor_compute_scale_inv_e8m0, is_avail),
-            vendor="NPU",
-            priority=100,
-        ),
-        # Attention backend selector
-        OpImpl(
-            op_name="get_attention_backend",
-            impl_id="vendor.npu",
-            kind=BackendImplKind.VENDOR,
-            fn=_bind_is_available(backend.get_attention_backend, is_avail),
-            vendor="NPU",
-            priority=100,
-        ),
-        # Multi-tensor: unscale + L2 norm
-        OpImpl(
-            op_name="multi_tensor_unscale_l2norm",
-            impl_id="vendor.npu",
-            kind=BackendImplKind.VENDOR,
-            fn=_bind_is_available(backend.multi_tensor_unscale_l2norm, is_avail),
-            vendor="NPU",
-            priority=100,
-        ),
-        # Generic GEMM
-        OpImpl(
-            op_name="generic_gemm",
-            impl_id="vendor.npu",
-            kind=BackendImplKind.VENDOR,
-            fn=_bind_is_available(backend.generic_gemm, is_avail),
-            vendor="NPU",
-            priority=100,
-        ),
-        # Grouped GEMM
-        OpImpl(
-            op_name="te_general_grouped_gemm",
-            impl_id="vendor.npu",
-            kind=BackendImplKind.VENDOR,
-            fn=_bind_is_available(backend.te_general_grouped_gemm, is_avail),
-            vendor="NPU",
-            priority=100,
-        ),
+        )
+        for op_name in op_names
     ]
 
     registry.register_many(impls)
