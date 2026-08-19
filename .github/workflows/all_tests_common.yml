@@ -35,6 +35,7 @@ jobs:
       setup_script: ${{ steps.config.outputs.setup_script }}
       checkout_submodules: ${{ steps.config.outputs.checkout_submodules }}
       unit_test_matrix: ${{ steps.config.outputs.unit_test_matrix }}
+      unit_test_timeout_minutes: ${{ steps.config.outputs.unit_test_timeout_minutes }}
       integration_test_matrix: ${{ steps.config.outputs.integration_test_matrix }}
       coverage_enabled: ${{ steps.config.outputs.coverage_enabled }}
       coverage_required: ${{ steps.config.outputs.coverage_required }}
@@ -42,6 +43,12 @@ jobs:
       coverage_include: ${{ steps.config.outputs.coverage_include }}
       coverage_omit: ${{ steps.config.outputs.coverage_omit }}
       coverage_python: ${{ steps.config.outputs.coverage_python }}
+      test_artifact_enabled: ${{ steps.config.outputs.test_artifact_enabled }}
+      test_artifact_name: ${{ steps.config.outputs.test_artifact_name }}
+      test_artifact_path: ${{ steps.config.outputs.test_artifact_path }}
+      test_artifact_build_script: ${{ steps.config.outputs.test_artifact_build_script }}
+      test_artifact_runs_on: ${{ steps.config.outputs.test_artifact_runs_on }}
+      test_artifact_container_options: ${{ steps.config.outputs.test_artifact_container_options }}
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
@@ -90,12 +97,49 @@ jobs:
           CHECKOUT_SUBMODULES=$(yq '.checkout_submodules // "false"' "$CONFIG_FILE")
           echo "checkout_submodules=$CHECKOUT_SUBMODULES" >> $GITHUB_OUTPUT
 
+          TEST_ARTIFACT_ENABLED=$(yq '.test_artifact.enabled // false' "$CONFIG_FILE")
+          TEST_ARTIFACT_RUNS_ON=$(yq '(.test_artifact.runner_labels // .runner_labels) | tojson(0)' "$CONFIG_FILE")
+          TEST_ARTIFACT_OPTIONS=$(yq '.test_artifact.container_options // .container_options' "$CONFIG_FILE")
+          TEST_ARTIFACT_NAME=""
+          TEST_ARTIFACT_PATH=""
+          TEST_ARTIFACT_BUILD_SCRIPT=""
+          if [ "$TEST_ARTIFACT_ENABLED" = "true" ]; then
+            TEST_ARTIFACT_NAME="test-artifact-$PLATFORM"
+            TEST_ARTIFACT_PATH=$(yq '.test_artifact.path // ""' "$CONFIG_FILE")
+            TEST_ARTIFACT_BUILD_SCRIPT=$(yq '.test_artifact.build_script // ""' "$CONFIG_FILE")
+            if [ -z "$TEST_ARTIFACT_PATH" ] || [ -z "$TEST_ARTIFACT_BUILD_SCRIPT" ]; then
+              echo "test_artifact.path and test_artifact.build_script are required in $CONFIG_FILE" >&2
+              exit 1
+            fi
+            if [[ "$TEST_ARTIFACT_PATH" = /* ]]; then
+              echo "test_artifact.path must be repository-relative: $TEST_ARTIFACT_PATH" >&2
+              exit 1
+            fi
+            if [ ! -f "$TEST_ARTIFACT_BUILD_SCRIPT" ]; then
+              echo "test_artifact.build_script does not exist: $TEST_ARTIFACT_BUILD_SCRIPT" >&2
+              exit 1
+            fi
+          fi
+          echo "test_artifact_enabled=$TEST_ARTIFACT_ENABLED" >> $GITHUB_OUTPUT
+          echo "test_artifact_name=$TEST_ARTIFACT_NAME" >> $GITHUB_OUTPUT
+          echo "test_artifact_path=$TEST_ARTIFACT_PATH" >> $GITHUB_OUTPUT
+          echo "test_artifact_build_script=$TEST_ARTIFACT_BUILD_SCRIPT" >> $GITHUB_OUTPUT
+          echo "test_artifact_runs_on=$TEST_ARTIFACT_RUNS_ON" >> $GITHUB_OUTPUT
+          echo "test_artifact_container_options=$TEST_ARTIFACT_OPTIONS" >> $GITHUB_OUTPUT
+
           UNIT_TEST_MATRIX=$(yq '.unit_test_matrix | tojson(0)' "$CONFIG_FILE")
           if [ "$UNIT_TEST_MATRIX" = "null" ] || [ "$UNIT_TEST_MATRIX" = "[]" ]; then
             echo "unit_test_matrix must be defined in $CONFIG_FILE" >&2
             exit 1
           fi
           echo "unit_test_matrix=$UNIT_TEST_MATRIX" >> $GITHUB_OUTPUT
+
+          UNIT_TEST_TIMEOUT_MINUTES=$(yq '.unit_test_timeout_minutes // 90' "$CONFIG_FILE")
+          if ! [[ "$UNIT_TEST_TIMEOUT_MINUTES" =~ ^[1-9][0-9]*$ ]]; then
+            echo "unit_test_timeout_minutes must be a positive integer in $CONFIG_FILE" >&2
+            exit 1
+          fi
+          echo "unit_test_timeout_minutes=$UNIT_TEST_TIMEOUT_MINUTES" >> $GITHUB_OUTPUT
 
           INTEGRATION_TEST_MATRIX=$(yq '.integration_test_matrix // [] | tojson(0)' "$CONFIG_FILE")
           if [ "${{ inputs.run_integration_tests }}" = "true" ] && \
@@ -122,11 +166,58 @@ jobs:
           echo "coverage_omit=$COVERAGE_OMIT" >> $GITHUB_OUTPUT
           echo "coverage_python=$COVERAGE_PYTHON" >> $GITHUB_OUTPUT
 
+  build_test_artifact:
+    name: build_test_artifact
+    needs:
+      - checkout_and_config
+    if: needs.checkout_and_config.outputs.test_artifact_enabled == 'true'
+    runs-on: ${{ fromJson(needs.checkout_and_config.outputs.test_artifact_runs_on) }}
+    defaults:
+      run:
+        shell: bash
+    container:
+      image: ${{ needs.checkout_and_config.outputs.ci_image }}
+      volumes: ${{ fromJson(needs.checkout_and_config.outputs.container_volumes) }}
+      options: --pull ${{ needs.checkout_and_config.outputs.container_pull_policy }} ${{ needs.checkout_and_config.outputs.test_artifact_container_options }}
+    steps:
+      - name: Prepare checkout environment
+        run: |
+          /usr/bin/git config --global safe.directory '*'
+          /usr/bin/git config --global --unset-all credential.helper 2>/dev/null || true
+          /usr/bin/git config --system --unset-all credential.helper 2>/dev/null || true
+
+      - name: Checkout source code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          submodules: ${{ needs.checkout_and_config.outputs.checkout_submodules }}
+          set-safe-directory: true
+
+      - name: Build test artifact
+        env:
+          TE_CI_ARTIFACT_DIR: ${{ github.workspace }}/${{ needs.checkout_and_config.outputs.test_artifact_path }}
+        run: bash "$GITHUB_WORKSPACE/${{ needs.checkout_and_config.outputs.test_artifact_build_script }}"
+        timeout-minutes: 90
+
+      - name: Upload test artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ needs.checkout_and_config.outputs.test_artifact_name }}
+          path: ${{ github.workspace }}/${{ needs.checkout_and_config.outputs.test_artifact_path }}/*.whl
+          if-no-files-found: error
+          retention-days: 1
+          overwrite: true
+
   unit_tests:
     name: unit_tests
-    if: inputs.run_unit_tests
-    needs: 
+    if: >-
+      always() && inputs.run_unit_tests &&
+      needs.checkout_and_config.result == 'success' &&
+      (needs.build_test_artifact.result == 'success' ||
+      needs.build_test_artifact.result == 'skipped')
+    needs:
       - checkout_and_config
+      - build_test_artifact
     strategy:
       fail-fast: false
       matrix:
@@ -143,12 +234,15 @@ jobs:
       setup_script: ${{ needs.checkout_and_config.outputs.setup_script }}
       checkout_submodules: ${{ needs.checkout_and_config.outputs.checkout_submodules }}
       test_matrix: ${{ needs.checkout_and_config.outputs.unit_test_matrix }}
+      timeout_minutes: ${{ fromJson(needs.checkout_and_config.outputs.unit_test_timeout_minutes) }}
       coverage_enabled: ${{ fromJson(needs.checkout_and_config.outputs.coverage_enabled) }}
       coverage_required: ${{ fromJson(needs.checkout_and_config.outputs.coverage_required) }}
       coverage_sources: ${{ needs.checkout_and_config.outputs.coverage_sources }}
       coverage_include: ${{ needs.checkout_and_config.outputs.coverage_include }}
       coverage_omit: ${{ needs.checkout_and_config.outputs.coverage_omit }}
       coverage_python: ${{ needs.checkout_and_config.outputs.coverage_python }}
+      test_artifact_name: ${{ needs.checkout_and_config.outputs.test_artifact_name }}
+      test_artifact_path: ${{ needs.checkout_and_config.outputs.test_artifact_path }}
 
   unit_tests_complete:
     name: unit_tests_complete
@@ -170,10 +264,14 @@ jobs:
     name: integration_tests
     if: >-
       always() && inputs.run_integration_tests &&
+      needs.checkout_and_config.result == 'success' &&
+      (needs.build_test_artifact.result == 'success' ||
+      needs.build_test_artifact.result == 'skipped') &&
       (needs.unit_tests_complete.result == 'success' ||
       needs.unit_tests_complete.result == 'skipped')
     needs:
       - checkout_and_config
+      - build_test_artifact
       - unit_tests_complete
     strategy:
       fail-fast: false
@@ -190,6 +288,8 @@ jobs:
       setup_script: ${{ needs.checkout_and_config.outputs.setup_script }}
       checkout_submodules: ${{ needs.checkout_and_config.outputs.checkout_submodules }}
       test_matrix: ${{ needs.checkout_and_config.outputs.integration_test_matrix }}
+      test_artifact_name: ${{ needs.checkout_and_config.outputs.test_artifact_name }}
+      test_artifact_path: ${{ needs.checkout_and_config.outputs.test_artifact_path }}
 
   integration_tests_complete:
     name: integration_tests_complete
@@ -213,6 +313,7 @@ jobs:
         shell: bash
     needs:
       - checkout_and_config
+      - build_test_artifact
       - unit_tests_complete
       - integration_tests_complete
     runs-on: ubuntu-latest
@@ -222,6 +323,17 @@ jobs:
         run: |
           # Check all test jobs (skip if not run)
           failed=false
+
+          if [ "${{ needs.checkout_and_config.result }}" != "success" ]; then
+            echo "Checkout or platform configuration failed: ${{ needs.checkout_and_config.result }}"
+            failed=true
+          fi
+
+          if [ "${{ needs.build_test_artifact.result }}" != "success" ] && \
+            [ "${{ needs.build_test_artifact.result }}" != "skipped" ]; then
+            echo "Test artifact build failed or was cancelled: ${{ needs.build_test_artifact.result }}"
+            failed=true
+          fi
 
           if [ "${{ needs.unit_tests_complete.result }}" != "success" ] && \
             [ "${{ needs.unit_tests_complete.result }}" != "skipped" ]; then

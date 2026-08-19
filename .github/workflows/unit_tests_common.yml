@@ -33,9 +33,21 @@ on:
         required: false
         type: string
         default: ''
+      test_artifact_name:
+        required: false
+        type: string
+        default: ''
+      test_artifact_path:
+        required: false
+        type: string
+        default: ''
       test_matrix:
         required: true
         type: string
+      timeout_minutes:
+        required: false
+        type: number
+        default: 90
       coverage_enabled:
         required: false
         type: boolean
@@ -91,8 +103,17 @@ jobs:
           submodules: ${{ inputs.checkout_submodules }}
           set-safe-directory: true
 
+      - name: Download prebuilt test artifact
+        if: inputs.test_artifact_name != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.test_artifact_name }}
+          path: ${{ github.workspace }}/${{ inputs.test_artifact_path }}
+
       - name: Set up test environment
         if: inputs.setup_script != ''
+        env:
+          TE_CI_ARTIFACT_DIR: ${{ inputs.test_artifact_path }}
         run: bash "$GITHUB_WORKSPACE/${{ inputs.setup_script }}"
 
       - name: Execute tests
@@ -172,7 +193,7 @@ jobs:
           fi
 
           [ "$test_exit" -eq 0 ] && [ "$coverage_exit" -eq 0 ]
-        timeout-minutes: 90
+        timeout-minutes: ${{ inputs.timeout_minutes }}
 
       - name: Upload coverage artifact
         if: ${{ !cancelled() && inputs.coverage_enabled }}

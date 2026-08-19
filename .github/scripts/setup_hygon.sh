@@ -5,6 +5,7 @@ set -euo pipefail
 WORKSPACE="${GITHUB_WORKSPACE:-$(pwd)}"
 
 echo "===== Load Hygon/DTK runtime environment ====="
+export PLATFORM="${PLATFORM:-hygon}"
 source "$WORKSPACE/tests/plugin/backend/hygon/set_env.sh"
 
 # Hygon CI is a reference-backend baseline. Force the selection policy here so

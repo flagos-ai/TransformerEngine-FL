@@ -5,8 +5,8 @@ set -euo pipefail
 TE_PATH="${TE_PATH:-/opt/transformerengine}"
 XML_LOG_DIR="${XML_LOG_DIR:-/logs}"
 mkdir -p "$XML_LOG_DIR"
+XML_LOG_ROOT="$XML_LOG_DIR"
 
-export PLATFORM="${PLATFORM:-kunlunxin}"
 export TE_FL_SKIP_CUDA="${TE_FL_SKIP_CUDA:-1}"
 export NVTE_FLASH_ATTN="${NVTE_FLASH_ATTN:-0}"
 export NVTE_FUSED_ATTN="${NVTE_FUSED_ATTN:-0}"
@@ -14,25 +14,8 @@ export NVTE_UNFUSED_ATTN="${NVTE_UNFUSED_ATTN:-1}"
 export NVTE_TEST_NVINSPECT_FEATURE_DIRS="${NVTE_TEST_NVINSPECT_FEATURE_DIRS:-$TE_PATH/transformer_engine/debug/features}"
 export NVTE_TEST_NVINSPECT_CONFIGS_DIR="${NVTE_TEST_NVINSPECT_CONFIGS_DIR:-$TE_PATH/tests/pytorch/debug/test_configs/}"
 
-if [ -n "${TE_TEST_GROUP_JSON:-}" ]; then
-    GROUP_NAME=$(python3 - <<'PY'
-import json
-import os
-
-group = json.loads(os.environ["TE_TEST_GROUP_JSON"])
-print(group.get("name", ""))
-PY
-    )
-else
-    GROUP_NAME="${1:-}"
-fi
-
-if [ -z "$GROUP_NAME" ]; then
-    echo "Error: TE_TEST_GROUP_JSON is required" >&2
-    exit 1
-fi
-
 FAIL=0
+OVERALL_FAIL=0
 
 run_test_step() {
     local label=$1
@@ -42,8 +25,9 @@ run_test_step() {
     eval "$*" || FAIL=1
 }
 
-case "$GROUP_NAME" in
-    pytorch_debug)
+run_suite() {
+    case "$1" in
+        debug | pytorch_debug)
         run_test_step "test_sanity.xml" \
             "python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/test_sanity.xml \
             $TE_PATH/tests/pytorch/debug/test_sanity.py -k 'not fake_quant' \
@@ -78,8 +62,8 @@ case "$GROUP_NAME" in
             $TE_PATH/tests/pytorch/debug/test_perf.py \
             --feature_dirs=$NVTE_TEST_NVINSPECT_FEATURE_DIRS \
             --configs_dir=$NVTE_TEST_NVINSPECT_CONFIGS_DIR"
-        ;;
-    pytorch_unittest)
+            ;;
+        unittest | pytorch_unittest)
         run_test_step "pytest_kunlun_sanity.xml" \
             "NVTE_FLASH_ATTN=0 NVTE_FUSED_ATTN=0 NVTE_UNFUSED_ATTN=1 \
             python3 -m pytest -s -v --tb=auto \
@@ -97,8 +81,8 @@ case "$GROUP_NAME" in
             "python3 -m pytest -s -v --tb=auto \
             --junitxml=$XML_LOG_DIR/pytest_test_deferred_init.xml \
             $TE_PATH/tests/pytorch/test_deferred_init.py"
-        ;;
-    pytorch_distributed_unittest)
+            ;;
+        distributed | pytorch_distributed_unittest)
         run_test_step "pytest_test_numerics.xml" \
             "python3 -m pytest -v -s \
             --junitxml=$XML_LOG_DIR/pytest_test_numerics.xml \
@@ -120,8 +104,8 @@ case "$GROUP_NAME" in
             "python3 -m pytest -v -s \
             --junitxml=$XML_LOG_DIR/pytest_test_cast_master_weights_to_fp8.xml \
             $TE_PATH/tests/pytorch/distributed/test_cast_master_weights_to_fp8.py"
-        ;;
-    pytorch_onnx_unittest)
+            ;;
+        onnx | pytorch_onnx_unittest)
         export NVTE_UnfusedDPA_Emulate_FP8="${NVTE_UnfusedDPA_Emulate_FP8:-1}"
 
         run_test_step "test_onnx_export_linear.xml" \
@@ -154,14 +138,36 @@ case "$GROUP_NAME" in
             --junitxml=$XML_LOG_DIR/test_onnx_export_context.xml \
             $TE_PATH/tests/pytorch/test_onnx_export.py \
             -k 'test_export_ctx_manager'"
-        ;;
-    *)
-        echo "Error: unsupported Kunlun test group: ${GROUP_NAME}" >&2
-        exit 1
-        ;;
-esac
+            ;;
+        -h | --help)
+            echo "Usage: $0 [debug] [unittest] [distributed] [onnx]"
+            echo "If no suite is specified, all suites are run serially."
+            exit 0
+            ;;
+        *)
+            echo "Error: unsupported Kunlun test suite: $1" >&2
+            exit 2
+            ;;
+    esac
+}
 
-if [ "$FAIL" -ne 0 ]; then
+if [ "$#" -eq 0 ]; then
+    set -- debug unittest distributed onnx
+fi
+
+for suite in "$@"; do
+    FAIL=0
+    export XML_LOG_DIR="$XML_LOG_ROOT/$suite"
+    mkdir -p "$XML_LOG_DIR"
+    echo "===== START $suite ====="
+    run_suite "$suite"
+    echo "===== END $suite rc=$FAIL ====="
+    if [ "$FAIL" -ne 0 ]; then
+        OVERALL_FAIL=1
+    fi
+done
+
+if [ "$OVERALL_FAIL" -ne 0 ]; then
     exit 1
 fi
 

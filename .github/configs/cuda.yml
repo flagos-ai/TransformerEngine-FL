@@ -9,15 +9,7 @@ checkout_submodules: recursive
 # CI image for online env
 ci_image: harbor.baai.ac.cn/flagscale/cuda12.8.1-torch2.7.1-python3.10-te2.9:20260209
 
-# Runner labels for self-hosted A100 node
-runner_labels:
-  - self-hosted
-  - Linux
-  - X64
-  - nvidia
-  - gpu-8
-
-# Runner labels for online env
+# Runner labels for the current online A100 environment
 runner_labels:
   - nv-8g-cicd-te
 
@@ -37,6 +29,20 @@ container_options: >-
 
 # Platform-specific environment setup script
 setup_script: .github/scripts/setup_cuda.sh
+unit_test_timeout_minutes: 240
+
+# Build the PR wheel once without exposing a GPU, then reuse it in every test
+# matrix job. The build still runs in the CUDA CI image on the self-hosted
+# runner because that image contains the matching compiler and Python ABI.
+test_artifact:
+  enabled: true
+  build_script: .github/scripts/build_cuda_test_wheel.sh
+  path: ci-artifacts/cuda-wheel
+  runner_labels:
+    - nv-8g-cicd-te
+  container_options: >-
+    --shm-size=16g
+    --user root
 
 # Device types to run tests on
 device_types:
@@ -57,18 +63,9 @@ coverage:
     - '*/transformer_engine/plugin/core/_build_config.py'
 
 unit_test_matrix:
-  - name: pytorch_debug
-    runner: script
-    path: qa/L0_pytorch_debug_unittest/test.sh
   - name: pytorch_unittest
     runner: script
-    path: qa/L0_pytorch_unittest/test.sh
-  - name: pytorch_distributed_unittest
-    runner: script
-    path: qa/L1_pytorch_distributed_unittest/test.sh
-  - name: pytorch_onnx_unittest
-    runner: script
-    path: qa/L1_pytorch_onnx_unittest/test.sh
+    path: tests/plugin/backend/cuda/run_unit_tests.sh
 
 integration_test_matrix:
   - name: pytorch_mcore_integration

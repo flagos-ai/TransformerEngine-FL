@@ -40,37 +40,13 @@ coverage:
     - '*/transformer_engine/plugin/core/_build_config.py'
 
 unit_test_matrix:
-  - name: pytorch_debug
-    runner: script
-    path: tests/plugin/backend/hygon/run_native.sh
-    args: [debug]
-    env:
-      XML_LOG_DIR: logs/L0_pytorch_debug_unittest-hygon
-
   - name: pytorch_unittest
     runner: script
-    path: tests/plugin/backend/hygon/run_native.sh
-    args: [unittest]
-    env:
-      XML_LOG_DIR: logs/L0_pytorch_unittest-hygon
-
-  - name: pytorch_distributed_unittest
-    runner: script
-    path: tests/plugin/backend/hygon/run_native.sh
-    args: [distributed]
-    env:
-      XML_LOG_DIR: logs/L1_pytorch_distributed_unittest-hygon
-
-  - name: pytorch_onnx_unittest
-    runner: script
-    path: tests/plugin/backend/hygon/run_native.sh
-    args: [onnx]
-    env:
-      XML_LOG_DIR: logs/L1_pytorch_onnx_unittest-hygon
+    path: tests/plugin/backend/hygon/run_unit_tests.sh
 
 integration_test_matrix:
   - name: pytorch_mcore_integration
-    path: tests/plugin/backend/hygon/run_integration.sh
+    path: tests/plugin/backend/hygon/run_integration_tests.sh
 
 device_types:
   - bw1000

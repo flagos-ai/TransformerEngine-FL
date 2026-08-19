@@ -71,8 +71,8 @@ run_test_step() {
 if [ "$PLATFORM" = "metax" ]; then
     SANITY_CMD="python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_sanity.xml $TE_PATH/tests/pytorch/test_sanity.py -k \"not (test_sanity_layernorm_mlp or test_sanity_gpt or test_sanity_bert or test_sanity_T5 or test_sanity_amp_and_nvfuser or test_sanity_drop_path or test_sanity_fused_qkv_params or test_sanity_gradient_accumulation_fusion or test_inference_mode or test_sanity_normalization_amp or test_sanity_layernorm_linear or test_sanity_linear_with_zero_tokens or test_sanity_grouped_linear)\" --no-header"
 else
-    # CUDA attention backward segfaults in the GPT, BERT, and T5 sanity families.
-    SANITY_CMD="python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_sanity.xml $TE_PATH/tests/pytorch/test_sanity.py -k \"not (test_sanity_gpt or test_sanity_bert or test_sanity_T5)\" --no-header"
+    # CUDA attention backward segfaults in these TransformerLayer sanity families.
+    SANITY_CMD="python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_sanity.xml $TE_PATH/tests/pytorch/test_sanity.py -k \"not (test_sanity_gpt or test_sanity_bert or test_sanity_T5 or test_sanity_amp_and_nvfuser or test_sanity_drop_path or test_sanity_fused_qkv_params or test_sanity_gradient_accumulation_fusion)\" --no-header"
 fi
 run_test_step "pytest_test_sanity.xml" "$TE_PATH/tests/pytorch/test_sanity.py" "$SANITY_CMD" "test_sanity.py"
 
@@ -192,6 +192,10 @@ run_test_step "pytest_test_plugin_policy.xml" "$PLUGIN_TEST_ROOT/plugin/test_pol
 run_test_step "pytest_test_plugin_manager.xml" "$PLUGIN_TEST_ROOT/plugin/test_manager.py" \
 "python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_plugin_manager.xml $PLUGIN_TEST_ROOT/plugin/test_manager.py" "test_manager.py"
 
+# Step: Plugin policy selection
+run_test_step "pytest_test_plugin_policy_selection.xml" "$PLUGIN_TEST_ROOT/plugin/test_policy_selection.py" \
+"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_plugin_policy_selection.xml $PLUGIN_TEST_ROOT/plugin/test_policy_selection.py" "test_policy_selection.py"
+
 
 # ==============================================================================
 # New Step: Plugin Core backend
@@ -200,6 +204,10 @@ run_test_step "pytest_test_plugin_manager.xml" "$PLUGIN_TEST_ROOT/plugin/test_ma
 # Step: Backend flagos =========================================================
 run_test_step "pytest_test_backend_flagos.xml" "$PLUGIN_TEST_ROOT/backend/flagos/test_lifecycle.py" \
 "python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_backend_flagos.xml $PLUGIN_TEST_ROOT/backend/flagos/test_lifecycle.py" "test_lifecycle.py"
+
+# Step: Backend impl fused rope
+run_test_step "pytest_test_backend_flagos_fused_rope.xml" "$PLUGIN_TEST_ROOT/backend/flagos/test_fused_rope.py" \
+"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_backend_flagos_fused_rope.xml $PLUGIN_TEST_ROOT/backend/flagos/test_fused_rope.py" "test_fused_rope.py"
 
 # Step: Backend impl fused adam
 run_test_step "pytest_test_backend_flagos_fused_adam.xml" "$PLUGIN_TEST_ROOT/backend/flagos/test_optimizer.py" \

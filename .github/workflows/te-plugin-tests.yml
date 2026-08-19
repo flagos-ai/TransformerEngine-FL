@@ -1,18 +1,7 @@
 name: Plugin - Unit Tests
 
 on:
-  push:
-    branches: main
-    paths:
-      - 'transformer_engine/plugin/**'
-      - 'tests/plugin/**'
-      - '.github/workflows/te-plugin-tests.yml'
-  pull_request:
-    branches: main
-    paths:
-      - 'transformer_engine/plugin/**'
-      - 'tests/plugin/**'
-      - '.github/workflows/te-plugin-tests.yml'
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.actor }}
@@ -40,18 +29,8 @@ jobs:
         --pull never
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6.0.1
+        uses: actions/checkout@v4
         with:
-          repository: ${{ github.event.pull_request.head.repo.full_name }}
-          ref: ${{ github.event.pull_request.head.ref }}
-          ssh-strict: true
-          ssh-user: git
-          persist-credentials: true
-          clean: true
-          sparse-checkout-cone-mode: true
-          fetch-tags: false
-          show-progress: true
-          lfs: false
           submodules: recursive
           set-safe-directory: true
       

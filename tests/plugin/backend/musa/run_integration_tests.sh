@@ -6,7 +6,7 @@
 set -euo pipefail
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-: "${TE_PATH:=$(cd -- "${SCRIPT_DIR}/../../.." && pwd)}"
+: "${TE_PATH:=$(cd -- "${SCRIPT_DIR}/../../../.." && pwd)}"
 
 export PLATFORM=mthreads
 export TE_FL_PREFER="${TE_FL_PREFER:-vendor}"
@@ -20,6 +20,7 @@ export SEQ_LENGTH="${SEQ_LENGTH:-128}"
 export MICRO_BATCH_SIZE="${MICRO_BATCH_SIZE:-1}"
 export GLOBAL_BATCH_SIZE="${GLOBAL_BATCH_SIZE:-1}"
 export ENABLE_DIAGNOSTICS="${ENABLE_DIAGNOSTICS:-0}"
+export MCORE_PREPARE_SCRIPT="${MCORE_PREPARE_SCRIPT:-${SCRIPT_DIR}/patch_megatron_mccl.py}"
 
 timeout "${MUSA_MCORE_BACKEND_CHECK_TIMEOUT:-15}s" python3 - <<'PY'
 import os

@@ -4,6 +4,11 @@ This directory owns tests added for the TransformerEngine-FL plugin layer.
 Upstream Transformer Engine tests remain in `tests/cpp`, `tests/jax`, and
 `tests/pytorch`.
 
+Platform CI launchers live with their backend support files under
+`backend/<platform>/`. Use `run_unit_tests.sh` and
+`run_integration_tests.sh` for the two standard entry points. See
+[`../CI_TESTING_GUIDE.md`](../CI_TESTING_GUIDE.md) for the complete convention.
+
 The test layout follows the implementation boundary:
 
 - `plugin/`: plugin manager, policy, registry, and discovery behavior.
@@ -18,5 +23,5 @@ Ascend tests that need runtime compatibility setup are launched through
 pytest collects tests. Platform-specific behavior stays in `backend/npu/` and
 is not added to the common CI workflow.
 
-Metax and other platforms that do not need an import-time adapter continue to
-use the normal `python -m pytest` path.
+Platforms that do not need an import-time adapter continue to use the normal
+`python -m pytest` path.

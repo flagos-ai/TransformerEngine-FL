@@ -22,6 +22,18 @@ container_options: >-
 # later steps through GITHUB_ENV.
 setup_script: .github/scripts/setup_example.sh
 
+# Optional: build one installable artifact before the test matrices and reuse
+# it in every unit and integration job. Keep device options out of this build
+# container when compilation does not execute accelerator kernels.
+test_artifact:
+  enabled: false
+  build_script: .github/scripts/build_example_test_artifact.sh
+  path: ci-artifacts/example
+  runner_labels:
+    - example-build-runner
+  container_options: >-
+    --user root
+
 device_types:
   - example
 
@@ -41,24 +53,15 @@ coverage:
     - '*/setup.py'
     - '*/transformer_engine/plugin/core/_build_config.py'
 
-# A script group preserves an existing QA entry point. A pytest group may
-# instead declare pytest_args, env, log_dir, and a list of test steps.
+# Platform-owned launchers live under tests/plugin/backend/<platform>/.
+# A pytest group may instead declare pytest_args, env, log_dir, and steps.
 unit_test_matrix:
-  - name: pytorch_debug
-    runner: script
-    path: qa/L0_pytorch_debug_unittest/test.sh
   - name: pytorch_unittest
     runner: script
-    path: qa/L0_pytorch_unittest/test.sh
-  - name: pytorch_distributed_unittest
-    runner: script
-    path: qa/L1_pytorch_distributed_unittest/test.sh
-  - name: pytorch_onnx_unittest
-    runner: script
-    path: qa/L1_pytorch_onnx_unittest/test.sh
+    path: tests/plugin/backend/example/run_unit_tests.sh
 
 # Integration groups use the same common workflow. Put test-specific
 # environment defaults in the test script, not in the workflow.
 integration_test_matrix:
   - name: pytorch_mcore_integration
-    path: qa/L1_pytorch_mcore_integration/test.sh
+    path: tests/plugin/backend/example/run_integration_tests.sh

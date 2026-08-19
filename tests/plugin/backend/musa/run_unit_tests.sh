@@ -10,8 +10,10 @@ SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 : "${XML_LOG_DIR:=/logs}"
 
 mkdir -p "${XML_LOG_DIR}"
+XML_LOG_ROOT="${XML_LOG_DIR}"
 
 FAILED=0
+OVERALL_FAILED=0
 
 run_pytest() {
     local name=$1
@@ -150,32 +152,45 @@ run_onnx() {
         --no-header
 }
 
-GROUP=${1:-}
-if [ -z "${GROUP}" ] && [ -n "${TE_TEST_GROUP_JSON:-}" ]; then
-    GROUP=$(python3 -c \
-        'import json, os; print(json.loads(os.environ["TE_TEST_GROUP_JSON"])["name"])')
+usage() {
+    echo "Usage: $0 [debug] [unittest] [distributed] [onnx]"
+    echo "If no suite is specified, all suites are run serially."
+}
+
+run_suite() {
+    case "$1" in
+        debug | pytorch_debug) run_debug ;;
+        unittest | pytorch | pytorch_unittest) run_pytorch ;;
+        distributed | pytorch_distributed_utils | pytorch_distributed_unittest)
+            run_distributed
+            ;;
+        onnx | pytorch_onnx_unittest) run_onnx ;;
+        -h | --help) usage; exit 0 ;;
+        *)
+            echo "Unsupported MUSA test suite: $1" >&2
+            usage >&2
+            exit 2
+            ;;
+    esac
+}
+
+if [ "$#" -eq 0 ]; then
+    set -- debug unittest distributed onnx
 fi
 
-case "${GROUP}" in
-    debug | pytorch_debug)
-        run_debug
-        ;;
-    pytorch | pytorch_unittest)
-        run_pytorch
-        ;;
-    distributed | pytorch_distributed_utils)
-        run_distributed
-        ;;
-    onnx | pytorch_onnx_unittest)
-        run_onnx
-        ;;
-    *)
-        echo "Usage: $0 {debug|pytorch|distributed|onnx}" >&2
-        exit 2
-        ;;
-esac
+for suite in "$@"; do
+    FAILED=0
+    export XML_LOG_DIR="${XML_LOG_ROOT}/${suite}"
+    mkdir -p "${XML_LOG_DIR}"
+    echo "===== START ${suite} ====="
+    run_suite "${suite}"
+    echo "===== END ${suite} rc=${FAILED} ====="
+    if [ "${FAILED}" -ne 0 ]; then
+        OVERALL_FAILED=1
+    fi
+done
 
-if [ "${FAILED}" -ne 0 ]; then
+if [ "${OVERALL_FAILED}" -ne 0 ]; then
     echo "One or more MUSA test steps failed." >&2
     exit 1
 fi

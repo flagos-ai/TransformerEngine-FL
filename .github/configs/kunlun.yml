@@ -4,7 +4,6 @@
 hardware_name: kunlunxin
 display_name: 'KunlunXin XPU'
 checkout_submodules: recursive
-container_pull_policy: always
 
 ci_image: harbor.baai.ac.cn/flagos-dev/transformerengine-fl:b98d43b-kunlun-dev
 
@@ -54,19 +53,10 @@ coverage:
     - '*/transformer_engine/plugin/core/_build_config.py'
 
 unit_test_matrix:
-  - name: pytorch_debug
-    runner: script
-    path: tests/plugin/backend/kunlun/run_native_tests.sh
   - name: pytorch_unittest
     runner: script
-    path: tests/plugin/backend/kunlun/run_native_tests.sh
-  - name: pytorch_distributed_unittest
-    runner: script
-    path: tests/plugin/backend/kunlun/run_native_tests.sh
-  - name: pytorch_onnx_unittest
-    runner: script
-    path: tests/plugin/backend/kunlun/run_native_tests.sh
+    path: tests/plugin/backend/kunlun/run_unit_tests.sh
 
 integration_test_matrix:
   - name: pytorch_mcore_integration
-    path: tests/integration/kunlun/run_mcore.sh
+    path: tests/plugin/backend/kunlun/run_integration_tests.sh

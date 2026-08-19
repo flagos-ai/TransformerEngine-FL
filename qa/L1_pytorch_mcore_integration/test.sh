@@ -114,8 +114,12 @@ else
     exit 1
 fi
 
-if [ "${DISTRIBUTED_BACKEND}" = "mccl" ]; then
-    python3 "${TE_PATH}/tests/integration/musa/patch_megatron_mccl.py" "${MCORE_PATH}"
+if [ -n "${MCORE_PREPARE_SCRIPT:-}" ]; then
+    if [ ! -f "${MCORE_PREPARE_SCRIPT}" ]; then
+        echo "MCore preparation script does not exist: ${MCORE_PREPARE_SCRIPT}" >&2
+        exit 1
+    fi
+    python3 "${MCORE_PREPARE_SCRIPT}" "${MCORE_PATH}"
 fi
 
 # Megatron-LM-FL tokenizer imports happen at module import time, so direct

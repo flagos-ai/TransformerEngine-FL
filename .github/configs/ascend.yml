@@ -7,7 +7,6 @@ checkout_submodules: recursive
 
 # CI image for the Ascend environment
 ci_image: harbor.baai.ac.cn/flagos-dev/transformerengine-fl:85c2523-ascend-dev
-container_pull_policy: always
 
 # Runner labels for the self-hosted Ascend node
 runner_labels:
@@ -52,21 +51,9 @@ coverage:
     - '*/transformer_engine/plugin/core/_build_config.py'
 
 unit_test_matrix:
-  - name: pytorch_debug
-    runner: script
-    path: qa/L0_pytorch_debug_unittest/test_ascend.sh
-
   - name: pytorch_unittest
     runner: script
-    path: qa/L0_pytorch_unittest/test_ascend.sh
-
-  - name: pytorch_distributed_unittest
-    runner: script
-    path: qa/L1_pytorch_distributed_unittest/test_ascend.sh
-
-  - name: pytorch_onnx_unittest
-    runner: script
-    path: qa/L1_pytorch_onnx_unittest/test_ascend.sh
+    path: tests/plugin/backend/ascend/run_unit_tests.sh
 
 integration_test_matrix:
   - name: pytorch_mcore_integration

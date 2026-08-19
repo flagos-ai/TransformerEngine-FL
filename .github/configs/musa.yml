@@ -37,6 +37,7 @@ container_options: >-
 
 # Platform-specific environment setup script
 setup_script: .github/scripts/setup_musa.sh
+unit_test_timeout_minutes: 120
 
 # Device types to run tests on
 device_types:
@@ -58,19 +59,10 @@ coverage:
 
 # MUSA launchers keep platform-specific selection outside shared QA scripts.
 unit_test_matrix:
-  - name: pytorch_debug
-    runner: script
-    path: tests/plugin/backend/musa/run_native_tests.sh
   - name: pytorch_unittest
     runner: script
-    path: tests/plugin/backend/musa/run_native_tests.sh
-  - name: pytorch_distributed_utils
-    runner: script
-    path: tests/plugin/backend/musa/run_native_tests.sh
-  - name: pytorch_onnx_unittest
-    runner: script
-    path: tests/plugin/backend/musa/run_native_tests.sh
+    path: tests/plugin/backend/musa/run_unit_tests.sh
 
 integration_test_matrix:
   - name: pytorch_mcore_integration
-    path: tests/integration/musa/run_mcore.sh
+    path: tests/plugin/backend/musa/run_integration_tests.sh
