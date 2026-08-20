@@ -17,6 +17,7 @@ import torch
 
 from ....ops import TEFLBackendBase, NVTE_Fused_Attn_Backend, DType
 from .flash_attention import NPUFlashAttention
+from .permutation import NPUPermutation
 
 
 _DTYPE_TO_TORCH = {
@@ -128,6 +129,10 @@ class NPUBackend(TEFLBackendBase):
         to NPU's FlashAttention interface.
         """
         return NPUFlashAttention
+
+    def get_permutation_class(self):
+        """Return the NPU adapter for TE's public permutation API."""
+        return NPUPermutation
 
     # ===================== RMSNorm =====================
 

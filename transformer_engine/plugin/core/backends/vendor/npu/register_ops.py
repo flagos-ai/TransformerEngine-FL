@@ -53,6 +53,15 @@ def register_builtins(registry) -> None:
             vendor="NPU",
             priority=100,
         ),
+        # Public permutation API adapter
+        OpImpl(
+            op_name="get_permutation_class",
+            impl_id="vendor.npu",
+            kind=BackendImplKind.VENDOR,
+            fn=_bind_is_available(backend.get_permutation_class, is_avail),
+            vendor="NPU",
+            priority=100,
+        ),
         # RMSNorm forward
         OpImpl(
             op_name="rmsnorm_fwd",

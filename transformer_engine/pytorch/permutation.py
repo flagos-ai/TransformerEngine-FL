@@ -107,7 +107,12 @@ class _moe_permute_index_map(torch.autograd.Function):
         act_grad = None
         if ctx.needs_input_grad[0]:
             act_grad = tex.moe_permute_bwd(
-                permuted_act_grad, dtype, ctx.row_id_map, torch.empty(0), ctx.num_tokens, ctx.topK
+                permuted_act_grad,
+                dtype,
+                ctx.row_id_map,
+                torch.empty(0, device=permuted_act_grad.device),
+                ctx.num_tokens,
+                ctx.topK,
             )
 
         return act_grad, None, None, None
@@ -148,7 +153,7 @@ class _moe_unpermute_index_map(torch.autograd.Function):
         else:
             num_tokens = row_id_map.size(0)
             topK = 1
-            probs = torch.empty(0)
+            probs = torch.empty(0, device=inp.device)
 
         # Device check
         if inp.device.type != te_device_type():
@@ -646,7 +651,7 @@ def moe_permute_with_probs(
     probs: torch.Tensor,
     routing_map: torch.Tensor,
     num_out_tokens: int = -1,
-) -> Tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     """
     Permute the tokens and probs based on the routing_map.
     Token with the same index will be grouped together.
@@ -907,7 +912,7 @@ def moe_sort_chunks_by_index(
     inp: torch.Tensor,
     split_sizes: torch.Tensor,
     sorted_index: torch.Tensor,
-) -> Tuple[torch.Tensor, torch.Tensor]:
+) -> torch.Tensor:
     """
     Split and sort the input tensor based on the split_sizes and sorted indices.
     The inp tensor is splitted along dim-0 according to the split_sizes list and then sorted
@@ -952,3 +957,37 @@ def moe_sort_chunks_by_index_with_probs(
     """
     output, permuted_probs = _moe_chunk_sort.apply(inp, split_sizes, sorted_index, probs)
     return output, permuted_probs
+
+
+class _NativePermutation:
+    """Snapshot of Transformer Engine's public permutation implementation."""
+
+    moe_permute = staticmethod(moe_permute)
+    moe_permute_with_probs = staticmethod(moe_permute_with_probs)
+    moe_permute_and_pad_with_probs = staticmethod(moe_permute_and_pad_with_probs)
+    moe_unpermute = staticmethod(moe_unpermute)
+    moe_sort_chunks_by_index = staticmethod(moe_sort_chunks_by_index)
+    moe_sort_chunks_by_index_with_probs = staticmethod(
+        moe_sort_chunks_by_index_with_probs
+    )
+
+
+def _install_permutation_adapter() -> None:
+    """Install a backend adapter without modifying the native public functions."""
+    factory = getattr(tex, "permutation", None)
+    if factory is None:
+        return
+
+    adapter = factory(_NativePermutation)
+    for name in (
+        "moe_permute",
+        "moe_permute_with_probs",
+        "moe_permute_and_pad_with_probs",
+        "moe_unpermute",
+        "moe_sort_chunks_by_index",
+        "moe_sort_chunks_by_index_with_probs",
+    ):
+        globals()[name] = getattr(adapter, name)
+
+
+_install_permutation_adapter()
