@@ -23,6 +23,11 @@ _skip_metax_quantize = pytest.mark.skipif(
     os.environ.get("PLATFORM") == "metax",
     reason="FP8 quantize requires NVRTC CUDA headers that are unavailable on MetaX CI",
 )
+_skip_musa_dequantize = pytest.mark.skipif(
+    os.environ.get("PLATFORM") == "musa",
+    reason="MUSA vendor TE is being upgraded to the v2.17 DType ABI",
+)
+
 _is_ascend = os.environ.get("PLATFORM") == "ascend" or te_device_type() == "npu"
 _skip_ascend_quantize = pytest.mark.skipif(
     _is_ascend,
@@ -195,6 +200,7 @@ def test_per_tensor_scaling(configs_dir, feature_dirs):
 
 
 @_skip_metax_quantize
+@_skip_musa_dequantize
 @_skip_ascend_quantize
 def test_fake_quant(configs_dir, feature_dirs):
     try:
@@ -244,6 +250,7 @@ def test_fake_quant(configs_dir, feature_dirs):
 
 
 @_skip_metax_quantize
+@_skip_musa_dequantize
 @_skip_ascend_quantize
 def test_statistics_collection(configs_dir, feature_dirs):
     try:
@@ -371,6 +378,7 @@ def test_statistics_collection(configs_dir, feature_dirs):
 
 
 @_skip_metax_quantize
+@_skip_musa_dequantize
 @_skip_ascend_quantize
 def test_statistics_multi_run(configs_dir, feature_dirs):
     try:
