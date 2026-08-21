@@ -94,10 +94,13 @@ class FlashAttentionMUSA(FlashAttentionBase):
         fp8: bool = False,
         fp8_meta: Optional[Dict[str, Any]] = None,
         quantizers: Optional[Any] = None,
+        pad_between_seqs: Optional[bool] = False,
         inference_params: Optional[Any] = None,
         flash_attention_backend: Optional[Any] = None,
         fp8_output: bool = False,
         num_splits: Optional[int] = 1,
+        cu_seqlens_q_padded: Optional[torch.Tensor] = None,
+        cu_seqlens_kv_padded: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         # Ensure musa flash attention is initialized
         self._ensure_musa_flash_attn()
@@ -122,8 +125,11 @@ class FlashAttentionMUSA(FlashAttentionBase):
             fp8=fp8,
             fp8_meta=fp8_meta,
             quantizers=quantizers,
+            pad_between_seqs=pad_between_seqs,
             inference_params=inference_params,
             flash_attention_backend=flash_attention_backend,
             fp8_output=fp8_output,
             num_splits=num_splits,
+            cu_seqlens_q_padded=cu_seqlens_q_padded,
+            cu_seqlens_kv_padded=cu_seqlens_kv_padded,
         )

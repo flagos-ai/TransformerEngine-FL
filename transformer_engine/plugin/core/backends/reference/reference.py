@@ -73,7 +73,7 @@ class ReferenceBackend(TEFLBackendBase):
     def is_available(self) -> bool:
         return True
 
-    def get_attention_backend(self, _attention_params=None):
+    def get_attention_backend(self, attention_params=None):
         from packaging.version import Version as PkgVersion
         from ...logger_manager import get_logger
 
@@ -198,8 +198,9 @@ class ReferenceBackend(TEFLBackendBase):
         quantizer: Any,
         limit: float = 7.0,
         alpha: float = 1.702,
+        glu_linear_offset: float = 1.0,
     ) -> Any:
-        return clamped_swiglu_torch(input, quantizer, limit, alpha)
+        return clamped_swiglu_torch(input, quantizer, limit, alpha, glu_linear_offset)
 
     # Backward of GELU and variants
     def dgelu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> Any:
@@ -244,8 +245,9 @@ class ReferenceBackend(TEFLBackendBase):
         quantizer: Any,
         limit: float = 7.0,
         alpha: float = 1.702,
+        glu_linear_offset: float = 1.0,
     ) -> Any:
-        return clamped_dswiglu_torch(grad, fwd_input, quantizer, limit, alpha)
+        return clamped_dswiglu_torch(grad, fwd_input, quantizer, limit, alpha, glu_linear_offset)
 
     # DBias + DAct fusions
     def dbias_dgelu(
@@ -443,25 +445,25 @@ class ReferenceBackend(TEFLBackendBase):
     # Fused attention backend
     def get_fused_attn_backend(
         self,
-        _is_training: bool,
-        _q_dtype: DType,
-        _kv_dtype: DType,
-        _qkv_layout: NVTE_QKV_Layout,
-        _bias_type: NVTE_Bias_Type,
-        _attn_mask_type: NVTE_Mask_Type,
-        _softmax_type: NVTE_Softmax_Type,
-        _p_dropout: float,
-        _num_attn_heads: int,
-        _num_gqa_groups: int,
-        _max_seqlen_q: int,
-        _max_seqlen_kv: int,
-        _head_dim_qk: int,
-        _head_dim_v: int,
-        _window_size_left: int,
-        _window_size_right: int,
-        _return_max_logit: bool,
-        _cuda_graph: bool = False,
-        _deterministic: bool = False,
+        is_training: bool,
+        q_dtype: DType,
+        kv_dtype: DType,
+        qkv_layout: NVTE_QKV_Layout,
+        bias_type: NVTE_Bias_Type,
+        attn_mask_type: NVTE_Mask_Type,
+        softmax_type: NVTE_Softmax_Type,
+        p_dropout: float,
+        num_attn_heads: int,
+        num_gqa_groups: int,
+        max_seqlen_q: int,
+        max_seqlen_kv: int,
+        head_dim_qk: int,
+        head_dim_v: int,
+        window_size_left: int,
+        window_size_right: int,
+        return_max_logit: bool,
+        cuda_graph: bool = False,
+        deterministic: bool = False,
     ) -> NVTE_Fused_Attn_Backend:
         return NVTE_Fused_Attn_Backend.NVTE_No_Backend
 

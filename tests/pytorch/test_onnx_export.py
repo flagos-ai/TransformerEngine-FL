@@ -22,7 +22,6 @@ For reproducibility use: torch.manual_seed(0)
 
 import os
 import tempfile
-import contextlib
 import pytest
 import warnings
 import numpy as np
@@ -35,11 +34,7 @@ from onnxruntime_extensions import PyCustomOpDef, get_library_path, onnx_op
 from transformer_engine import te_device_type
 import transformer_engine.pytorch as te
 from transformer_engine.common import recipe
-import transformer_engine_torch as tex
-from transformer_engine.pytorch.export import (
-    is_in_onnx_export_mode,
-    te_translation_table,
-)
+from transformer_engine.pytorch.export import is_in_onnx_export_mode, te_translation_table
 from transformer_engine.pytorch.quantization import FP8GlobalStateManager
 from transformer_engine.pytorch.utils import get_default_init_method
 
@@ -88,12 +83,6 @@ supported_activations = ["gelu", "relu", "reglu", "geglu", "swiglu", "clamped_sw
 all_normalizations = ["LayerNorm", "RMSNorm"]
 
 
-def _onnx_autocast(fp8_recipe: Optional[recipe.Recipe]):
-    if fp8_recipe is None:
-        return contextlib.nullcontext()
-    return te.autocast(enabled=True, recipe=fp8_recipe)
-
-
 @onnx_op(
     op_type="trt::TRT_FP8QuantizeLinear",
     domain="trt",
@@ -109,7 +98,7 @@ def trt_fp8_quantize(t, scale_inv):
     q = te.tensor.float8_tensor.Float8Quantizer(
         scale=1 / torch.from_numpy(scale_inv).to(device=te_device_type()),
         amax=torch.zeros([1]).to(device=te_device_type()),
-        fp8_dtype=tex.DType.kFloat8E4M3,
+        fp8_dtype=te.DType.kFloat8E4M3,
     )
     return q(x)._data.cpu().numpy()
 
@@ -129,7 +118,7 @@ def trt_fp8_dequantize(t, scale_inv):
     q = te.tensor.float8_tensor.Float8Quantizer(
         scale=1 / torch.from_numpy(scale_inv).to(device=te_device_type()),
         amax=torch.zeros([1]).to(device=te_device_type()),
-        fp8_dtype=tex.DType.kFloat8E4M3,
+        fp8_dtype=te.DType.kFloat8E4M3,
     )
     quantizer_tensor = q.create_tensor_from_data(x, fake_dtype=torch.float32)
     return quantizer_tensor.dequantize().cpu().numpy()
@@ -146,7 +135,7 @@ def trt_fp8_dequantize(t, scale_inv):
 def trt_mxfp8_quantize(t):
     """MXFP8 quantization extension for ONNX Runtime."""
     x = torch.from_numpy(t).to(device=te_device_type())
-    q = te.tensor.mxfp8_tensor.MXFP8Quantizer(tex.DType.kFloat8E4M3)
+    q = te.tensor.mxfp8_tensor.MXFP8Quantizer(te.DType.kFloat8E4M3)
     return q(x)._rowwise_data.cpu().numpy(), q(x)._rowwise_scale_inv.cpu().numpy()
 
 
@@ -163,7 +152,7 @@ def trt_mxfp8_dequantize(t, scale_inv):
     """MXFP8 dequantization extension for ONNX Runtime."""
     x = torch.from_numpy(t).to(device=te_device_type())
     scale_inv_tensor = torch.from_numpy(scale_inv).to(device=te_device_type())
-    q = te.tensor.mxfp8_tensor.MXFP8Quantizer(tex.DType.kFloat8E4M3)
+    q = te.tensor.mxfp8_tensor.MXFP8Quantizer(te.DType.kFloat8E4M3)
     quantizer_tensor = q.create_tensor_from_data(x, scale_inv_tensor, fake_dtype=torch.float32)
     return quantizer_tensor.dequantize().cpu().numpy()
 
@@ -199,7 +188,9 @@ def do_export(
     input_names = input_names or ["input"]
     output_names = output_names or ["output"]
 
-    with torch.inference_mode(), _onnx_autocast(fp8_recipe), warnings.catch_warnings():
+    with torch.inference_mode(), te.autocast(
+        enabled=fp8_recipe is not None, recipe=fp8_recipe
+    ), warnings.catch_warnings():
         warnings.filterwarnings(action="ignore", category=torch.jit.TracerWarning, module=r".*")
 
         model.to(device=te_device_type()).eval()
@@ -252,8 +243,8 @@ def te_infer(
     fp8_recipe: recipe.Recipe,
 ):
     """Transformer Engine forward propagation."""
-    with torch.inference_mode(), _onnx_autocast(
-        fp8_recipe if is_fp8 else None
+    with torch.inference_mode(), te.autocast(
+        enabled=is_fp8, recipe=fp8_recipe
     ), warnings.catch_warnings():
         te_outputs = model(*inps if isinstance(inps, tuple) else (inps,))
         if not isinstance(te_outputs, tuple):
@@ -392,13 +383,7 @@ def validate_result(
     input_feed = create_ort_input_dict(ort_s, inps)
     onnx_outputs = ort_s.run(None, input_feed=input_feed)
     compare_outputs(
-        onnx_outputs,
-        te_outputs,
-        atol,
-        rtol,
-        max_errors_printed,
-        allow_cnt_errors,
-        fname,
+        onnx_outputs, te_outputs, atol, rtol, max_errors_printed, allow_cnt_errors, fname
     )
 
 
@@ -462,11 +447,10 @@ def _test_export_linear(
                 bias=use_bias,
                 return_bias=return_bias,
                 params_dtype=precision,
-                device=te_device_type(),
             )
 
-        def forward(self, input):
-            ret = self.linear(input)
+        def forward(self, inp):
+            ret = self.linear(inp)
             return ret
 
     inp = torch.randn(
@@ -476,7 +460,7 @@ def _test_export_linear(
     bias_str = "_bias" if use_bias else ""
     high_prec_str = dtype2str(precision)
     fname = f"te.linear{fp8_str}{bias_str}{high_prec_str}.onnx"
-    with _onnx_autocast(fp8_recipe):
+    with te.autocast(enabled=fp8_recipe is not None, recipe=fp8_recipe):
         model = Test_Linear(in_features, out_features, use_bias, return_bias, precision).to(
             device=te_device_type()
         )
@@ -487,7 +471,7 @@ def _test_export_linear(
             inp,
             fname,
             fp8_recipe,
-            dynamic_shapes={"input": {0: bs}},
+            dynamic_shapes={"inp": {0: bs}},
         )
         te_outputs = te_infer(model, inp, is_fp8=fp8_recipe is not None, fp8_recipe=fp8_recipe)
         serialize_inputs_outputs(fname, inp, te_outputs)
@@ -498,12 +482,7 @@ def _test_export_linear(
             validate_result(fname, inp, model, atol=1e-3, te_outputs=te_outputs)
         else:
             validate_result(
-                fname,
-                inp,
-                model,
-                atol=1e-2,
-                is_fp8=fp8_recipe is not None,
-                te_outputs=te_outputs,
+                fname, inp, model, atol=1e-2, is_fp8=fp8_recipe is not None, te_outputs=te_outputs
             )
 
 
@@ -543,13 +522,12 @@ def _test_export_layernorm(
     fname = f"te.layernorm_linear{fp8_str}{high_prec_str}.onnx"
 
     with torch.no_grad():
-        with _onnx_autocast(fp8_recipe):
+        with te.autocast(enabled=fp8_recipe is not None, recipe=fp8_recipe):
             layernorm_cls = te.LayerNorm if normalization == "LayerNorm" else te.RMSNorm
             model = layernorm_cls(
                 hidden_size,
                 params_dtype=precision,
                 zero_centered_gamma=zero_centered_gamma,
-                device=te_device_type(),
             ).to(device=te_device_type())
 
             # dynamic shape
@@ -612,7 +590,7 @@ def _test_export_layernorm_linear(
     fname = f"te.layernorm_linear{fp8_str}{bias_str}{high_prec_str}.onnx"
 
     with torch.no_grad():
-        with _onnx_autocast(fp8_recipe):
+        with te.autocast(enabled=fp8_recipe is not None, recipe=fp8_recipe):
             model = te.LayerNormLinear(
                 hidden_size,
                 3 * hidden_size,
@@ -622,7 +600,6 @@ def _test_export_layernorm_linear(
                 params_dtype=precision,
                 zero_centered_gamma=zero_centered_gamma,
                 normalization=normalization,
-                device=te_device_type(),
             ).to(device=te_device_type())
             if fp8_recipe is not None:
                 set_layer_scale(model, scale_factor, num_gemms=2)
@@ -641,9 +618,7 @@ def _test_export_layernorm_linear(
                     model,
                     # For current scaling we use Float8Quantizer in tests + amax computed by hand,
                     # which has slightly different numerics than Float8CurrentScalingQuantizer.
-                    atol=(
-                        1e-3 if fp8_recipe.__class__ is not recipe.Float8CurrentScaling else 2e-2
-                    ),
+                    atol=1e-3 if fp8_recipe.__class__ is not recipe.Float8CurrentScaling else 2e-2,
                     is_fp8=fp8_recipe is not None,
                     te_outputs=te_outputs,
                 )
@@ -701,7 +676,7 @@ def _test_export_layernorm_mlp(
     bias_str = "_bias" if use_bias else ""
     high_prec_str = dtype2str(precision)
     fname = f"te.layernorm_mlp{fp8_str}{bias_str}{high_prec_str}_{activation}.onnx"
-    with _onnx_autocast(fp8_recipe):
+    with te.autocast(enabled=fp8_recipe is not None, recipe=fp8_recipe):
         model = te.LayerNormMLP(
             hidden_size,
             ffn_hidden_size,
@@ -712,7 +687,6 @@ def _test_export_layernorm_mlp(
             zero_centered_gamma=zero_centered_gamma,
             activation=activation,
             normalization=normalization,
-            device=te_device_type(),
         ).to(device=te_device_type())
         if fp8_recipe is not None:
             set_layer_scale(model, scale_factor, num_gemms=2)
@@ -725,12 +699,7 @@ def _test_export_layernorm_mlp(
             2e-2 if fp8_recipe is not None else (5e-1 if activation == "swiglu" else 1e-3)
         )  # TODO(pgadzinski) - check 2e-2
         validate_result(
-            fname,
-            inp,
-            model,
-            atol=atol,
-            is_fp8=fp8_recipe is not None,
-            te_outputs=te_outputs,
+            fname, inp, model, atol=atol, is_fp8=fp8_recipe is not None, te_outputs=te_outputs
         )
 
 
@@ -777,46 +746,14 @@ if fp8_available:
 @pytest.mark.parametrize(
     "precision,      use_mask, attn_mask_type",
     [
-        (
-            torch.float32,
-            True,
-            "arbitrary",
-        ),  # calls forward_torch_softmax (apply user mask)
-        (
-            torch.float32,
-            False,
-            "no_mask",
-        ),  # calls forward_torch_softmax (apply no mask)
-        (
-            torch.float16,
-            False,
-            "causal",
-        ),  # calls forward_torch_softmax (apply dynamic onnx mask)
-        (
-            torch.float16,
-            True,
-            "arbitrary",
-        ),  # calls forward_torch_softmax (apply user mask)
-        (
-            torch.float16,
-            False,
-            "no_mask",
-        ),  # calls forward_torch_softmax (apply no mask)
-        (
-            torch.bfloat16,
-            False,
-            "causal",
-        ),  # calls forward_torch_softmax (apply dynamic onnx mask)
-        (
-            torch.bfloat16,
-            True,
-            "arbitrary",
-        ),  # calls forward_torch_softmax (apply user mask)
-        (
-            torch.bfloat16,
-            False,
-            "no_mask",
-        ),  # calls forward_torch_softmax (apply no mask)
+        (torch.float32, True, "arbitrary"),  # calls forward_torch_softmax (apply user mask)
+        (torch.float32, False, "no_mask"),  # calls forward_torch_softmax (apply no mask)
+        (torch.float16, False, "causal"),  # calls forward_torch_softmax (apply dynamic onnx mask)
+        (torch.float16, True, "arbitrary"),  # calls forward_torch_softmax (apply user mask)
+        (torch.float16, False, "no_mask"),  # calls forward_torch_softmax (apply no mask)
+        (torch.bfloat16, False, "causal"),  # calls forward_torch_softmax (apply dynamic onnx mask)
+        (torch.bfloat16, True, "arbitrary"),  # calls forward_torch_softmax (apply user mask)
+        (torch.bfloat16, False, "no_mask"),  # calls forward_torch_softmax (apply no mask)
     ],
 )
 def test_export_core_attention(
@@ -863,13 +800,7 @@ def test_export_core_attention(
         return
     atol = 5e-1 if is_fp8 else 1e-2
     validate_result(
-        fname,
-        inp,
-        model,
-        is_fp8=True,
-        atol=1e-2,
-        input_names=input_names,
-        te_outputs=te_outputs,
+        fname, inp, model, is_fp8=True, atol=atol, input_names=input_names, te_outputs=te_outputs
     )
 
 
@@ -953,7 +884,7 @@ def _test_export_multihead_attention(
         attention_type=attention_type,
         fuse_qkv_params=fuse_qkv_params,
         return_bias=True,
-    )
+    ).to(te_device_type())
 
     inp_context = (hidden_states_context, attention_mask, encoder_output)
     input_names = ["hidden_states", "attention_mask", "encoder_output"]
@@ -975,11 +906,7 @@ def _test_export_multihead_attention(
     )
     te_outputs = te_infer(model, inp_context, is_fp8=fp8_recipe is not None, fp8_recipe=fp8_recipe)
     serialize_inputs_outputs(
-        fname,
-        inp_context,
-        te_outputs,
-        input_names=input_names,
-        output_names=output_names,
+        fname, inp_context, te_outputs, input_names=input_names, output_names=output_names
     )
     if precision in (torch.bfloat16,):
         return
@@ -1121,7 +1048,6 @@ def _test_export_transformer_layer(
         fuse_qkv_params=fuse_qkv_params,
         zero_centered_gamma=zero_centered_gamma,
         activation=activation,
-        device=te_device_type(),
     ).to(device=te_device_type())
     do_export(model, inp, fname, fp8_recipe, input_names=input_names)
     te_outputs = te_infer(model, inp, is_fp8=fp8_recipe is not None, fp8_recipe=fp8_recipe)
@@ -1209,7 +1135,6 @@ def test_export_gpt_generation(
         output_layernorm=output_layernorm,
         params_dtype=precision,
         fuse_qkv_params=fuse_qkv_params,
-        device=te_device_type(),
     ).to(device=te_device_type())
 
     # "Context phase": use full input sequence length
@@ -1253,7 +1178,11 @@ def test_export_gpt_generation(
     # cuDNN <= 9.9 does not support decode-only causal attention through the fused path.
     # Keep the context-phase export unchanged and only force the generative-phase forward
     # through the unfused backend for the non-FP8 single-token case that hits this limit.
-    generative_env = {"NVTE_FUSED_ATTN": "0"} if fp8_recipe is None else {}
+    generative_env = (
+        {"NVTE_FLASH_ATTN": "0", "NVTE_FUSED_ATTN": "0", "NVTE_UNFUSED_ATTN": "1"}
+        if fp8_recipe is None
+        else {}
+    )
     with patch.dict(os.environ, generative_env):
         te_outputs = te_infer(model, inp, is_fp8=fp8_recipe is not None, fp8_recipe=fp8_recipe)
     serialize_inputs_outputs(fname, inp, te_outputs, input_names=input_names)
@@ -1295,13 +1224,13 @@ def test_trt_integration(fp8_recipe: recipe.Recipe):
 
     inps = (torch.randn([16, 16, 128], device=te_device_type(), requires_grad=False),)
 
-    with _onnx_autocast(fp8_recipe):
+    with te.autocast(enabled=fp8_recipe is not None, recipe=fp8_recipe):
         out_ref = model(*inps)
 
     onnx_fd, onnx_path = tempfile.mkstemp(suffix=".onnx")
     os.close(onnx_fd)
     try:
-        with _onnx_autocast(fp8_recipe):
+        with te.autocast(enabled=fp8_recipe is not None, recipe=fp8_recipe):
             with te.onnx_export(enabled=True):
                 torch.onnx.export(
                     model,

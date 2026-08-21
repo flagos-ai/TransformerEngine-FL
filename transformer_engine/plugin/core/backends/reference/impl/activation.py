@@ -92,6 +92,7 @@ def clamped_swiglu_torch(
     quantizer: Any,
     limit: float = 7.0,
     alpha: float = 1.702,
+    glu_linear_offset: float = 1.0,
 ) -> torch.Tensor:
     """Clamped SwiGLU matching CUDA implementation.
 
@@ -104,7 +105,7 @@ def clamped_swiglu_torch(
     # CUDA only clamps a to upper bound
     a_clamped = torch.clamp(a, max=limit)
     # CUDA clamps b to [-limit, limit] and adds 1
-    b_clamped = torch.clamp(b, -limit, limit) + 1
+    b_clamped = torch.clamp(b, -limit, limit) + glu_linear_offset
     return a_clamped * torch.sigmoid(alpha * a_clamped) * b_clamped
 
 
@@ -214,6 +215,7 @@ def clamped_dswiglu_torch(
     quantizer: Any,
     limit: float = 7.0,
     alpha: float = 1.702,
+    glu_linear_offset: float = 1.0,
 ) -> torch.Tensor:
     """Backward pass for clamped SwiGLU matching CUDA implementation.
 
@@ -226,7 +228,7 @@ def clamped_dswiglu_torch(
     # CUDA only clamps a to upper bound
     a_clamped = torch.clamp(a, max=limit)
     # CUDA clamps b to [-limit, limit] and adds 1
-    b_clamped = torch.clamp(b, -limit, limit) + 1
+    b_clamped = torch.clamp(b, -limit, limit) + glu_linear_offset
 
     a_clamped = a_clamped.detach().requires_grad_(True)
     b_clamped = b_clamped.detach().requires_grad_(True)

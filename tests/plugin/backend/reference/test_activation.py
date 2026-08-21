@@ -97,13 +97,13 @@ def test_clamped_swiglu_forward_boundaries():
     inp = torch.tensor([[-5.0, 5.0], [0.0, 1.0]], dtype=torch.float32)
 
     # Execute the activation operator
-    res = clamped_swiglu_torch(inp, quantizer, limit=2.0, alpha=1.0)
+    res = clamped_swiglu_torch(inp, quantizer, limit=2.0, alpha=1.0, glu_linear_offset=0.25)
 
     # Fix tensor shapes to match the 2D column vector format (2, 1) after chunk(2, dim=-1)
     expected_a = torch.tensor([[-5.0], [0.0]], dtype=torch.float32)
     expected_b = torch.tensor(
-        [[3.0], [2.0]], dtype=torch.float32
-    )  # [5.0 clamped to max limit 2.0] + 1 = 3.0
+        [[2.25], [1.25]], dtype=torch.float32
+    )  # [5.0 clamped to max limit 2.0] + 0.25 = 2.25
 
     expected_out = (expected_a * torch.sigmoid(1.0 * expected_a)) * expected_b
 
@@ -168,7 +168,14 @@ def test_clamped_dswiglu_backward_branches():
     grad_in = torch.tensor([[1.0], [1.0]], dtype=torch.float32)
 
     # Run out-of-bounds limit to force masks evaluated as False
-    res_grad = clamped_dswiglu_torch(grad_in, fwd_in, quantizer, limit=5.0, alpha=1.0)
+    res_grad = clamped_dswiglu_torch(
+        grad_in,
+        fwd_in,
+        quantizer,
+        limit=5.0,
+        alpha=1.0,
+        glu_linear_offset=0.25,
+    )
     assert res_grad.shape == fwd_in.shape
 
     # Row 0, Col 0: a = 10.0 (> limit 5.0). Mask (a <= limit) is False -> grad_a should be 0.0

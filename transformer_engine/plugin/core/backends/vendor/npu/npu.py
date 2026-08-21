@@ -178,7 +178,7 @@ class NPUBackend(TEFLBackendBase):
         rsigma: torch.Tensor,
         gamma: torch.Tensor,
         sm_margin: int,
-        zero_centered_gamma: bool = False,
+        zero_centered_gamma: bool,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """RMSNorm backward using torch_npu.npu_rms_norm_backward.
 

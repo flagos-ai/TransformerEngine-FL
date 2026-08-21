@@ -262,10 +262,13 @@ class FlashAttentionBase(torch.nn.Module, ABC):
         fp8: bool = False,
         fp8_meta: Optional[Dict[str, Any]] = None,
         quantizers: Optional[Any] = None,
+        pad_between_seqs: Optional[bool] = False,
         inference_params: Optional[Any] = None,
         flash_attention_backend: Optional[Any] = None,
         fp8_output: bool = False,
         num_splits: Optional[int] = 1,
+        cu_seqlens_q_padded: Optional[torch.Tensor] = None,
+        cu_seqlens_kv_padded: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
         Actual forward implementation - subclasses must implement this.
@@ -295,10 +298,13 @@ class FlashAttentionBase(torch.nn.Module, ABC):
         fp8: bool = False,
         fp8_meta: Optional[Dict[str, Any]] = None,
         quantizers: Optional[Any] = None,
+        pad_between_seqs: Optional[bool] = False,
         inference_params: Optional[Any] = None,
         flash_attention_backend: Optional[Any] = None,
         fp8_output: bool = False,
         num_splits: Optional[int] = 1,
+        cu_seqlens_q_padded: Optional[torch.Tensor] = None,
+        cu_seqlens_kv_padded: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
         Forward pass with automatic fallback support and caching.
@@ -325,10 +331,13 @@ class FlashAttentionBase(torch.nn.Module, ABC):
                 fp8=fp8,
                 fp8_meta=fp8_meta,
                 quantizers=quantizers,
+                pad_between_seqs=pad_between_seqs,
                 inference_params=inference_params,
                 flash_attention_backend=flash_attention_backend,
                 fp8_output=fp8_output,
                 num_splits=num_splits,
+                cu_seqlens_q_padded=cu_seqlens_q_padded,
+                cu_seqlens_kv_padded=cu_seqlens_kv_padded,
             )
 
         def call_impl_fn(impl_class):
@@ -353,10 +362,13 @@ class FlashAttentionBase(torch.nn.Module, ABC):
                     fp8=fp8,
                     fp8_meta=fp8_meta,
                     quantizers=quantizers,
+                    pad_between_seqs=pad_between_seqs,
                     inference_params=inference_params,
                     flash_attention_backend=flash_attention_backend,
                     fp8_output=fp8_output,
                     num_splits=num_splits,
+                    cu_seqlens_q_padded=cu_seqlens_q_padded,
+                    cu_seqlens_kv_padded=cu_seqlens_kv_padded,
                 )
             else:
                 fallback_instance = impl_class(**self._init_params)
@@ -382,10 +394,13 @@ class FlashAttentionBase(torch.nn.Module, ABC):
                     fp8=fp8,
                     fp8_meta=fp8_meta,
                     quantizers=quantizers,
+                    pad_between_seqs=pad_between_seqs,
                     inference_params=inference_params,
                     flash_attention_backend=flash_attention_backend,
                     fp8_output=fp8_output,
                     num_splits=num_splits,
+                    cu_seqlens_q_padded=cu_seqlens_q_padded,
+                    cu_seqlens_kv_padded=cu_seqlens_kv_padded,
                 )
 
         return self._manager.call_with_custom_impl(
@@ -546,6 +561,7 @@ class TEFLBackendBase(ABC):
         quantizer: Any,
         limit: float = 7.0,
         alpha: float = 1.702,
+        glu_linear_offset: float = 1.0,
     ) -> Any:
         raise NotImplementedError
 
@@ -648,6 +664,7 @@ class TEFLBackendBase(ABC):
         quantizer: Any,
         limit: float = 7.0,
         alpha: float = 1.702,
+        glu_linear_offset: float = 1.0,
     ) -> Any:
         raise NotImplementedError
 
@@ -874,6 +891,7 @@ class TEFLBackendBase(ABC):
         quantizer: Any,
         num_tensors: int,
         first_dims: List[int],
+        tensor_offsets: Optional[Any] = None,
     ) -> Any:
         raise NotImplementedError
 
@@ -883,6 +901,7 @@ class TEFLBackendBase(ABC):
         quantizer: Any,
         num_tensors: int,
         first_dims: List[int],
+        tensor_offsets: Optional[Any] = None,
     ) -> Any:
         raise NotImplementedError
 
@@ -1379,13 +1398,12 @@ class TEFLBackendBase(ABC):
         scaling_factor: Optional[float],
         score_function: str,
         expert_bias: Optional[torch.Tensor],
+        routing_map_format: int = 0,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         raise NotImplementedError
 
     def fused_topk_with_score_function_bwd(
         self,
-        num_tokens: int,
-        num_experts: int,
         routing_map: torch.Tensor,
         intermediate_output: torch.Tensor,
         grad_probs: torch.Tensor,
@@ -1394,6 +1412,7 @@ class TEFLBackendBase(ABC):
         use_pre_softmax: bool,
         scaling_factor: Optional[float],
         score_function: str,
+        routing_map_format: int = 0,
     ) -> torch.Tensor:
         raise NotImplementedError
 
@@ -1402,13 +1421,12 @@ class TEFLBackendBase(ABC):
         logits: torch.Tensor,
         topk: int,
         score_function: str,
+        routing_map_format: int = 0,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         raise NotImplementedError
 
     def fused_score_for_moe_aux_loss_bwd(
         self,
-        num_tokens: int,
-        num_experts: int,
         intermediate_output: torch.Tensor,
         grad_scores: torch.Tensor,
         grad_logits: torch.Tensor,

@@ -250,7 +250,28 @@ class FlagOSBackend(TEFLBackendBase):
             zero_centered_gamma=zero_centered_gamma,
         )
 
-    def get_fused_attn_backend(self, *args, **kwargs) -> int:
+    def get_fused_attn_backend(
+        self,
+        is_training: bool,
+        q_dtype: DType,
+        kv_dtype: DType,
+        qkv_layout: NVTE_QKV_Layout,
+        bias_type: NVTE_Bias_Type,
+        attn_mask_type: NVTE_Mask_Type,
+        softmax_type: NVTE_Softmax_Type,
+        p_dropout: float,
+        num_attn_heads: int,
+        num_gqa_groups: int,
+        max_seqlen_q: int,
+        max_seqlen_kv: int,
+        head_dim_qk: int,
+        head_dim_v: int,
+        window_size_left: int,
+        window_size_right: int,
+        return_max_logit: bool,
+        cuda_graph: bool = False,
+        deterministic: bool = False,
+    ) -> int:
         return NVTE_Fused_Attn_Backend.NVTE_No_Backend
 
     # Softmax functions

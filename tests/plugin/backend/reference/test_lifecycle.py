@@ -1,5 +1,6 @@
 import os
 import sys
+from enum import IntEnum
 from unittest.mock import MagicMock
 
 import pytest
@@ -64,7 +65,26 @@ class MockBase:
 
 
 mock_ops.TEFLBackendBase = MockBase
-mock_ops.DType = MagicMock()
+
+
+class MockDType(IntEnum):
+    """Exact stand-in for the upstream backend dtype enum."""
+
+    kByte = 0
+    kInt16 = 1
+    kInt32 = 2
+    kInt64 = 3
+    kFloat32 = 4
+    kFloat16 = 5
+    kBFloat16 = 6
+    kFloat8E4M3 = 7
+    kFloat8E5M2 = 8
+    kFloat8E8M0 = 9
+    kFloat4E2M1 = 10
+    kNumTypes = 11
+
+
+mock_ops.DType = MockDType
 mock_ops.FP8TensorMeta = MagicMock()
 mock_ops.CommOverlapType = MagicMock()
 mock_ops.NVTE_QKV_Layout = MagicMock()
@@ -237,8 +257,16 @@ def test_clamped_swiglu_variants():
     mock_impl.clamped_swiglu_torch.reset_mock()
     mock_impl.clamped_dswiglu_torch.reset_mock()
 
-    assert backend.clamped_swiglu(inp, quantizer=None, limit=5.0, alpha=1.5) is not None
-    assert backend.clamped_dswiglu(inp, inp, quantizer=None, limit=5.0, alpha=1.5) is not None
+    assert (
+        backend.clamped_swiglu(inp, quantizer=None, limit=5.0, alpha=1.5, glu_linear_offset=0.25)
+        is not None
+    )
+    assert (
+        backend.clamped_dswiglu(
+            inp, inp, quantizer=None, limit=5.0, alpha=1.5, glu_linear_offset=0.25
+        )
+        is not None
+    )
 
     mock_impl.clamped_swiglu_torch.assert_called_once()
     mock_impl.clamped_dswiglu_torch.assert_called_once()

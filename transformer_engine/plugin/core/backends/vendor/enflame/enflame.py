@@ -16,6 +16,7 @@ import torch
 
 
 from ....ops import *
+from ..compat import vendor_te_compat
 
 
 def _ensure_enflame_libs():
@@ -62,7 +63,7 @@ class EnflameBackend(TEFLBackendBase):
 
     def _get_tex(self):
         if self._tex is None:
-            self._tex = _get_tex()
+            self._tex = vendor_te_compat(_get_tex(), "Enflame")
         return self._tex
 
     def is_available(self) -> bool:
@@ -137,6 +138,7 @@ class EnflameBackend(TEFLBackendBase):
         quantizer: Any,
         num_tensors: int,
         first_dims: List[int],
+        tensor_offsets: Optional[Any] = None,
     ) -> Any:
         tex = self._get_tex()
 
@@ -149,7 +151,7 @@ class EnflameBackend(TEFLBackendBase):
         except Exception:
             pass
 
-        return tex.group_quantize(tensor, quantizer, num_tensors, first_dims)
+        return tex.group_quantize(tensor, quantizer, num_tensors, first_dims, tensor_offsets)
 
     def bgrad_group_quantize(
         self,
@@ -157,6 +159,7 @@ class EnflameBackend(TEFLBackendBase):
         quantizer: Any,
         num_tensors: int,
         first_dims: List[int],
+        tensor_offsets: Optional[Any] = None,
     ) -> Any:
         tex = self._get_tex()
 
@@ -169,7 +172,7 @@ class EnflameBackend(TEFLBackendBase):
         except Exception:
             pass
 
-        return tex.bgrad_group_quantize(tensor, quantizer, num_tensors, first_dims)
+        return tex.bgrad_group_quantize(tensor, quantizer, num_tensors, first_dims, tensor_offsets)
 
     def generic_gemm(
         self,
@@ -214,7 +217,12 @@ class EnflameBackend(TEFLBackendBase):
             gelu,
             gelu_in,
             grad,
+            workspace,
+            workspace_size,
             accumulate,
+            use_split_accumulator,
+            comm_overlap,
+            comm_type,
             extra_output,
             bulk_overlap,
             alpha,
@@ -275,9 +283,10 @@ class EnflameBackend(TEFLBackendBase):
         quantizer: Any,
         limit: float = 7.0,
         alpha: float = 1.702,
+        glu_linear_offset: float = 1.0,
     ) -> Any:
         tex = self._get_tex()
-        return tex.clamped_swiglu(input, quantizer, limit, alpha)
+        return tex.clamped_swiglu(input, quantizer, limit, alpha, glu_linear_offset)
 
     # Backward of GLU #
     def dglu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> Any:
@@ -334,9 +343,10 @@ class EnflameBackend(TEFLBackendBase):
         quantizer: Any,
         limit: float = 7.0,
         alpha: float = 1.702,
+        glu_linear_offset: float = 1.0,
     ) -> Any:
         tex = self._get_tex()
-        return tex.clamped_dswiglu(grad, fwd_input, quantizer, limit, alpha)
+        return tex.clamped_dswiglu(grad, fwd_input, quantizer, limit, alpha, glu_linear_offset)
 
     # DBias + DAct fusions #
     def dbias_dgelu(self, grad: torch.Tensor, fwd_input: torch.Tensor, quantizer: Any) -> List[Any]:
@@ -507,7 +517,15 @@ class EnflameBackend(TEFLBackendBase):
         tex = self._get_tex()
         otype = tex.DType(int(otype)) if otype is not None else None
         return tex.layernorm_fwd(
-            input, weight, bias, eps, ln_out, quantizer, otype, sm_margin, zero_centered_gamma
+            input,
+            weight,
+            bias,
+            eps,
+            ln_out,
+            quantizer,
+            otype,
+            sm_margin,
+            zero_centered_gamma,
         )
 
     def layernorm_bwd(
@@ -763,7 +781,12 @@ class EnflameBackend(TEFLBackendBase):
         tex = self._get_tex()
         fp8_dtype = tex.DType(int(fp8_dtype)) if fp8_dtype is not None else None
         return tex.fused_amax_and_scale_update_after_reduction(
-            amax_reduction_buffer, amax_histories, scales, amax_compute_algo, fp8_dtype, margin
+            amax_reduction_buffer,
+            amax_histories,
+            scales,
+            amax_compute_algo,
+            fp8_dtype,
+            margin,
         )
 
     def fp8_block_scaling_compute_partial_amax(
@@ -1075,6 +1098,11 @@ class EnflameBackend(TEFLBackendBase):
         p_dropout: float,
         set_zero: bool,
         qkv_layout: NVTE_QKV_Layout,
+        o_format: NVTE_QKV_Format,
+        do_format: NVTE_QKV_Format,
+        dqkv_layout: NVTE_QKV_Layout,
+        qkv_scale_inv_format: NVTE_QKV_Format,
+        do_scale_inv_format: NVTE_QKV_Format,
         bias_type: NVTE_Bias_Type,
         attn_mask_type: NVTE_Mask_Type,
         softmax_type: NVTE_Softmax_Type,
@@ -1089,7 +1117,6 @@ class EnflameBackend(TEFLBackendBase):
         O: Any,
         dO: Any,
         fake_dtype: torch.dtype,
-        dqkv_type: DType,
         Aux_CTX_Tensors: List[torch.Tensor],
         cu_seqlens_q_padded: Optional[torch.Tensor],
         cu_seqlens_kv_padded: Optional[torch.Tensor],
@@ -1101,6 +1128,21 @@ class EnflameBackend(TEFLBackendBase):
         tex = self._get_tex()
 
         qkv_layout = tex.NVTE_QKV_Layout(int(qkv_layout)) if qkv_layout is not None else None
+        o_format = tex.NVTE_QKV_Format(int(o_format)) if o_format is not None else None
+        do_format = tex.NVTE_QKV_Format(int(do_format)) if do_format is not None else None
+        dqkv_layout = (
+            tex.NVTE_QKV_Layout(int(dqkv_layout)) if dqkv_layout is not None else None
+        )
+        qkv_scale_inv_format = (
+            tex.NVTE_QKV_Format(int(qkv_scale_inv_format))
+            if qkv_scale_inv_format is not None
+            else None
+        )
+        do_scale_inv_format = (
+            tex.NVTE_QKV_Format(int(do_scale_inv_format))
+            if do_scale_inv_format is not None
+            else None
+        )
         bias_type = tex.NVTE_Bias_Type(int(bias_type)) if bias_type is not None else None
         attn_mask_type = (
             tex.NVTE_Mask_Type(int(attn_mask_type)) if attn_mask_type is not None else None
@@ -1108,7 +1150,6 @@ class EnflameBackend(TEFLBackendBase):
         softmax_type = (
             tex.NVTE_Softmax_Type(int(softmax_type)) if softmax_type is not None else None
         )
-        dqkv_type = tex.DType(int(dqkv_type)) if dqkv_type is not None else None
 
         return tex.fused_attn_bwd(
             max_seqlen_q,
@@ -1117,6 +1158,11 @@ class EnflameBackend(TEFLBackendBase):
             p_dropout,
             set_zero,
             qkv_layout,
+            o_format,
+            do_format,
+            dqkv_layout,
+            qkv_scale_inv_format,
+            do_scale_inv_format,
             bias_type,
             attn_mask_type,
             softmax_type,
@@ -1131,7 +1177,6 @@ class EnflameBackend(TEFLBackendBase):
             O,
             dO,
             fake_dtype,
-            dqkv_type,
             Aux_CTX_Tensors,
             cu_seqlens_q_padded,
             cu_seqlens_kv_padded,
@@ -1209,7 +1254,14 @@ class EnflameBackend(TEFLBackendBase):
         tex = self._get_tex()
         qkv_format = tex.NVTE_QKV_Format(int(qkv_format)) if qkv_format is not None else None
         return tex.fused_rope_forward(
-            input, freqs, start_positions, qkv_format, interleaved, cu_seqlens, cp_size, cp_rank
+            input,
+            freqs,
+            start_positions,
+            qkv_format,
+            interleaved,
+            cu_seqlens,
+            cp_size,
+            cp_rank,
         )
 
     def fused_rope_backward(
@@ -1301,6 +1353,7 @@ class EnflameBackend(TEFLBackendBase):
         scaling_factor: Optional[float],
         score_function: str,
         expert_bias: Optional[torch.Tensor],
+        routing_map_format: int = 0,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         tex = self._get_tex()
         return tex.fused_topk_with_score_function_fwd(
@@ -1312,12 +1365,11 @@ class EnflameBackend(TEFLBackendBase):
             scaling_factor,
             score_function,
             expert_bias,
+            routing_map_format,
         )
 
     def fused_topk_with_score_function_bwd(
         self,
-        num_tokens: int,
-        num_experts: int,
         routing_map: torch.Tensor,
         intermediate_output: torch.Tensor,
         grad_probs: torch.Tensor,
@@ -1326,11 +1378,10 @@ class EnflameBackend(TEFLBackendBase):
         use_pre_softmax: bool,
         scaling_factor: Optional[float],
         score_function: str,
+        routing_map_format: int = 0,
     ) -> torch.Tensor:
         tex = self._get_tex()
         return tex.fused_topk_with_score_function_bwd(
-            num_tokens,
-            num_experts,
             routing_map,
             intermediate_output,
             grad_probs,
@@ -1339,6 +1390,7 @@ class EnflameBackend(TEFLBackendBase):
             use_pre_softmax,
             scaling_factor,
             score_function,
+            routing_map_format,
         )
 
     def fused_score_for_moe_aux_loss_fwd(
@@ -1346,18 +1398,18 @@ class EnflameBackend(TEFLBackendBase):
         logits: torch.Tensor,
         topk: int,
         score_function: str,
+        routing_map_format: int = 0,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         tex = self._get_tex()
         return tex.fused_score_for_moe_aux_loss_fwd(
             logits,
             topk,
             score_function,
+            routing_map_format,
         )
 
     def fused_score_for_moe_aux_loss_bwd(
         self,
-        num_tokens: int,
-        num_experts: int,
         intermediate_output: torch.Tensor,
         grad_scores: torch.Tensor,
         grad_logits: torch.Tensor,
@@ -1366,8 +1418,6 @@ class EnflameBackend(TEFLBackendBase):
     ) -> torch.Tensor:
         tex = self._get_tex()
         return tex.fused_score_for_moe_aux_loss_bwd(
-            num_tokens,
-            num_experts,
             intermediate_output,
             grad_scores,
             grad_logits,
@@ -1486,7 +1536,13 @@ class EnflameBackend(TEFLBackendBase):
     ) -> None:
         tex = self._get_tex()
         return tex.thd_out_correction(
-            out, out_per_step, lse, lse_per_step, cu_seqlens, only_second_half, lse_packed
+            out,
+            out_per_step,
+            lse,
+            lse_per_step,
+            cu_seqlens,
+            only_second_half,
+            lse_packed,
         )
 
     def thd_grad_correction(

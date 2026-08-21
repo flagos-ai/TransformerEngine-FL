@@ -1,3 +1,4 @@
+import inspect
 import os
 import sys
 from unittest.mock import MagicMock, patch
@@ -53,7 +54,13 @@ def test_version_queries_and_stream_constants():
         create=True,
     ) as mock_enum:
         mock_enum.NVTE_No_Backend = 0
-        assert backend.get_fused_attn_backend() == 0
+        signature = inspect.signature(backend.get_fused_attn_backend)
+        required_arguments = {
+            name: MagicMock(name=name)
+            for name, parameter in signature.parameters.items()
+            if parameter.default is inspect.Parameter.empty
+        }
+        assert backend.get_fused_attn_backend(**required_arguments) == 0
 
 
 # ==============================================================================
