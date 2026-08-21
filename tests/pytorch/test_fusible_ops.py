@@ -1870,6 +1870,9 @@ class TestBasicOps:
         alpha: float = 1.702,
     ):
         """SwiGLU variant used in GPT-OSS"""
+        if os.environ.get("PLATFORM") in {"metax", "musa"} and glu_linear_offset != 1.0:
+            pytest.skip("Vendor TE does not yet support glu_linear_offset")
+
         # Tensor dimensions
         in_shape = list(out_shape)
         in_shape[-1] *= 2
@@ -3172,6 +3175,8 @@ class TestCheckpointing:
         # Skip quantized_weight on MetaX (quantize op NVRTC issue)
         if quantized_weight and os.environ.get("PLATFORM") == "metax":
             pytest.skip("quantize op not supported on metax (NVRTC cuda_runtime.h missing)")
+        if quantized_weight and os.environ.get("PLATFORM") == "musa":
+            pytest.skip("MUSA vendor TE is being upgraded to the v2.17 DType ABI")
 
         # Make input and weight shapes consistent
         out_features, in_features = weight_shape

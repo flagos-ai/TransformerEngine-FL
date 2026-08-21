@@ -471,6 +471,7 @@ def _test_export_linear(
             inp,
             fname,
             fp8_recipe,
+            input_names=["inp"],
             dynamic_shapes={"inp": {0: bs}},
         )
         te_outputs = te_infer(model, inp, is_fp8=fp8_recipe is not None, fp8_recipe=fp8_recipe)
