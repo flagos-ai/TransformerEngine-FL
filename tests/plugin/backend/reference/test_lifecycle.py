@@ -1,113 +1,18 @@
 import os
-import sys
-from enum import IntEnum
 from unittest.mock import MagicMock
 
 import pytest
 import torch
 
-_MISSING = object()
-_MOCKED_MODULE_NAMES = (
-    "transformer_engine.plugin.core.ops",
-    "transformer_engine.plugin.core.backends.reference.impl",
-    "transformer_engine.plugin.core.backends.reference.reference",
-    "transformer_engine.plugin.core.backends.reference",
-)
+from transformer_engine.plugin.core.backends.reference import reference as reference_module
+
+ReferenceBackend = reference_module.ReferenceBackend
 
 
-def _get_parent_attr(module_name):
-    parent_name, _, attr_name = module_name.rpartition(".")
-    parent_module = sys.modules.get(parent_name)
-    if parent_module is None:
-        return None
-    return parent_module, attr_name, getattr(parent_module, attr_name, _MISSING)
-
-
-_SAVED_MODULES = {
-    module_name: sys.modules.get(module_name, _MISSING) for module_name in _MOCKED_MODULE_NAMES
-}
-_SAVED_PARENT_ATTRS = {
-    module_name: _get_parent_attr(module_name) for module_name in _MOCKED_MODULE_NAMES
-}
-
-for module_name in _MOCKED_MODULE_NAMES:
-    sys.modules.pop(module_name, None)
-
-
-def _restore_import_state():
-    for module_name, module in _SAVED_MODULES.items():
-        if module is _MISSING:
-            sys.modules.pop(module_name, None)
-        else:
-            sys.modules[module_name] = module
-
-    for saved_attr in _SAVED_PARENT_ATTRS.values():
-        if saved_attr is None:
-            continue
-        parent_module, attr_name, attr_value = saved_attr
-        if attr_value is _MISSING:
-            if hasattr(parent_module, attr_name):
-                delattr(parent_module, attr_name)
-        else:
-            setattr(parent_module, attr_name, attr_value)
-
-
-# ==============================================================================
-# Part 0: High-Reliability Environment Isolation & Explicit Function Mocking
-# ==============================================================================
-# 1. Isolate C++ / CUDA ops dependencies safely
-mock_ops = MagicMock()
-sys.modules["transformer_engine.plugin.core.ops"] = mock_ops
-
-
-class MockBase:
-    pass
-
-
-mock_ops.TEFLBackendBase = MockBase
-
-
-class MockDType(IntEnum):
-    """Exact stand-in for the upstream backend dtype enum."""
-
-    kByte = 0
-    kInt16 = 1
-    kInt32 = 2
-    kInt64 = 3
-    kFloat32 = 4
-    kFloat16 = 5
-    kBFloat16 = 6
-    kFloat8E4M3 = 7
-    kFloat8E5M2 = 8
-    kFloat8E8M0 = 9
-    kFloat4E2M1 = 10
-    kNumTypes = 11
-
-
-mock_ops.DType = MockDType
-mock_ops.FP8TensorMeta = MagicMock()
-mock_ops.CommOverlapType = MagicMock()
-mock_ops.NVTE_QKV_Layout = MagicMock()
-mock_ops.NVTE_Bias_Type = MagicMock()
-mock_ops.NVTE_Mask_Type = MagicMock()
-mock_ops.NVTE_Softmax_Type = MagicMock()
-mock_ops.NVTE_QKV_Format = MagicMock()
-mock_ops.CommOverlap = MagicMock()
-
-
-class MockFusedBackend:
-    NVTE_No_Backend = 0
-
-
-mock_ops.NVTE_Fused_Attn_Backend = MockFusedBackend
-
-# 2. SEVER IMPL LINKAGE: Intercept the entire impl module to completely eliminate
-# any possibility of compiler neighbor circular imports (reference <-> softmax).
+# Mock only the implementation functions invoked by ReferenceBackend. The plugin
+# module and transformer_engine_torch registration remain real.
 mock_impl = MagicMock()
-sys.modules["transformer_engine.plugin.core.backends.reference.impl"] = mock_impl
 
-# 3. EXPLICIT SPECIFIC ASSIGNMENT: Explicitly populate only the exact required
-# framework stubs to avoid dir() traversal MagicMock recursion overflows.
 torch_stensors = [
     "general_gemm_torch",
     "gelu_torch",
@@ -170,11 +75,31 @@ mock_impl.multi_tensor_sgd_torch = MagicMock()
 mock_impl.multi_tensor_compute_scale_and_scale_inv_torch = MagicMock()
 mock_impl.multi_tensor_compute_scale_inv_e8m0_torch = MagicMock()
 
-# Safely import the real backend file now that the ecosystem is fully locked down
-try:
-    from transformer_engine.plugin.core.backends.reference.reference import ReferenceBackend
-finally:
-    _restore_import_state()
+
+@pytest.fixture(autouse=True)
+def patch_reference_implementations(monkeypatch):
+    """Patch only the implementation functions used by the backend wrapper."""
+    implementation_names = [
+        *torch_stensors,
+        "layernorm_fwd_torch",
+        "layernorm_bwd_torch",
+        "rmsnorm_fwd_torch",
+        "rmsnorm_bwd_torch",
+        "dropout_fwd_torch",
+        "multi_tensor_l2norm_torch",
+        "multi_tensor_scale_torch",
+        "multi_tensor_adam_torch",
+        "multi_tensor_adam_fp8_torch",
+        "multi_tensor_adam_capturable_torch",
+        "multi_tensor_adam_capturable_master_torch",
+        "multi_tensor_adam_param_remainder_torch",
+        "multi_tensor_sgd_torch",
+        "multi_tensor_compute_scale_and_scale_inv_torch",
+        "multi_tensor_compute_scale_inv_e8m0_torch",
+    ]
+    for name in implementation_names:
+        monkeypatch.setattr(reference_module, name, getattr(mock_impl, name))
+
 
 # ==============================================================================
 # Part 1: Availability and Attention Routing Tests
@@ -431,7 +356,7 @@ def test_dropout_and_version_stubs():
         backend.get_fused_attn_backend(
             None, None, None, None, None, None, None, 0.0, 1, 1, 1, 1, 1, 1, 0, 0, False
         )
-        == 0
+        == reference_module.NVTE_Fused_Attn_Backend.NVTE_No_Backend
     )
 
 
