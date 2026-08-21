@@ -1870,6 +1870,9 @@ class TestBasicOps:
         alpha: float = 1.702,
     ):
         """SwiGLU variant used in GPT-OSS"""
+        if os.environ.get("PLATFORM") == "metax" and glu_linear_offset != 1.0:
+            pytest.skip("MetaX vendor TE does not yet support glu_linear_offset")
+
         # Tensor dimensions
         in_shape = list(out_shape)
         in_shape[-1] *= 2

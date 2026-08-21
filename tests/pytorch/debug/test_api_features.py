@@ -113,6 +113,7 @@ def test_disable_fp8_layer(configs_dir, feature_dirs):
         debug_api.end_debug()
 
 
+@_skip_metax_quantize
 @_skip_ascend_quantize
 def test_per_tensor_scaling(configs_dir, feature_dirs):
     try:
@@ -193,6 +194,7 @@ def test_per_tensor_scaling(configs_dir, feature_dirs):
         debug_api.end_debug()
 
 
+@_skip_metax_quantize
 @_skip_ascend_quantize
 def test_fake_quant(configs_dir, feature_dirs):
     try:
