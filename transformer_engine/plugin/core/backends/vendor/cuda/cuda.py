@@ -1,8 +1,7 @@
 # Copyright (c) 2025, BAAI. All rights reserved.
 #
 # See LICENSE for license information.
-import os
-import sys
+
 from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 from ....ops import *
@@ -740,7 +739,7 @@ class CUDABackend(TEFLBackendBase):
         out: Optional[torch.Tensor],
     ) -> torch.Tensor:
         tex = self._get_tex()
-        return tex.swap_first_dims(tensor, out=out)
+        return tex.swap_first_dims(tensor, out)
 
     def nvfp4_data_transpose(
         self,

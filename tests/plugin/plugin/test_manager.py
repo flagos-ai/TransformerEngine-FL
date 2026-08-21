@@ -1,9 +1,13 @@
+import ast
+import inspect
 import os
+from pathlib import Path
 import pytest
 from unittest.mock import MagicMock, patch
 
 from transformer_engine.plugin.core.types import BackendImplKind, OpImpl
 from transformer_engine.plugin.core.policy import SelectionPolicy
+from transformer_engine.plugin.core.ops import DType, FlashAttentionBase, TEFLBackendBase
 from transformer_engine.plugin.core.registry import OpRegistry
 from transformer_engine.plugin.core.manager import (
     OpManager,
@@ -40,6 +44,131 @@ def create_mock_impl(impl_id, kind, op_name="test_op", fn=None, priority=1, vend
         op_name=op_name, impl_id=impl_id, kind=kind, fn=mock_fn, priority=priority, vendor=vendor
     )
     return impl
+
+
+def test_dtype_matches_upstream_contract():
+    """Keep plugin dtype integer values ABI-compatible with the upstream backend."""
+    expected = {
+        "kByte": 0,
+        "kInt16": 1,
+        "kInt32": 2,
+        "kInt64": 3,
+        "kFloat32": 4,
+        "kFloat16": 5,
+        "kBFloat16": 6,
+        "kFloat8E4M3": 7,
+        "kFloat8E5M2": 8,
+        "kFloat8E8M0": 9,
+        "kFloat4E2M1": 10,
+        "kNumTypes": 11,
+    }
+
+    assert {name: member.value for name, member in DType.__members__.items()} == expected
+
+
+@pytest.mark.parametrize("dispatch_path", ["direct", "current", "fallback"])
+def test_flash_attention_forwards_complete_contract(dispatch_path):
+    """Forward every argument through each plugin dispatch path."""
+
+    class DummyFlashAttention(FlashAttentionBase):
+        def _forward_impl(self, *args, **kwargs):
+            return kwargs
+
+    class FallbackFlashAttention(FlashAttentionBase):
+        def _forward_impl(self, *args, **kwargs):
+            return kwargs
+
+    flash_attention = DummyFlashAttention(softmax_scale=1.0)
+    if dispatch_path != "direct":
+        selected_class = (
+            DummyFlashAttention if dispatch_path == "current" else FallbackFlashAttention
+        )
+        manager = MagicMock()
+        manager.call_with_custom_impl.side_effect = lambda **kwargs: kwargs["call_impl_fn"](
+            selected_class
+        )
+        flash_attention._manager = manager
+        flash_attention._init_params = {"softmax_scale": 1.0}
+
+    signature = inspect.signature(FlashAttentionBase.forward)
+    forwarded_values = {name: object() for name in signature.parameters if name != "self"}
+
+    assert flash_attention(**forwarded_values) == forwarded_values
+
+
+def test_flash_attention_backends_match_base_contract():
+    """Require every plugin backend to implement the complete base argument contract."""
+    signature = inspect.signature(FlashAttentionBase._forward_impl)
+    expected = [name for name in signature.parameters if name != "self"]
+    backend_root = Path(__file__).resolve().parents[3] / "transformer_engine/plugin/core/backends"
+    mismatches = []
+
+    for source_path in backend_root.rglob("*.py"):
+        tree = ast.parse(source_path.read_text())
+        for class_node in (node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)):
+            bases = {getattr(base, "id", getattr(base, "attr", None)) for base in class_node.bases}
+            if "FlashAttentionBase" not in bases:
+                continue
+            method = next(
+                (
+                    node
+                    for node in class_node.body
+                    if isinstance(node, ast.FunctionDef) and node.name == "_forward_impl"
+                ),
+                None,
+            )
+            if method is None:
+                mismatches.append(f"{source_path}:{class_node.name} missing _forward_impl")
+                continue
+            actual = [arg.arg for arg in method.args.args if arg.arg != "self"]
+            if actual != expected:
+                mismatches.append(f"{source_path}:{class_node.name}: {actual}")
+
+    assert not mismatches, "\n".join(mismatches)
+
+
+def test_backend_implementations_match_base_contract():
+    """Keep every implemented backend method aligned with the plugin base contract."""
+
+    def signature_shape(function_node):
+        positional = [*function_node.args.posonlyargs, *function_node.args.args]
+        required_count = len(positional) - len(function_node.args.defaults)
+        shape = [(arg.arg, index >= required_count) for index, arg in enumerate(positional)]
+        shape.extend(
+            (arg.arg, default is not None)
+            for arg, default in zip(function_node.args.kwonlyargs, function_node.args.kw_defaults)
+        )
+        return [item for item in shape if item[0] != "self"]
+
+    ops_tree = ast.parse(Path(inspect.getsourcefile(TEFLBackendBase)).read_text())
+    base_node = next(
+        node
+        for node in ops_tree.body
+        if isinstance(node, ast.ClassDef) and node.name == "TEFLBackendBase"
+    )
+    expected = {
+        node.name: signature_shape(node)
+        for node in base_node.body
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    backend_root = Path(__file__).resolve().parents[3] / "transformer_engine/plugin/core/backends"
+    mismatches = []
+
+    for source_path in backend_root.rglob("*.py"):
+        tree = ast.parse(source_path.read_text())
+        for class_node in (node for node in ast.walk(tree) if isinstance(node, ast.ClassDef)):
+            bases = {getattr(base, "id", getattr(base, "attr", None)) for base in class_node.bases}
+            if "TEFLBackendBase" not in bases:
+                continue
+            for method in class_node.body:
+                if (
+                    isinstance(method, (ast.FunctionDef, ast.AsyncFunctionDef))
+                    and method.name in expected
+                ):
+                    if signature_shape(method) != expected[method.name]:
+                        mismatches.append(f"{source_path}:{class_node.name}.{method.name}")
+
+    assert not mismatches, "\n".join(mismatches)
 
 
 # ==============================================================================

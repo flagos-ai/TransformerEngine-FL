@@ -7,6 +7,8 @@ from transformer_engine.plugin.core.backends.reference.impl.gemm import (
     general_gemm_torch,
     _convert_dtype,
 )
+from transformer_engine.plugin.core.backends.reference.impl.normalization import _to_torch_dtype
+from transformer_engine.plugin.core.ops import DType
 
 # ==============================================================================
 # Part 1: Internal Helper & Data Type Converter Tests
@@ -37,6 +39,42 @@ def test_convert_dtype_variants():
 
     # Test completely invalid types (strings, lists, etc.)
     assert _convert_dtype("not_a_dtype") is None
+
+
+@pytest.mark.parametrize(
+    ("te_dtype", "torch_dtype"),
+    [
+        (DType.kByte, torch.uint8),
+        (DType.kInt16, torch.int16),
+        (DType.kInt32, torch.int32),
+        (DType.kInt64, torch.int64),
+        (DType.kFloat32, torch.float32),
+        (DType.kFloat16, torch.float16),
+        (DType.kBFloat16, torch.bfloat16),
+        (DType.kFloat8E4M3, torch.float8_e4m3fn),
+        (DType.kFloat8E5M2, torch.float8_e5m2),
+    ],
+)
+def test_normalization_dtype_conversion(te_dtype, torch_dtype):
+    """Convert every reference-backend-supported TE dtype, including integer IDs."""
+    assert _to_torch_dtype(te_dtype) is torch_dtype
+    assert _to_torch_dtype(te_dtype.value) is torch_dtype
+
+
+def test_normalization_dtype_conversion_passthrough():
+    """Preserve None and native torch dtype inputs."""
+    assert _to_torch_dtype(None) is None
+    assert _to_torch_dtype(torch.float32) is torch.float32
+
+
+@pytest.mark.parametrize(
+    "dtype",
+    [DType.kFloat8E8M0, DType.kFloat4E2M1, DType.kNumTypes, "invalid"],
+)
+def test_normalization_dtype_conversion_rejects_unsupported(dtype):
+    """Reject scale-only, packed, sentinel, and malformed dtype values explicitly."""
+    with pytest.raises(ValueError, match="Unsupported dtype"):
+        _to_torch_dtype(dtype)
 
 
 # ==============================================================================
