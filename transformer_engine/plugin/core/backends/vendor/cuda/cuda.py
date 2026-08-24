@@ -782,9 +782,12 @@ class CUDABackend(TEFLBackendBase):
     ) -> Any:
         tex = self._get_tex()
         return tex.splits_to_offsets_multi(
-            split_sizes, device, strides=strides,
+            split_sizes,
+            device,
+            strides=strides,
             include_leading_zero=include_leading_zero,
-            dtypes=dtypes, bulk_allocate=bulk_allocate,
+            dtypes=dtypes,
+            bulk_allocate=bulk_allocate,
         )
 
     def copy_data_ptrs_to_device(
@@ -904,8 +907,13 @@ class CUDABackend(TEFLBackendBase):
     ) -> Any:
         tex = self._get_tex()
         return tex.nvfp4_group_quantize_with_amax(
-            tensor, quantizer, num_tensors, first_dims,
-            rowwise_amax, columnwise_amax, tensor_offsets,
+            tensor,
+            quantizer,
+            num_tensors,
+            first_dims,
+            rowwise_amax,
+            columnwise_amax,
+            tensor_offsets,
         )
 
     def swizzle_scales_and_pack_ptrs_for_discrete_weights(
@@ -917,7 +925,10 @@ class CUDABackend(TEFLBackendBase):
     ) -> Any:
         tex = self._get_tex()
         return tex.grouped_mlp_experimental.swizzle_scales_and_pack_ptrs_for_discrete_weights(
-            data_tensors, scale_tensors, swizzle_type, device,
+            data_tensors,
+            scale_tensors,
+            swizzle_type,
+            device,
         )
 
     def get_fused_attn_backend(
@@ -1349,9 +1360,7 @@ class CUDABackend(TEFLBackendBase):
         qkv_layout = tex.NVTE_QKV_Layout(int(qkv_layout)) if qkv_layout is not None else None
         o_format = tex.NVTE_QKV_Format(int(o_format)) if o_format is not None else None
         do_format = tex.NVTE_QKV_Format(int(do_format)) if do_format is not None else None
-        dqkv_layout = (
-            tex.NVTE_QKV_Layout(int(dqkv_layout)) if dqkv_layout is not None else None
-        )
+        dqkv_layout = tex.NVTE_QKV_Layout(int(dqkv_layout)) if dqkv_layout is not None else None
         qkv_scale_inv_format = (
             tex.NVTE_QKV_Format(int(qkv_scale_inv_format))
             if qkv_scale_inv_format is not None

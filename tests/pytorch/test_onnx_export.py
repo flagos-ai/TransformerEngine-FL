@@ -65,6 +65,7 @@ TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 fp8_available, reason_for_no_fp8 = te.is_fp8_available(return_reason=True)
 mxfp8_available, reason_for_no_mxfp8 = te.is_mxfp8_available(return_reason=True)
 _is_metax = os.environ.get("PLATFORM") == "metax"
+_CPU_ORT_PROVIDERS = frozenset(("CPUExecutionProvider", "AzureExecutionProvider"))
 _is_ascend = os.environ.get("PLATFORM") == "ascend" or te_device_type() == "npu"
 _skip_metax_onnx_baddbmm = pytest.mark.skipif(
     _is_metax,
@@ -348,14 +349,18 @@ def validate_result(
             print("registered custom FP8 Q/DQ ops!")
 
         """Create an ONNX Runtime session for validation."""
-        providers = (
-            ["CPUExecutionProvider"]
-            if _is_ascend
-            else [
-                "CUDAExecutionProvider",
-                "CPUExecutionProvider",
-            ]
-        )
+        if _is_ascend:
+            providers = ["CPUExecutionProvider"]
+        elif _is_metax:
+            providers = [
+                provider.strip()
+                for provider in os.environ.get(
+                    "NVTE_ONNX_ORT_PROVIDERS", "CPUExecutionProvider"
+                ).split(",")
+                if provider.strip()
+            ] or ["CPUExecutionProvider"]
+        else:
+            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
         kwargs = {"providers": providers}
         if is_fp8:
             sess_options = ort.SessionOptions()
@@ -380,6 +385,17 @@ def validate_result(
     if not te_outputs:
         te_outputs = te_infer(model, inps, is_fp8)
     ort_s = create_ort_session(fname, is_fp8)
+    input_tensors = inps if isinstance(inps, (list, tuple)) else (inps,)
+    if (
+        _is_metax
+        and not is_fp8
+        and any(tensor is not None and tensor.dtype == torch.float16 for tensor in input_tensors)
+        and set(ort_s.get_providers()).issubset(_CPU_ORT_PROVIDERS)
+    ):
+        pytest.skip(
+            "MetaX ONNX validation has no accelerator ORT provider for FP16; "
+            "export and Transformer Engine inference were completed"
+        )
     input_feed = create_ort_input_dict(ort_s, inps)
     onnx_outputs = ort_s.run(None, input_feed=input_feed)
     compare_outputs(

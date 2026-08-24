@@ -13,10 +13,10 @@ from nvdlfw_inspect.registry import Registry, api_method
 from nvdlfw_inspect.utils import append_parent_docstring
 
 
-import transformer_engine_torch as tex
+import transformer_engine_torch as tex  # pylint: disable=unused-import
 from transformer_engine import te_device_type
-from transformer_engine.debug.features.api import TEConfigAPIMapper
 from transformer_engine.common.recipe import Format
+from transformer_engine.debug.features.api import TEConfigAPIMapper
 from transformer_engine.pytorch import DType
 from transformer_engine.pytorch.tensor import Quantizer
 from transformer_engine.pytorch.tensor.float8_tensor import Float8Quantizer
