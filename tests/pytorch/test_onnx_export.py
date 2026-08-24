@@ -67,6 +67,7 @@ mxfp8_available, reason_for_no_mxfp8 = te.is_mxfp8_available(return_reason=True)
 _is_metax = os.environ.get("PLATFORM") == "metax"
 _CPU_ORT_PROVIDERS = frozenset(("CPUExecutionProvider", "AzureExecutionProvider"))
 _is_ascend = os.environ.get("PLATFORM") == "ascend" or te_device_type() == "npu"
+_CPU_ORT_PROVIDERS = frozenset(("CPUExecutionProvider", "AzureExecutionProvider"))
 _skip_metax_onnx_baddbmm = pytest.mark.skipif(
     _is_metax,
     reason="MetaX mcPytorch ONNX exporter cannot decompose aten.baddbmm with symbolic dims",
