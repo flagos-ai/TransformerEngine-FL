@@ -219,7 +219,7 @@ def backward_wrapper(
 
 def _maybe_compile(fn, use_torch_compile):
     """Wrap fn with torch.compile(fullgraph=True) if requested."""
-    if use_torch_compile and os.environ.get("PLATFORM") == "musa":
+    if use_torch_compile and os.environ.get("PLATFORM") in {"musa", "mthreads"}:
         pytest.skip("MUSA Torch Inductor does not yet support these permutation graphs")
     if use_torch_compile:
         torch._dynamo.reset()
@@ -241,7 +241,7 @@ def _test_permutation_index_map(
     BENCHMARK=False,
     use_torch_compile=False,
 ):
-    if os.environ.get("PLATFORM") == "musa":
+    if os.environ.get("PLATFORM") in {"musa", "mthreads"}:
         pytest.skip("MUSA vendor TE does not yet provide the index-map permutation kernel")
     if not with_probs and topK > 1:
         pytest.skip("Only permutations with topK=1 and without probabilities are supported.")

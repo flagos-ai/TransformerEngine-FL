@@ -24,7 +24,7 @@ _skip_metax_quantize = pytest.mark.skipif(
     reason="FP8 quantize requires NVRTC CUDA headers that are unavailable on MetaX CI",
 )
 _skip_musa_dequantize = pytest.mark.skipif(
-    os.environ.get("PLATFORM") == "musa",
+    os.environ.get("PLATFORM") in {"musa", "mthreads"},
     reason="MUSA vendor TE is being upgraded to the v2.17 DType ABI",
 )
 

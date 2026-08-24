@@ -349,14 +349,17 @@ def validate_result(
             print("registered custom FP8 Q/DQ ops!")
 
         """Create an ONNX Runtime session for validation."""
-        providers = (
-            ["CPUExecutionProvider"]
-            if _is_ascend or _is_metax
-            else [
-                "CUDAExecutionProvider",
-                "CPUExecutionProvider",
+        if _is_ascend:
+            providers = ["CPUExecutionProvider"]
+        elif _is_metax:
+            configured_providers = [
+                provider.strip()
+                for provider in os.environ.get("NVTE_ONNX_ORT_PROVIDERS", "").split(",")
+                if provider.strip()
             ]
-        )
+            providers = configured_providers or ["CPUExecutionProvider"]
+        else:
+            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
         kwargs = {"providers": providers}
         if is_fp8:
             sess_options = ort.SessionOptions()
