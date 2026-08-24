@@ -11,7 +11,7 @@ from typing import Any, Optional, Tuple, Union
 
 import torch
 import transformer_engine_torch as tex
-from transformer_engine_torch import DType as TE_DType
+from transformer_engine_torch import DType as TE_DType  # pylint: disable=unused-import
 
 from transformer_engine import te_device_type
 from transformer_engine.common.recipe import Float8BlockScaling, Recipe

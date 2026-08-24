@@ -10,8 +10,8 @@ from typing import Any, Optional
 
 import torch
 import transformer_engine_torch as tex
-from ...constants import DType
 from transformer_engine import te_device_type
+from ...constants import DType
 from ...cpu_offload import is_cpu_offload_enabled, mark_activation_offload
 from ...tensor import Float8CurrentScalingQuantizer, Quantizer
 from ...utils import clear_tensor_data

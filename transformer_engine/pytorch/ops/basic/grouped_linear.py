@@ -13,9 +13,9 @@ from typing import Any, Optional
 
 import torch
 import transformer_engine_torch as tex
+from transformer_engine import te_device_type
 from ...constants import DType
 from ...cpp_extensions import general_grouped_gemm, general_grouped_gemm_for_grouped_tensor
-from transformer_engine import te_device_type
 from ...distributed import CudaRNGStatesTracker
 from ...module._common import WeightGradStore
 from ...module.base import (

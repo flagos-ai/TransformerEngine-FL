@@ -1162,9 +1162,7 @@ class MetaxBackend(TEFLBackendBase):
         qkv_layout = tex.NVTE_QKV_Layout(int(qkv_layout)) if qkv_layout is not None else None
         o_format = tex.NVTE_QKV_Format(int(o_format)) if o_format is not None else None
         do_format = tex.NVTE_QKV_Format(int(do_format)) if do_format is not None else None
-        dqkv_layout = (
-            tex.NVTE_QKV_Layout(int(dqkv_layout)) if dqkv_layout is not None else None
-        )
+        dqkv_layout = tex.NVTE_QKV_Layout(int(dqkv_layout)) if dqkv_layout is not None else None
         qkv_scale_inv_format = (
             tex.NVTE_QKV_Format(int(qkv_scale_inv_format))
             if qkv_scale_inv_format is not None
