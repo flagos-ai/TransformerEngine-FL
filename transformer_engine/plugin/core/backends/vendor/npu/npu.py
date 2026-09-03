@@ -30,6 +30,13 @@ _DTYPE_TO_TORCH = {
 }
 
 
+def _noop_requested(noop: Optional[torch.Tensor]) -> bool:
+    """Return whether TE's optional no-op flag requests skipping an update."""
+    if noop is None or noop.numel() == 0:
+        return False
+    return bool(noop.detach().reshape(-1)[0].item())
+
+
 def _to_torch_dtype(dtype: Any) -> Optional[torch.dtype]:
     if dtype is None:
         return None
@@ -233,6 +240,197 @@ class NPUBackend(TEFLBackendBase):
         opt = _get_tenpu_optimizers()
         return opt.multi_tensor_l2norm(chunk_size, noop_flag, tensor_lists, per_tensor)
 
+    @torch.no_grad()
+    def multi_tensor_adam(
+        self,
+        chunk_size: int,
+        noop_flag: torch.Tensor,
+        tensor_lists: List[List[torch.Tensor]],
+        lr: float,
+        beta1: float,
+        beta2: float,
+        epsilon: float,
+        step: int,
+        mode: int,
+        bias_correction: int,
+        weight_decay: float,
+    ) -> None:
+        """Update Adam state with TENPU's NPU fused-AdamW execution path."""
+        del chunk_size  # CUDA launch partitioning has no NPU equivalent.
+        if _noop_requested(noop_flag):
+            return None
+        if len(tensor_lists) not in (4, 5):
+            raise ValueError(
+                "NPU multi_tensor_adam expects four tensor lists, or five "
+                "when FP32 master parameters are provided"
+            )
+        if mode not in (0, 1):
+            raise ValueError(f"NPU multi_tensor_adam mode must be 0 or 1, got {mode}")
+        if step < 1:
+            raise ValueError(f"NPU multi_tensor_adam step must be positive, got {step}")
+
+        grads, params, exp_avgs, exp_avg_sqs = tensor_lists[:4]
+        master_params = tensor_lists[4] if len(tensor_lists) == 5 else None
+        expected_length = len(grads)
+        named_lists = {
+            "params": params,
+            "exp_avgs": exp_avgs,
+            "exp_avg_sqs": exp_avg_sqs,
+        }
+        if master_params is not None:
+            named_lists["master_params"] = master_params
+        for name, tensors in named_lists.items():
+            if len(tensors) != expected_length:
+                raise ValueError(
+                    "All NPU multi_tensor_adam tensor lists must have equal length: "
+                    f"grads={expected_length}, {name}={len(tensors)}"
+                )
+
+        # TENPU's fused path always applies bias correction. Preserve TE-FL's
+        # granular ABI for bias_correction=0 with explicit FP32 equations.
+        if not bias_correction:
+            for index, (grad, param, exp_avg, exp_avg_sq) in enumerate(
+                zip(grads, params, exp_avgs, exp_avg_sqs)
+            ):
+                if grad is None:
+                    continue
+                update_param = master_params[index] if master_params is not None else param
+                grad_fp32 = grad.float()
+                param_fp32 = update_param.float()
+                if mode == 0:
+                    grad_fp32 = grad_fp32 + weight_decay * param_fp32
+                next_exp_avg = beta1 * exp_avg.float() + (1.0 - beta1) * grad_fp32
+                next_exp_avg_sq = (
+                    beta2 * exp_avg_sq.float()
+                    + (1.0 - beta2) * grad_fp32 * grad_fp32
+                )
+                update = next_exp_avg / (next_exp_avg_sq.sqrt() + epsilon)
+                if mode == 1:
+                    update = update + weight_decay * param_fp32
+                next_param = param_fp32 - lr * update
+                update_param.copy_(next_param.to(update_param.dtype))
+                if master_params is not None:
+                    param.copy_(update_param.to(param.dtype))
+                exp_avg.copy_(next_exp_avg.to(exp_avg.dtype))
+                exp_avg_sq.copy_(next_exp_avg_sq.to(exp_avg_sq.dtype))
+            return None
+
+        fused_adamw = getattr(torch, "_fused_adamw_", None)
+        if fused_adamw is None:
+            raise RuntimeError(
+                "TENPU-compatible NPU multi_tensor_adam requires torch._fused_adamw_"
+            )
+
+        groups = {}
+        copyback = []
+        for index, (grad, param, exp_avg, exp_avg_sq) in enumerate(
+            zip(grads, params, exp_avgs, exp_avg_sqs)
+        ):
+            if grad is None:
+                continue
+            update_param = master_params[index] if master_params is not None else param
+            direct = (
+                update_param.dtype in (torch.float32, torch.float16, torch.bfloat16)
+                and grad.dtype == update_param.dtype
+                and exp_avg.dtype == torch.float32
+                and exp_avg_sq.dtype == torch.float32
+            )
+            if direct:
+                work_param = update_param
+                work_grad = grad
+                work_exp_avg = exp_avg
+                work_exp_avg_sq = exp_avg_sq
+            else:
+                work_param = (
+                    update_param
+                    if update_param.dtype == torch.float32
+                    else update_param.detach().float().clone()
+                )
+                work_grad = grad.detach().float()
+                work_exp_avg = (
+                    exp_avg if exp_avg.dtype == torch.float32 else exp_avg.detach().float()
+                )
+                work_exp_avg_sq = (
+                    exp_avg_sq
+                    if exp_avg_sq.dtype == torch.float32
+                    else exp_avg_sq.detach().float()
+                )
+
+            fused_grad = (
+                work_grad + weight_decay * work_param
+                if mode == 0 and weight_decay != 0.0
+                else work_grad
+            )
+            key = (
+                work_param.device,
+                work_param.dtype,
+                fused_grad.dtype,
+                work_exp_avg.dtype,
+                work_exp_avg_sq.dtype,
+            )
+            group = groups.setdefault(
+                key,
+                {"params": [], "grads": [], "exp_avgs": [], "exp_avg_sqs": []},
+            )
+            group["params"].append(work_param)
+            group["grads"].append(fused_grad)
+            group["exp_avgs"].append(work_exp_avg)
+            group["exp_avg_sqs"].append(work_exp_avg_sq)
+            copyback.append(
+                (
+                    param,
+                    update_param,
+                    exp_avg,
+                    exp_avg_sq,
+                    work_param,
+                    work_exp_avg,
+                    work_exp_avg_sq,
+                )
+            )
+
+        for group in groups.values():
+            if not group["params"]:
+                continue
+            step_tensor = torch.tensor(
+                step,
+                dtype=torch.int64,
+                device=group["params"][0].device,
+            )
+            fused_adamw(
+                group["params"],
+                group["grads"],
+                group["exp_avgs"],
+                group["exp_avg_sqs"],
+                [],
+                [step_tensor] * len(group["params"]),
+                amsgrad=False,
+                lr=lr,
+                beta1=beta1,
+                beta2=beta2,
+                weight_decay=weight_decay if mode == 1 else 0.0,
+                eps=epsilon,
+                maximize=False,
+            )
+
+        for (
+            param,
+            update_param,
+            exp_avg,
+            exp_avg_sq,
+            work_param,
+            work_exp_avg,
+            work_exp_avg_sq,
+        ) in copyback:
+            if work_param is not update_param:
+                update_param.copy_(work_param.to(update_param.dtype))
+            if master_params is not None:
+                param.copy_(update_param.to(param.dtype))
+            if work_exp_avg is not exp_avg:
+                exp_avg.copy_(work_exp_avg.to(exp_avg.dtype))
+            if work_exp_avg_sq is not exp_avg_sq:
+                exp_avg_sq.copy_(work_exp_avg_sq.to(exp_avg_sq.dtype))
+        return None
+
     def multi_tensor_unscale_l2norm(
         self,
         chunk_size: int,
@@ -257,7 +455,7 @@ class NPUBackend(TEFLBackendBase):
         epsilon: float,
     ):
         """Compute per-tensor FP8 scale and scale_inv."""
-        if noop_flag.numel() > 0 and bool(noop_flag.item()):
+        if _noop_requested(noop_flag):
             return
 
         opt = _get_tenpu_optimizers()
