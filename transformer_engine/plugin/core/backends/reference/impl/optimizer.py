@@ -87,7 +87,7 @@ def multi_tensor_l2norm_torch(
     return total_norm, per_tensor_result
 
 
-def multi_tensor_adam_torch(
+def _multi_tensor_adam_torch_impl(
     chunk_size: int,
     noop_flag: torch.Tensor,
     tensor_lists: List[List[torch.Tensor]],
@@ -99,6 +99,7 @@ def multi_tensor_adam_torch(
     mode: int,
     bias_correction: int,
     weight_decay: float,
+    inv_scale: Union[float, torch.Tensor] = 1.0,
 ) -> None:
     """
     Adam optimizer implementation matching CUDA exactly.
@@ -109,12 +110,18 @@ def multi_tensor_adam_torch(
     if noop_flag.item() != 0:
         return
 
-    if len(tensor_lists) != 4:
-        raise ValueError("tensor_lists should contain [grads, params, exp_avgs, exp_avg_sqs]")
+    if len(tensor_lists) not in (4, 5):
+        raise ValueError(
+            "tensor_lists should contain [grads, params, exp_avgs, exp_avg_sqs] "
+            "and optionally master_params"
+        )
 
-    grads, params, exp_avgs, exp_avg_sqs = tensor_lists
+    grads, model_params, exp_avgs, exp_avg_sqs = tensor_lists[:4]
+    master_params = tensor_lists[4] if len(tensor_lists) == 5 else model_params
 
-    if not (len(params) == len(grads) == len(exp_avgs) == len(exp_avg_sqs)):
+    if not (
+        len(model_params) == len(grads) == len(exp_avgs) == len(exp_avg_sqs) == len(master_params)
+    ):
         raise ValueError("All tensor lists must have the same length")
 
     if bias_correction:
@@ -124,12 +131,14 @@ def multi_tensor_adam_torch(
         bias_correction1 = 1.0
         bias_correction2 = 1.0
 
-    for grad, param, exp_avg, exp_avg_sq in zip(grads, params, exp_avgs, exp_avg_sqs):
+    for grad, model_param, exp_avg, exp_avg_sq, param in zip(
+        grads, model_params, exp_avgs, exp_avg_sqs, master_params
+    ):
         if grad is None:
             continue
 
         # Convert to float for computation (matches CUDA's MATH_T = float)
-        g = grad.float()
+        g = grad.float() * inv_scale
         p = param.float()
 
         if mode == 0:  # L2 regularization
@@ -165,6 +174,37 @@ def multi_tensor_adam_torch(
 
             # Update parameter
             param.add_(update, alpha=-lr)
+
+        if param is not model_param:
+            model_param.copy_(param.to(dtype=model_param.dtype))
+
+
+def multi_tensor_adam_torch(
+    chunk_size: int,
+    noop_flag: torch.Tensor,
+    tensor_lists: List[List[torch.Tensor]],
+    lr: float,
+    beta1: float,
+    beta2: float,
+    epsilon: float,
+    step: int,
+    mode: int,
+    bias_correction: int,
+    weight_decay: float,
+) -> None:
+    _multi_tensor_adam_torch_impl(
+        chunk_size,
+        noop_flag,
+        tensor_lists,
+        lr,
+        beta1,
+        beta2,
+        epsilon,
+        step,
+        mode,
+        bias_correction,
+        weight_decay,
+    )
 
 
 def multi_tensor_adam_param_remainder_torch(
@@ -509,8 +549,10 @@ def multi_tensor_adam_capturable_torch(
             "Please use a CUDA-enabled build or use scalar step."
         )
 
-    # Fallback to regular adam with scalar parameters
-    multi_tensor_adam_torch(
+    if len(tensor_lists) != 4:
+        raise ValueError("capturable Adam expects [grads, params, exp_avgs, exp_avg_sqs]")
+
+    _multi_tensor_adam_torch_impl(
         chunk_size,
         noop_flag,
         tensor_lists,
@@ -522,6 +564,7 @@ def multi_tensor_adam_capturable_torch(
         mode,
         bias_correction,
         weight_decay,
+        inv_scale,
     )
 
 
@@ -542,8 +585,9 @@ def multi_tensor_adam_capturable_master_torch(
     """
     Capturable master adam optimizer - reference backend fallback.
 
-    Note: This is a fallback implementation that does not support CUDA graph capture
-    or master weight management. These are GPU-specific features.
+    This fallback does not provide CUDA graph capture, but it preserves the
+    capturable-master numerical contract: gradients are unscaled, FP32 master
+    parameters are updated, and model parameters are synchronized from them.
     """
     if isinstance(lr, torch.Tensor) and lr.requires_grad:
         raise NotImplementedError(
@@ -559,8 +603,13 @@ def multi_tensor_adam_capturable_master_torch(
             "Please use a CUDA-enabled build or use scalar step."
         )
 
-    # Fallback to regular adam with scalar parameters
-    multi_tensor_adam_torch(
+    if len(tensor_lists) != 5:
+        raise ValueError(
+            "capturable master Adam expects "
+            "[grads, model_params, exp_avgs, exp_avg_sqs, master_params]"
+        )
+
+    _multi_tensor_adam_torch_impl(
         chunk_size,
         noop_flag,
         tensor_lists,
@@ -572,4 +621,5 @@ def multi_tensor_adam_capturable_master_torch(
         mode,
         bias_correction,
         weight_decay,
+        inv_scale,
     )
