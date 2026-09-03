@@ -86,7 +86,7 @@ jobs:
           # install MagicMock modules into sys.modules, so a single pytest process can leak
           # mocked dependencies across files and produce order-dependent failures.
           mapfile -t plugin_tests < <(
-            find tests/plugin/plugin tests/plugin/backend \
+            find tests/plugin/plugin tests/plugin/backend tests/plugin/accuracy \
               -path 'tests/plugin/backend/npu' -prune -o \
               -name 'test_*.py' -type f -print | sort
           )
