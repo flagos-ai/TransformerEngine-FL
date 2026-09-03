@@ -222,6 +222,22 @@ class NPUBackend(TEFLBackendBase):
         opt = _get_tenpu_optimizers()
         opt.multi_tensor_scale(chunk_size, noop_flag, tensor_lists, scale)
 
+    def multi_tensor_scale_tensor(
+        self,
+        chunk_size: int,
+        noop_flag: torch.Tensor,
+        tensor_lists: List[List[torch.Tensor]],
+        scale: torch.Tensor,
+) -> None:
+        """Multi-tensor scale with a tensor-valued scale factor."""
+        opt = _get_tenpu_optimizers()
+        return opt.multi_tensor_scale_tensor(
+            chunk_size,
+            noop_flag,
+            tensor_lists,
+            scale,
+    )
+
     def multi_tensor_l2norm(
         self,
         chunk_size: int,
