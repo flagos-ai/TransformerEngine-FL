@@ -129,6 +129,110 @@ class NPUBackend(TEFLBackendBase):
         """
         return NPUFlashAttention
 
+    # ===================== LayerNorm =====================
+
+    def layernorm_fwd(
+        self,
+        input: torch.Tensor,
+        weight: torch.Tensor,
+        bias: Optional[torch.Tensor],
+        eps: float,
+        ln_out: Any,
+        quantizer: Any,
+        otype: DType,
+        sm_margin: int,
+        zero_centered_gamma: bool,
+    ) -> Tuple[Any, torch.Tensor, torch.Tensor]:
+        """Apply TENPU LayerNormLinear semantics on Ascend.
+
+        TENPU computes the dense LayerNorm output with PyTorch's NPU path,
+        computes mean/reciprocal standard deviation separately for backward,
+        and applies optional activation quantization as a separate operation.
+        ``sm_margin`` is a CUDA-only tuning input and has no NPU equivalent.
+        """
+
+        del sm_margin
+        gamma = weight + 1 if zero_centered_gamma else weight
+        output = torch.nn.functional.layer_norm(
+            input,
+            (input.shape[-1],),
+            weight=gamma,
+            bias=bias,
+            eps=eps,
+        )
+        mean = input.mean(dim=-1, keepdim=True)
+        variance = input.var(dim=-1, unbiased=False, keepdim=True)
+        rsigma = torch.rsqrt(variance + eps)
+
+        output_dtype = _to_torch_dtype(otype)
+        if output_dtype is not None and output.dtype != output_dtype:
+            output = output.to(output_dtype)
+
+        if quantizer is not None:
+            output = quantizer.quantize(output, out=ln_out)
+        elif ln_out is not None:
+            if not isinstance(ln_out, torch.Tensor):
+                raise TypeError(
+                    "Dense NPU LayerNorm output reuse requires a torch.Tensor, "
+                    f"got {type(ln_out).__name__}"
+                )
+            if tuple(ln_out.shape) != tuple(output.shape):
+                raise ValueError(
+                    "NPU LayerNorm output buffer has incompatible shape: "
+                    f"expected={tuple(output.shape)}, got={tuple(ln_out.shape)}"
+                )
+            if ln_out.device != output.device or ln_out.dtype != output.dtype:
+                raise ValueError(
+                    "NPU LayerNorm output buffer must match result device and dtype: "
+                    f"result=({output.device}, {output.dtype}), "
+                    f"buffer=({ln_out.device}, {ln_out.dtype})"
+                )
+            ln_out.copy_(output)
+            output = ln_out
+
+        # TE-FL exposes statistics without the trailing normalized dimension.
+        # TENPU keeps that singleton during its local calculation, so squeeze
+        # only that dimension before feeding the common backward ABI.
+        return output, mean.squeeze(-1), rsigma.squeeze(-1)
+
+    def layernorm_bwd(
+        self,
+        dz: torch.Tensor,
+        x: torch.Tensor,
+        mu: torch.Tensor,
+        rsigma: torch.Tensor,
+        gamma: torch.Tensor,
+        sm_margin: int,
+        zero_centered_gamma: bool,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Differentiate LayerNorm with TENPU's Ascend tensor composition."""
+
+        del sm_margin
+        if mu.ndim < x.ndim:
+            mu = mu.unsqueeze(-1)
+        if rsigma.ndim < x.ndim:
+            rsigma = rsigma.unsqueeze(-1)
+
+        hidden_size = x.shape[-1]
+        x_hat = (x - mu) * rsigma
+        gamma_adjusted = gamma + 1 if zero_centered_gamma else gamma
+        dx_hat = dz * gamma_adjusted
+        dvar = (
+            dx_hat * (x - mu) * (-0.5) * rsigma.pow(3)
+        ).sum(dim=-1, keepdim=True)
+        dmean = (-dx_hat * rsigma).sum(dim=-1, keepdim=True) + dvar * (
+            -2.0 / hidden_size
+        ) * (x - mu).sum(dim=-1, keepdim=True)
+        dx = (
+            dx_hat * rsigma
+            + dvar * 2.0 / hidden_size * (x - mu)
+            + dmean / hidden_size
+        )
+        reduce_dims = tuple(range(dz.ndim - 1))
+        dgamma = (dz * x_hat).sum(dim=reduce_dims)
+        dbeta = dz.sum(dim=reduce_dims)
+        return dx, dgamma, dbeta
+
     # ===================== RMSNorm =====================
 
     def rmsnorm_fwd(
