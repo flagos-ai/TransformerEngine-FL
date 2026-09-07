@@ -1933,7 +1933,14 @@ class MetaxBackend(TEFLBackendBase):
         set_sm_margin: bool = True,
         atomic_gemm: bool = False,
         rs_overlap_first_gemm: bool = False,
+        *,
+        use_cublasmp: bool = False,
+        comm_type: Any = None,
     ) -> "CommOverlap":
+        if use_cublasmp:
+            raise NotImplementedError("metax does not support cuBLASMp overlap")
+        # The legacy constructor has no comm_type argument; it is only used
+        # by the cuBLASMp constructor in the newer CUDA extension.
         tex = self._get_tex()
         return tex.CommOverlap(
             buffer_shape,
@@ -1967,7 +1974,11 @@ class MetaxBackend(TEFLBackendBase):
         atomic_gemm: bool = False,
         use_ce: bool = True,
         aggregate: bool = False,
+        *,
+        use_cublasmp: bool = False,
     ) -> "CommOverlapP2P":
+        if use_cublasmp:
+            raise NotImplementedError("metax does not support cuBLASMp overlap")
         tex = self._get_tex()
         return tex.CommOverlapP2P(
             buffer_shape,

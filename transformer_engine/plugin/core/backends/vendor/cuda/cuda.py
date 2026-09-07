@@ -2128,22 +2128,30 @@ class CUDABackend(TEFLBackendBase):
         set_sm_margin: bool = True,
         atomic_gemm: bool = False,
         rs_overlap_first_gemm: bool = False,
+        *,
+        use_cublasmp: bool = False,
+        comm_type: Any = None,
     ) -> "CommOverlap":
         tex = self._get_tex()
+        comm_type = (
+            tex.CommOverlapType.RS if comm_type is None else tex.CommOverlapType(int(comm_type))
+        )
         return tex.CommOverlap(
             buffer_shape,
             buffer_dtype,
             helper,
             tp_size,
-            num_splits,
-            num_max_streams,
-            comm_cga_size,
-            gemm_priority,
-            comm_priority,
-            num_comm_sm,
-            set_sm_margin,
-            atomic_gemm,
-            rs_overlap_first_gemm,
+            use_cublasmp=use_cublasmp,
+            comm_type=comm_type,
+            num_splits=num_splits,
+            num_max_streams=num_max_streams,
+            comm_cga_size=comm_cga_size,
+            gemm_priority=gemm_priority,
+            comm_priority=comm_priority,
+            num_comm_sm=num_comm_sm,
+            set_sm_margin=set_sm_margin,
+            atomic_gemm=atomic_gemm,
+            rs_overlap_first_gemm=rs_overlap_first_gemm,
         )
 
     def create_comm_overlap_p2p(
@@ -2162,6 +2170,8 @@ class CUDABackend(TEFLBackendBase):
         atomic_gemm: bool = False,
         use_ce: bool = True,
         aggregate: bool = False,
+        *,
+        use_cublasmp: bool = False,
     ) -> "CommOverlapP2P":
         tex = self._get_tex()
         comm_type = tex.CommOverlapType(int(comm_type)) if comm_type is not None else None
@@ -2180,6 +2190,7 @@ class CUDABackend(TEFLBackendBase):
             atomic_gemm,
             use_ce,
             aggregate,
+            use_cublasmp=use_cublasmp,
         )
 
     def device_supports_multicast(self, device_id=-1):

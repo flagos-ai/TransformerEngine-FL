@@ -1774,6 +1774,9 @@ class TEFLBackendBase(ABC):
         set_sm_margin: bool = True,
         atomic_gemm: bool = False,
         rs_overlap_first_gemm: bool = False,
+        *,
+        use_cublasmp: bool = False,
+        comm_type: Any = None,
     ) -> "CommOverlap":
         """
         Internal method to create CommOverlap.
@@ -1797,6 +1800,8 @@ class TEFLBackendBase(ABC):
         atomic_gemm: bool = False,
         use_ce: bool = True,
         aggregate: bool = False,
+        *,
+        use_cublasmp: bool = False,
     ) -> "CommOverlapP2P":
         """
         Internal method to create CommOverlapP2P.
