@@ -61,7 +61,7 @@ jobs:
     steps:
       - name: Prepare Checkout Environment
         run: |
-          /usr/bin/git config --global safe.directory '*'
+          /usr/bin/git config --global --replace-all safe.directory '*'
           /usr/bin/git config --global --unset-all credential.helper 2>/dev/null || true
           /usr/bin/git config --system --unset-all credential.helper 2>/dev/null || true
 
