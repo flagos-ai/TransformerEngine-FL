@@ -569,4 +569,22 @@ def register_builtins(registry) -> None:
         ),
     ]
 
+    # MoE routing-map permutation and chunk sort (reference correctness baseline).
+    for name in (
+        "moe_permute_with_routing_map",
+        "moe_unpermute_with_routing_map",
+        "moe_sort_chunks_fwd",
+        "moe_sort_chunks_bwd",
+    ):
+        impls.append(
+            OpImpl(
+                op_name=name,
+                impl_id="reference.torch",
+                kind=BackendImplKind.REFERENCE,
+                fn=_bind_is_available(getattr(backend, name), is_avail),
+                vendor=None,
+                priority=50,
+            )
+        )
+
     registry.register_many(impls)

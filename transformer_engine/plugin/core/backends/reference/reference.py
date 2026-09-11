@@ -800,3 +800,27 @@ class ReferenceBackend(TEFLBackendBase):
         from .flash_attention import FlashAttentionTorch
 
         return FlashAttentionTorch
+
+
+    # ===================== MoE permutation =====================
+
+    def moe_permute_with_routing_map(self, tokens, routing_map, probs=None,
+                                     num_out_tokens=None, drop_and_pad=False):
+        from .impl.permutation import moe_permute_with_routing_map
+        return moe_permute_with_routing_map(tokens, routing_map, probs, num_out_tokens,
+                                            drop_and_pad)
+
+    def moe_unpermute_with_routing_map(self, permuted_tokens, sorted_indices,
+                                       restore_shape, probs=None, routing_map=None,
+                                       drop_and_pad=False):
+        from .impl.permutation import moe_unpermute_with_routing_map
+        return moe_unpermute_with_routing_map(permuted_tokens, sorted_indices, restore_shape,
+                                              probs, routing_map, drop_and_pad)
+
+    def moe_sort_chunks_fwd(self, input, split_sizes, sorted_idxs, probs=None):
+        from .impl.permutation import moe_sort_chunks_fwd
+        return moe_sort_chunks_fwd(input, split_sizes, sorted_idxs, probs)
+
+    def moe_sort_chunks_bwd(self, grad_output, grad_probs, inverse_row_map):
+        from .impl.permutation import moe_sort_chunks_bwd
+        return moe_sort_chunks_bwd(grad_output, grad_probs, inverse_row_map)

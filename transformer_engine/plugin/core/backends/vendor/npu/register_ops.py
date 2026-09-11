@@ -145,4 +145,27 @@ def register_builtins(registry) -> None:
         ),
     ]
 
+    # MoE routing-map permutation and chunk sort (optimization points 3 and 7).
+    from .permutation import is_permutation_available
+
+    def is_moe_available():
+        return is_avail() and is_permutation_available()
+
+    for name in (
+        "moe_permute_with_routing_map",
+        "moe_unpermute_with_routing_map",
+        "moe_sort_chunks_fwd",
+        "moe_sort_chunks_bwd",
+    ):
+        impls.append(
+            OpImpl(
+                op_name=name,
+                impl_id="vendor.npu",
+                kind=BackendImplKind.VENDOR,
+                fn=_bind_is_available(getattr(backend, name), is_moe_available),
+                vendor="NPU",
+                priority=100,
+            )
+        )
+
     registry.register_many(impls)
