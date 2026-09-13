@@ -95,7 +95,6 @@ _flash_attn_varlen_fwd = None
 _flash_attn_varlen_bwd = None
 # Try to import Flash Attention v2
 try:
-    # Vendor build metadata does not change the upstream FlashAttention API version.
     fa_utils.version = PkgVersion(PkgVersion(get_pkg_version("flash-attn")).public)
 except PackageNotFoundError:
     pass  # only print warning if use_flash_attention_2 = True in get_attention_backend

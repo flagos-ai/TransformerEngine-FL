@@ -41,7 +41,6 @@ def _load_hygon_libs():
         if hygon_spec.origin is not None:
             hygon_path = Path(hygon_spec.origin).parent
         elif hygon_spec.submodule_search_locations:
-            # Hygon namespace packages have no origin; locate their shared libraries here.
             hygon_path = Path(hygon_spec.submodule_search_locations[0])
         else:
             print(
