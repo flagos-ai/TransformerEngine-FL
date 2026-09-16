@@ -781,9 +781,7 @@ class ReferenceBackend(TEFLBackendBase):
         world_size: int,
         rank: int,
     ) -> torch.Tensor:
-        return thd_get_partitioned_indices_torch(
-            cu_seqlens, total_tokens, world_size, rank
-        )
+        return thd_get_partitioned_indices_torch(cu_seqlens, total_tokens, world_size, rank)
 
     def convert_bshd_to_thd(
         self,

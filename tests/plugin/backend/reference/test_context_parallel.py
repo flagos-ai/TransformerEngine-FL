@@ -1,8 +1,9 @@
 import pytest
 import torch
 
-from transformer_engine.plugin.core.backends.reference.impl.context_parallel import \
-    thd_get_partitioned_indices_torch
+from transformer_engine.plugin.core.backends.reference.impl.context_parallel import (
+    thd_get_partitioned_indices_torch,
+)
 
 
 @pytest.mark.parametrize(
