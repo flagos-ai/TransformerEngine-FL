@@ -129,6 +129,105 @@ class NPUBackend(TEFLBackendBase):
         """
         return NPUFlashAttention
 
+    # ===================== LayerNorm =====================
+
+    # NPU backend adaptation: return output and saved statistics from one native NPU call.
+    def layernorm_fwd(
+        self,
+        input: torch.Tensor,
+        weight: torch.Tensor,
+        bias: Optional[torch.Tensor],
+        eps: float,
+        ln_out: Any,
+        quantizer: Any,
+        otype: DType,
+        sm_margin: int,
+        zero_centered_gamma: bool,
+    ) -> Tuple[Any, torch.Tensor, torch.Tensor]:
+        """Apply LayerNorm with the NPU native three-output operator."""
+
+        del sm_margin
+        gamma = weight + 1 if zero_centered_gamma else weight
+        _get_torch_npu()  # Register the NPU implementation for aten native operators.
+        output, mean, rsigma = torch.ops.aten.native_layer_norm.default(
+            input.contiguous(),
+            list(weight.shape),
+            gamma.contiguous(),
+            None if bias is None else bias.contiguous(),
+            eps,
+        )
+
+        output_dtype = _to_torch_dtype(otype)
+        if output_dtype is not None and output.dtype != output_dtype:
+            output = output.to(output_dtype)
+
+        if quantizer is not None:
+            output = quantizer.quantize(output, out=ln_out)
+        elif ln_out is not None:
+            if not isinstance(ln_out, torch.Tensor):
+                raise TypeError(
+                    "Dense NPU LayerNorm output reuse requires a torch.Tensor, "
+                    f"got {type(ln_out).__name__}"
+                )
+            if tuple(ln_out.shape) != tuple(output.shape):
+                raise ValueError(
+                    "NPU LayerNorm output buffer has incompatible shape: "
+                    f"expected={tuple(output.shape)}, got={tuple(ln_out.shape)}"
+                )
+            if ln_out.device != output.device or ln_out.dtype != output.dtype:
+                raise ValueError(
+                    "NPU LayerNorm output buffer must match result device and dtype: "
+                    f"result=({output.device}, {output.dtype}), "
+                    f"buffer=({ln_out.device}, {ln_out.dtype})"
+                )
+            ln_out.copy_(output)
+            output = ln_out
+
+        # TE-FL exposes statistics without the trailing normalized dimension.
+        # TENPU keeps that singleton during its local calculation, so squeeze
+        # only that dimension before feeding the common backward ABI.
+        return output, mean.squeeze(-1), rsigma.squeeze(-1)
+
+    # NPU backend adaptation: consume saved statistics with the native NPU backward operator.
+    def layernorm_bwd(
+        self,
+        dz: torch.Tensor,
+        x: torch.Tensor,
+        mu: torch.Tensor,
+        rsigma: torch.Tensor,
+        gamma: torch.Tensor,
+        sm_margin: int,
+        zero_centered_gamma: bool,
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """Differentiate LayerNorm with the NPU native backward operator."""
+
+        del sm_margin
+        if mu.ndim < x.ndim:
+            mu = mu.unsqueeze(-1)
+        if rsigma.ndim < x.ndim:
+            rsigma = rsigma.unsqueeze(-1)
+
+        gamma_adjusted = gamma + 1 if zero_centered_gamma else gamma
+        _get_torch_npu()  # Register the NPU implementation for aten native operators.
+        dx, dgamma, dbeta = torch.ops.aten.native_layer_norm_backward.default(
+            dz.contiguous(),
+            x.contiguous(),
+            list(gamma.shape),
+            mu.contiguous(),
+            rsigma.contiguous(),
+            gamma_adjusted.contiguous(),
+            None,
+            [True, True, True],
+        )
+
+        # CANN accumulates parameter gradients in FP32 for FP16/BF16 inputs,
+        # while Transformer Engine returns gradients in the parameter dtype.
+        if dgamma.dtype != gamma.dtype:
+            dgamma = dgamma.to(gamma.dtype)
+        if dbeta.dtype != gamma.dtype:
+            dbeta = dbeta.to(gamma.dtype)
+        return dx, dgamma, dbeta
+
     # ===================== RMSNorm =====================
 
     def rmsnorm_fwd(
