@@ -549,6 +549,14 @@ def register_builtins(registry) -> None:
             vendor=None,
             priority=50,
         ),
+        OpImpl(
+            op_name="thd_get_partitioned_indices",
+            impl_id="reference.torch",
+            kind=BackendImplKind.REFERENCE,
+            fn=_bind_is_available(backend.thd_get_partitioned_indices, is_avail),
+            vendor=None,
+            priority=50,
+        ),
         # FlashAttention class getter
         OpImpl(
             op_name="get_flash_attention_class",
