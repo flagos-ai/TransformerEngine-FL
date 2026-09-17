@@ -82,6 +82,34 @@ class NPUBackend(TEFLBackendBase):
     def is_available(self) -> bool:
         return _check_npu_available()
 
+    # ===================== splits_to_offsets adaptation =====================
+
+    def splits_to_offsets(
+        self,
+        first_dims: torch.Tensor,
+        logical_last_dim: int,
+    ) -> torch.Tensor:
+        """Convert grouped-tensor first dimensions to flattened element offsets."""
+        if not isinstance(first_dims, torch.Tensor):
+            raise TypeError("first_dims must be a torch.Tensor")
+        if first_dims.device.type != "npu":
+            raise ValueError(f"first_dims must be on NPU, got {first_dims.device}")
+        if first_dims.dtype != torch.int64:
+            raise TypeError(f"first_dims must have dtype torch.int64, got {first_dims.dtype}")
+        if first_dims.ndim != 1:
+            raise ValueError(f"first_dims must be one-dimensional, got shape={first_dims.shape}")
+        if first_dims.numel() == 0:
+            raise ValueError("first_dims must contain at least one split")
+        if type(logical_last_dim) is not int or logical_last_dim <= 0:
+            raise ValueError(
+                f"logical_last_dim must be a positive integer, got {logical_last_dim!r}"
+            )
+
+        cumulative = torch.cumsum(first_dims.contiguous(), dim=0)
+        if logical_last_dim != 1:
+            cumulative = cumulative * logical_last_dim
+        return torch.cat((torch.zeros_like(first_dims[:1]), cumulative), dim=0)
+
     # ===================== Attention =====================
 
     def get_attention_backend(self, attention_params=None):
@@ -425,6 +453,456 @@ class NPUBackend(TEFLBackendBase):
 
         return out, bias_grad, gelu_input_ret, extra_output_ret
 
+    # ===================== Discrete GroupedTensor GEMM adaptation =====================
+
+    @staticmethod
+    def _dense_grouped_tensor_parts(
+        grouped_tensor: Any,
+        name: str,
+        expected_num_tensors: Optional[int] = None,
+    ) -> Tuple[torch.Tensor, Tuple[int, int], torch.Tensor, int]:
+        """Validate a dense GroupedTensor and expose its packed 2D representation."""
+
+        num_tensors = getattr(grouped_tensor, "num_tensors", None)
+        if not isinstance(num_tensors, int) or num_tensors <= 0:
+            raise ValueError(f"{name}.num_tensors must be a positive integer")
+        if expected_num_tensors is not None and num_tensors != expected_num_tensors:
+            raise ValueError(
+                f"{name}.num_tensors must be {expected_num_tensors}, got {num_tensors}"
+            )
+        if num_tensors > 128:
+            raise ValueError(f"NPU grouped GEMM supports at most 128 groups, got {num_tensors}")
+        if not hasattr(grouped_tensor, "quantizer"):
+            raise TypeError(f"{name} must be a TE-FL GroupedTensor")
+        if grouped_tensor.quantizer is not None:
+            raise NotImplementedError(
+                f"NPU discrete grouped GEMM supports quantizer=None only; {name}.quantizer is set"
+            )
+        if getattr(grouped_tensor, "last_dims", None) is not None:
+            raise NotImplementedError(
+                f"NPU discrete grouped GEMM requires a uniform last dimension for {name}"
+            )
+
+        data = getattr(grouped_tensor, "rowwise_data", None)
+        if not isinstance(data, torch.Tensor):
+            raise TypeError(f"{name}.rowwise_data must be a torch.Tensor")
+        if data.device.type != "npu":
+            raise ValueError(f"{name}.rowwise_data must be on NPU, got {data.device}")
+        if not data.is_contiguous():
+            raise ValueError(f"{name}.rowwise_data must be contiguous")
+
+        logical_shape = getattr(grouped_tensor, "logical_shape", None)
+        if logical_shape is None or len(logical_shape) != 2:
+            raise ValueError(f"{name}.logical_shape must be two-dimensional")
+        logical_shape = (int(logical_shape[0]), int(logical_shape[1]))
+        if logical_shape[0] < 0 or logical_shape[1] <= 0:
+            raise ValueError(f"Invalid {name}.logical_shape: {logical_shape}")
+        if data.numel() != logical_shape[0] * logical_shape[1]:
+            raise ValueError(
+                f"{name}.rowwise_data has {data.numel()} elements, but "
+                f"logical_shape={logical_shape} requires "
+                f"{logical_shape[0] * logical_shape[1]}"
+            )
+
+        first_dims = getattr(grouped_tensor, "first_dims", None)
+        if first_dims is None:
+            if logical_shape[0] % num_tensors != 0:
+                raise ValueError(
+                    f"{name}.logical_shape[0]={logical_shape[0]} is not divisible by "
+                    f"num_tensors={num_tensors}"
+                )
+            group_sizes = torch.full(
+                (num_tensors,),
+                logical_shape[0] // num_tensors,
+                dtype=torch.int64,
+                device=data.device,
+            )
+        else:
+            if not isinstance(first_dims, torch.Tensor):
+                raise TypeError(f"{name}.first_dims must be a torch.Tensor or None")
+            if first_dims.dtype != torch.int64 or first_dims.numel() != num_tensors:
+                raise ValueError(f"{name}.first_dims must be int64 with {num_tensors} elements")
+            if first_dims.device != data.device:
+                raise ValueError(f"{name}.first_dims and rowwise_data must share a device")
+            group_sizes = first_dims.contiguous().view(-1)
+
+        return data.view(logical_shape), logical_shape, group_sizes, num_tensors
+
+    @staticmethod
+    def _validate_dense_grouped_coefficients(
+        alpha: torch.Tensor,
+        beta: torch.Tensor,
+        device: torch.device,
+        num_tensors: int,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Validate TE grouped-GEMM alpha/beta tensors."""
+
+        for name, coefficient in (("alpha", alpha), ("beta", beta)):
+            if not isinstance(coefficient, torch.Tensor):
+                raise TypeError(f"{name} must be a torch.Tensor")
+            if coefficient.device != device:
+                raise ValueError(f"{name} must be on {device}, got {coefficient.device}")
+            if coefficient.dtype != torch.float32:
+                raise TypeError(f"{name} must have dtype torch.float32")
+            if coefficient.numel() not in (1, num_tensors):
+                raise ValueError(
+                    f"{name} must contain 1 or {num_tensors} values, got {coefficient.numel()}"
+                )
+        if alpha.numel() != beta.numel():
+            raise ValueError("alpha and beta must contain the same number of values")
+        return alpha.reshape(-1), beta.reshape(-1)
+
+    @staticmethod
+    def _write_packed_grouped_output(
+        destination: torch.Tensor,
+        product: torch.Tensor,
+        group_sizes: torch.Tensor,
+        alpha: torch.Tensor,
+        beta: torch.Tensor,
+    ) -> None:
+        """Apply TE alpha/beta semantics and update a packed grouped destination."""
+
+        if product.numel() != destination.numel():
+            raise RuntimeError(
+                "Unexpected NPU grouped GEMM output size: "
+                f"expected {destination.numel()} elements, got {product.numel()}"
+            )
+        destination_2d = destination.view(destination.shape[0], -1)
+        product_2d = product.reshape_as(destination_2d)
+
+        def expand(values: torch.Tensor) -> torch.Tensor:
+            if values.numel() == 1:
+                return values.reshape(())
+            return torch.repeat_interleave(
+                values,
+                group_sizes,
+                output_size=destination_2d.shape[0],
+            ).view(-1, 1)
+
+        combined = product_2d.float() * expand(alpha)
+        beta_expanded = expand(beta)
+        destination_term = destination_2d.float() * beta_expanded
+        destination_term.masked_fill_(beta_expanded == 0, 0.0)
+        combined = combined + destination_term
+        destination_2d.copy_(combined.to(destination.dtype))
+
+    def te_general_grouped_gemm_for_discrete_in(self, *args, **kwargs):
+        """Forward the base interface to the typed NPU implementation."""
+        return self._te_general_grouped_gemm_for_discrete_in_impl(*args, **kwargs)
+
+    def _te_general_grouped_gemm_for_discrete_in_impl(
+        self,
+        A: List[torch.Tensor],
+        transa: bool,
+        B: Any,
+        transb: bool,
+        D: Any,
+        bias: Optional[Any],
+        bias_scale: Optional[torch.Tensor],
+        alpha: torch.Tensor,
+        beta: torch.Tensor,
+        workspace_setup: torch.Tensor,
+        workspace_cublas: torch.Tensor,
+        use_split_accumulator: bool,
+        math_sm_count: int,
+    ) -> Any:
+        """Run dense grouped GEMM with a discrete A list and packed B/D tensors."""
+
+        del workspace_setup, workspace_cublas, use_split_accumulator, math_sm_count
+
+        layout = ("T" if transa else "N") + ("T" if transb else "N")
+        if layout not in ("TN", "NN", "NT"):
+            raise NotImplementedError(
+                f"NPU discrete-input grouped GEMM supports TN, NN, and NT; got {layout}"
+            )
+
+        b_data, b_shape, b_group_sizes, num_tensors = self._dense_grouped_tensor_parts(B, "B")
+        d_data, d_shape, d_group_sizes, _ = self._dense_grouped_tensor_parts(D, "D", num_tensors)
+        if not isinstance(A, list) or len(A) != num_tensors:
+            raise ValueError(f"A must be a list containing {num_tensors} tensors")
+
+        supported_dtypes = (torch.float16, torch.bfloat16)
+        input_dtype = b_data.dtype
+        if input_dtype not in supported_dtypes:
+            raise TypeError(
+                f"NPU discrete-input grouped GEMM supports FP16 and BF16, got {input_dtype}"
+            )
+        for index, tensor in enumerate(A):
+            if not isinstance(tensor, torch.Tensor):
+                raise TypeError(f"A[{index}] must be a torch.Tensor")
+            if tensor.ndim != 2:
+                raise ValueError(f"A[{index}] must be 2D, got shape={tuple(tensor.shape)}")
+            if tensor.device != b_data.device or tensor.dtype != input_dtype:
+                raise ValueError(
+                    f"A[{index}] must use device={b_data.device} and dtype={input_dtype}"
+                )
+            if not tensor.is_contiguous():
+                raise ValueError(f"A[{index}] must be contiguous")
+        if d_data.device != b_data.device or d_data.dtype != input_dtype:
+            raise ValueError("B and D must have the same NPU device and dtype")
+
+        alpha, beta = self._validate_dense_grouped_coefficients(
+            alpha, beta, b_data.device, num_tensors
+        )
+        b_rows, b_cols = b_shape
+        d_rows, d_cols = d_shape
+        torch_npu = _get_torch_npu()
+
+        if layout in ("TN", "NN"):
+            weight_rows, weight_cols = map(int, A[0].shape)
+            if any(tuple(tensor.shape) != (weight_rows, weight_cols) for tensor in A):
+                raise ValueError("TN/NN discrete-input grouped GEMM requires uniform A shapes")
+            expected_b_cols = weight_cols if layout == "TN" else weight_rows
+            expected_d_cols = weight_rows if layout == "TN" else weight_cols
+            if b_cols != expected_b_cols or d_shape != (b_rows, expected_d_cols):
+                raise ValueError(
+                    f"Invalid {layout} shapes: A[0]={tuple(A[0].shape)}, B={b_shape}, D={d_shape}"
+                )
+            if b_rows == 0:
+                product = torch.zeros_like(d_data)
+            elif num_tensors == 1:
+                weight = A[0].transpose(0, 1) if layout == "TN" else A[0]
+                product = torch.matmul(b_data, weight)
+            else:
+                weights = [tensor.transpose(0, 1) for tensor in A] if layout == "TN" else A
+                product = torch_npu.npu_grouped_matmul(
+                    [b_data],
+                    weights,
+                    group_list=b_group_sizes,
+                    output_dtype=input_dtype,
+                    group_type=0,
+                    group_list_type=1,
+                    split_item=3,
+                )[0]
+        else:
+            a_cols = int(A[0].shape[1])
+            if any(int(tensor.shape[1]) != a_cols for tensor in A):
+                raise ValueError("NT discrete-input grouped GEMM requires a common A last dim")
+            packed_a_rows = sum(int(tensor.shape[0]) for tensor in A)
+            if packed_a_rows != b_rows or d_cols != a_cols or d_rows % num_tensors != 0:
+                raise ValueError(
+                    f"Invalid NT shapes: A rows={packed_a_rows}, A cols={a_cols}, "
+                    f"B={b_shape}, D={d_shape}"
+                )
+            output_rows = d_rows // num_tensors
+            if b_cols != output_rows:
+                raise ValueError(
+                    f"Invalid NT output: expected D group shape {(b_cols, a_cols)}, "
+                    f"got {(output_rows, d_cols)}"
+                )
+            if b_rows == 0:
+                product = torch.zeros(
+                    (num_tensors, output_rows, a_cols),
+                    dtype=torch.float32,
+                    device=b_data.device,
+                )
+            elif num_tensors == 1:
+                product = torch.matmul(b_data.transpose(0, 1), A[0]).float().unsqueeze(0)
+            else:
+                packed_a = torch.cat(A, dim=0)
+                product = torch.zeros(
+                    (num_tensors, output_rows, a_cols),
+                    dtype=torch.float32,
+                    device=b_data.device,
+                )
+                a_group_sizes = torch.tensor(
+                    [int(tensor.shape[0]) for tensor in A],
+                    dtype=torch.int64,
+                    device=b_data.device,
+                )
+                torch_npu.npu_grouped_matmul_add_(
+                    product,
+                    b_data,
+                    packed_a,
+                    torch.cumsum(a_group_sizes, dim=0),
+                )
+            product = product.view(d_shape)
+
+        self._write_packed_grouped_output(d_data, product, d_group_sizes, alpha, beta)
+
+        if bias_scale is not None and bias is None:
+            raise ValueError("bias_scale requires bias")
+        if bias is not None:
+            bias_data, bias_shape, _, _ = self._dense_grouped_tensor_parts(
+                bias, "bias", num_tensors
+            )
+            if bias_data.device != d_data.device or bias_data.dtype != d_data.dtype:
+                raise ValueError("bias must have the same device and dtype as D")
+            if bias_shape != (num_tensors, d_cols):
+                raise ValueError(
+                    f"bias must have logical shape {(num_tensors, d_cols)}, got {bias_shape}"
+                )
+            expanded_bias = torch.repeat_interleave(
+                bias_data.view(num_tensors, d_cols).float(),
+                d_group_sizes,
+                dim=0,
+                output_size=d_rows,
+            )
+            if bias_scale is not None:
+                if (
+                    not isinstance(bias_scale, torch.Tensor)
+                    or bias_scale.device != d_data.device
+                    or bias_scale.dtype != torch.float32
+                    or bias_scale.numel() != d_rows
+                ):
+                    raise ValueError(
+                        f"bias_scale must be FP32 on {d_data.device} with {d_rows} elements"
+                    )
+                expanded_bias = expanded_bias * bias_scale.view(d_rows, 1)
+            d_data.copy_((d_data.float() + expanded_bias).to(d_data.dtype))
+
+        return D
+
+    def te_general_grouped_gemm_for_discrete_out(self, *args, **kwargs):
+        """Forward the base interface to the typed NPU implementation."""
+        return self._te_general_grouped_gemm_for_discrete_out_impl(*args, **kwargs)
+
+    def _te_general_grouped_gemm_for_discrete_out_impl(
+        self,
+        A: Any,
+        transa: bool,
+        B: Any,
+        transb: bool,
+        D: List[torch.Tensor],
+        bias: Optional[Any],
+        bias_scale: Optional[torch.Tensor],
+        alpha: torch.Tensor,
+        beta: torch.Tensor,
+        workspace_setup: torch.Tensor,
+        workspace_cublas: torch.Tensor,
+        use_split_accumulator: bool,
+        math_sm_count: int,
+    ) -> List[torch.Tensor]:
+        """Run dense grouped GEMM with packed A/B tensors and a discrete D list."""
+
+        del workspace_setup, workspace_cublas, use_split_accumulator, math_sm_count
+        if bias is not None or bias_scale is not None:
+            raise ValueError("bias and bias_scale are not supported with discrete output")
+
+        layout = ("T" if transa else "N") + ("T" if transb else "N")
+        if layout not in ("TN", "NN", "NT"):
+            raise NotImplementedError(
+                f"NPU discrete-output grouped GEMM supports TN, NN, and NT; got {layout}"
+            )
+
+        a_data, a_shape, a_group_sizes, num_tensors = self._dense_grouped_tensor_parts(A, "A")
+        b_data, b_shape, b_group_sizes, _ = self._dense_grouped_tensor_parts(B, "B", num_tensors)
+        if not isinstance(D, list) or len(D) != num_tensors:
+            raise ValueError(f"D must be a list containing {num_tensors} tensors")
+
+        supported_dtypes = (torch.float16, torch.bfloat16)
+        input_dtype = a_data.dtype
+        if input_dtype not in supported_dtypes or b_data.dtype != input_dtype:
+            raise TypeError("A and B must both use FP16 or BF16 with one common dtype")
+        if b_data.device != a_data.device:
+            raise ValueError("A and B must be on the same NPU device")
+
+        output_dtype = D[0].dtype if D and isinstance(D[0], torch.Tensor) else None
+        for index, tensor in enumerate(D):
+            if not isinstance(tensor, torch.Tensor):
+                raise TypeError(f"D[{index}] must be a torch.Tensor")
+            if tensor.ndim != 2:
+                raise ValueError(f"D[{index}] must be 2D, got shape={tuple(tensor.shape)}")
+            if tensor.device != a_data.device or tensor.dtype != output_dtype:
+                raise ValueError("All D tensors must have one NPU device and dtype")
+            if not tensor.is_contiguous():
+                raise ValueError(f"D[{index}] must be contiguous")
+        if output_dtype not in (torch.float16, torch.bfloat16, torch.float32):
+            raise TypeError(f"Unsupported discrete output dtype: {output_dtype}")
+
+        alpha, beta = self._validate_dense_grouped_coefficients(
+            alpha, beta, a_data.device, num_tensors
+        )
+        a_rows, a_cols = a_shape
+        b_rows, b_cols = b_shape
+        torch_npu = _get_torch_npu()
+
+        if layout in ("TN", "NN"):
+            if getattr(A, "first_dims", None) is not None or a_rows % num_tensors != 0:
+                raise ValueError(f"A must have a uniform first dimension for layout {layout}")
+            weight_rows = a_rows // num_tensors
+            expected_b_cols = a_cols if layout == "TN" else weight_rows
+            expected_d_cols = weight_rows if layout == "TN" else a_cols
+            d_rows = [int(tensor.shape[0]) for tensor in D]
+            if (
+                b_cols != expected_b_cols
+                or sum(d_rows) != b_rows
+                or any(
+                    tuple(tensor.shape) != (d_rows[i], expected_d_cols)
+                    for i, tensor in enumerate(D)
+                )
+            ):
+                raise ValueError(
+                    f"Invalid {layout} shapes: A={a_shape}, B={b_shape}, "
+                    f"D={[tuple(tensor.shape) for tensor in D]}"
+                )
+            if output_dtype != input_dtype:
+                raise NotImplementedError(
+                    f"NPU {layout} discrete-output GEMM requires output dtype {input_dtype}"
+                )
+            if b_rows == 0:
+                packed_product = torch.zeros(
+                    (b_rows, expected_d_cols), dtype=output_dtype, device=a_data.device
+                )
+            else:
+                weight = a_data.view(num_tensors, weight_rows, a_cols)
+                if layout == "TN":
+                    weight = weight.transpose(1, 2).contiguous()
+                if num_tensors == 1:
+                    packed_product = torch.matmul(b_data, weight[0])
+                else:
+                    packed_product = torch_npu.npu_grouped_matmul(
+                        [b_data],
+                        [weight],
+                        group_list=b_group_sizes,
+                        output_dtype=output_dtype,
+                        group_type=0,
+                        group_list_type=1,
+                        split_item=3,
+                    )[0]
+            products = torch.split(packed_product, d_rows, dim=0)
+        else:
+            if a_rows != b_rows:
+                raise ValueError(f"NT requires equal A/B row counts, got {a_rows} and {b_rows}")
+            expected_shape = (b_cols, a_cols)
+            if any(tuple(tensor.shape) != expected_shape for tensor in D):
+                raise ValueError(
+                    f"NT requires every D tensor to have shape {expected_shape}, "
+                    f"got {[tuple(tensor.shape) for tensor in D]}"
+                )
+            if a_rows == 0:
+                packed_product = torch.zeros(
+                    (num_tensors, b_cols, a_cols),
+                    dtype=torch.float32,
+                    device=a_data.device,
+                )
+            elif num_tensors == 1:
+                packed_product = torch.matmul(b_data.transpose(0, 1), a_data).float().unsqueeze(0)
+            else:
+                packed_product = torch.zeros(
+                    (num_tensors, b_cols, a_cols),
+                    dtype=torch.float32,
+                    device=a_data.device,
+                )
+                torch_npu.npu_grouped_matmul_add_(
+                    packed_product,
+                    b_data,
+                    a_data,
+                    torch.cumsum(a_group_sizes, dim=0),
+                )
+            products = packed_product.unbind(0)
+
+        for index, (destination, product) in enumerate(zip(D, products)):
+            alpha_i = alpha[0] if alpha.numel() == 1 else alpha[index]
+            beta_i = beta[0] if beta.numel() == 1 else beta[index]
+            combined = product.float() * alpha_i
+            destination_term = destination.float() * beta_i
+            destination_term.masked_fill_(beta_i == 0, 0.0)
+            combined = combined + destination_term
+            destination.copy_(combined.to(destination.dtype))
+
+        return D
+
     def te_general_grouped_gemm(
         self,
         A: List[Any],
@@ -731,3 +1209,333 @@ class NPUBackend(TEFLBackendBase):
 
         _ = math_sm_count  # CUDA-only tuning knob.
         return bias
+
+    # ===================== Dense GroupedTensor GEMM adaptation =====================
+
+    def get_grouped_gemm_setup_workspace_size(self, num_tensors: int) -> int:
+        """Return the NPU setup-workspace size for grouped-tensor GEMM.
+
+        CUDA uses this buffer to materialize cuBLASLt pointer arrays. Ascend's
+        grouped-matmul operators consume packed tensors and a group-list tensor,
+        so no corresponding setup workspace is required.
+        """
+
+        if num_tensors < 0:
+            raise ValueError(f"num_tensors must be non-negative, got {num_tensors}")
+        return 0
+
+    def te_general_grouped_gemm_for_grouped_tensor(self, *args, **kwargs):
+        """Forward the base interface to the typed NPU implementation."""
+        return self._te_general_grouped_gemm_for_grouped_tensor_impl(*args, **kwargs)
+
+    def _te_general_grouped_gemm_for_grouped_tensor_impl(
+        self,
+        A: Any,
+        transa: bool,
+        B: Any,
+        transb: bool,
+        D: Any,
+        bias: Optional[Any],
+        bias_scale: Optional[torch.Tensor],
+        alpha: torch.Tensor,
+        beta: torch.Tensor,
+        workspace_setup: torch.Tensor,
+        workspace_cublas: torch.Tensor,
+        use_split_accumulator: bool,
+        math_sm_count: int,
+    ) -> Any:
+        """Run dense TE-FL GroupedTensor GEMM with native Ascend operators.
+
+        For each group, this implements the TE-FL contract
+
+            D[i] = alpha[i] * op(B[i]) @ op(A[i]) + beta[i] * D[i]
+
+        followed by the optional grouped bias addition. TN and NN use
+        ``torch_npu.npu_grouped_matmul``. NT (weight gradient) uses
+        ``torch_npu.npu_grouped_matmul_add_`` with a temporary destination so
+        arbitrary alpha/beta values retain the TE-FL meaning.
+
+        Only dense GroupedTensors (``quantizer is None``) are accepted. The
+        quantizer fields are validated but never changed by this backend.
+        """
+
+        del workspace_setup, workspace_cublas, use_split_accumulator, math_sm_count
+
+        layout = ("T" if transa else "N") + ("T" if transb else "N")
+        if layout not in ("TN", "NN", "NT"):
+            raise NotImplementedError(
+                f"NPU grouped-tensor GEMM supports layouts TN, NN, and NT; got {layout}"
+            )
+
+        grouped_tensors = {"A": A, "B": B, "D": D}
+        if bias is not None:
+            grouped_tensors["bias"] = bias
+
+        num_tensors = getattr(A, "num_tensors", None)
+        if not isinstance(num_tensors, int) or num_tensors <= 0:
+            raise ValueError("NPU grouped-tensor GEMM requires a positive integer A.num_tensors")
+        if num_tensors > 128:
+            raise ValueError(
+                f"torch_npu.npu_grouped_matmul supports at most 128 groups, got {num_tensors}"
+            )
+
+        rowwise_data: dict[str, torch.Tensor] = {}
+        logical_shapes: dict[str, Tuple[int, int]] = {}
+        for name, grouped_tensor in grouped_tensors.items():
+            if getattr(grouped_tensor, "num_tensors", None) != num_tensors:
+                raise ValueError(
+                    "A, B, D, and bias must contain the same number of groups: "
+                    f"A has {num_tensors}, {name} has "
+                    f"{getattr(grouped_tensor, 'num_tensors', None)}"
+                )
+            if not hasattr(grouped_tensor, "quantizer"):
+                raise TypeError(f"{name} must be a TE-FL GroupedTensor")
+            if grouped_tensor.quantizer is not None:
+                raise NotImplementedError(
+                    "NPU te_general_grouped_gemm_for_grouped_tensor currently "
+                    f"supports quantizer=None only; {name}.quantizer is set"
+                )
+
+            data = getattr(grouped_tensor, "rowwise_data", None)
+            if not isinstance(data, torch.Tensor):
+                raise TypeError(f"{name}.rowwise_data must be a torch.Tensor")
+            if data.device.type != "npu":
+                raise ValueError(f"{name}.rowwise_data must be on NPU, got {data.device}")
+            if not data.is_contiguous():
+                raise ValueError(f"{name}.rowwise_data must be contiguous")
+
+            logical_shape = getattr(grouped_tensor, "logical_shape", None)
+            if logical_shape is None or len(logical_shape) != 2:
+                raise ValueError(f"{name}.logical_shape must be two-dimensional")
+            logical_shape = (int(logical_shape[0]), int(logical_shape[1]))
+            if logical_shape[0] < 0 or logical_shape[1] <= 0:
+                raise ValueError(f"Invalid {name}.logical_shape: {logical_shape}")
+            if data.numel() != logical_shape[0] * logical_shape[1]:
+                raise ValueError(
+                    f"{name}.rowwise_data has {data.numel()} elements, but "
+                    f"logical_shape={logical_shape} requires "
+                    f"{logical_shape[0] * logical_shape[1]}"
+                )
+
+            first_dims = getattr(grouped_tensor, "first_dims", None)
+            if first_dims is not None:
+                if not isinstance(first_dims, torch.Tensor):
+                    raise TypeError(f"{name}.first_dims must be a torch.Tensor or None")
+                if first_dims.dtype != torch.int64 or first_dims.numel() != num_tensors:
+                    raise ValueError(
+                        f"{name}.first_dims must be an int64 tensor with {num_tensors} elements"
+                    )
+                if first_dims.device != data.device:
+                    raise ValueError(
+                        f"{name}.first_dims and rowwise_data must be on the same device"
+                    )
+
+            rowwise_data[name] = data
+            logical_shapes[name] = logical_shape
+
+        data_device = rowwise_data["A"].device
+        input_dtype = rowwise_data["A"].dtype
+        supported_dtypes = (torch.float16, torch.bfloat16, torch.float32)
+        if input_dtype not in supported_dtypes:
+            raise TypeError(
+                f"NPU dense grouped-tensor GEMM supports FP16, BF16, and FP32, got {input_dtype}"
+            )
+        for name in ("B", "D"):
+            if rowwise_data[name].device != data_device:
+                raise ValueError(f"A, B, and D must be on one NPU device; {name} differs")
+            if rowwise_data[name].dtype != input_dtype:
+                raise TypeError(
+                    f"A, B, and D must have one dtype; A is {input_dtype}, "
+                    f"{name} is {rowwise_data[name].dtype}"
+                )
+
+        for name, coefficient in (("alpha", alpha), ("beta", beta)):
+            if not isinstance(coefficient, torch.Tensor):
+                raise TypeError(f"{name} must be a torch.Tensor")
+            if coefficient.device != data_device:
+                raise ValueError(f"{name} must be on {data_device}, got {coefficient.device}")
+            if coefficient.dtype != torch.float32:
+                raise TypeError(f"{name} must have dtype torch.float32")
+            if coefficient.numel() not in (1, num_tensors):
+                raise ValueError(
+                    f"{name} must contain 1 or {num_tensors} values, got {coefficient.numel()}"
+                )
+        if alpha.numel() != beta.numel():
+            raise ValueError("alpha and beta must contain the same number of values")
+
+        def require_uniform_first_dim(name: str) -> int:
+            grouped_tensor = grouped_tensors[name]
+            if getattr(grouped_tensor, "first_dims", None) is not None:
+                raise ValueError(f"{name} must have a uniform first dimension for layout {layout}")
+            total_rows = logical_shapes[name][0]
+            if total_rows % num_tensors != 0:
+                raise ValueError(
+                    f"{name}.logical_shape[0]={total_rows} is not divisible by "
+                    f"num_tensors={num_tensors}"
+                )
+            return total_rows // num_tensors
+
+        def group_sizes(name: str) -> torch.Tensor:
+            grouped_tensor = grouped_tensors[name]
+            first_dims = getattr(grouped_tensor, "first_dims", None)
+            if first_dims is not None:
+                return first_dims
+            common_first_dim = require_uniform_first_dim(name)
+            return torch.full(
+                (num_tensors,),
+                common_first_dim,
+                dtype=torch.int64,
+                device=data_device,
+            )
+
+        a_rows, a_cols = logical_shapes["A"]
+        b_rows, b_cols = logical_shapes["B"]
+        d_rows, d_cols = logical_shapes["D"]
+
+        if layout == "TN":
+            weight_rows = require_uniform_first_dim("A")
+            if b_cols != a_cols or d_rows != b_rows or d_cols != weight_rows:
+                raise ValueError(
+                    "Invalid TN grouped GEMM shapes: expected B[:, K] @ "
+                    "A[G, N, K].T -> D[:, N], got "
+                    f"A={logical_shapes['A']}, B={logical_shapes['B']}, "
+                    f"D={logical_shapes['D']}"
+                )
+            split_sizes = group_sizes("B")
+            x = rowwise_data["B"].view(b_rows, b_cols)
+            weight = (
+                rowwise_data["A"]
+                .view(num_tensors, weight_rows, a_cols)
+                .transpose(1, 2)
+                .contiguous()
+            )
+        elif layout == "NN":
+            weight_rows = require_uniform_first_dim("A")
+            if b_cols != weight_rows or d_rows != b_rows or d_cols != a_cols:
+                raise ValueError(
+                    "Invalid NN grouped GEMM shapes: expected B[:, N] @ "
+                    "A[G, N, K] -> D[:, K], got "
+                    f"A={logical_shapes['A']}, B={logical_shapes['B']}, "
+                    f"D={logical_shapes['D']}"
+                )
+            split_sizes = group_sizes("B")
+            x = rowwise_data["B"].view(b_rows, b_cols)
+            weight = rowwise_data["A"].view(num_tensors, weight_rows, a_cols)
+        else:
+            output_rows = require_uniform_first_dim("D")
+            if a_rows != b_rows or d_rows != num_tensors * output_rows:
+                raise ValueError(
+                    "Invalid NT grouped GEMM row dimensions: expected "
+                    "B_i.T @ A_i -> D_i, got "
+                    f"A={logical_shapes['A']}, B={logical_shapes['B']}, "
+                    f"D={logical_shapes['D']}"
+                )
+            if output_rows != b_cols or d_cols != a_cols:
+                raise ValueError(
+                    "Invalid NT grouped GEMM inner/output dimensions: expected "
+                    "B[:, N].T @ A[:, K] -> D[G, N, K], got "
+                    f"A={logical_shapes['A']}, B={logical_shapes['B']}, "
+                    f"D={logical_shapes['D']}"
+                )
+            split_sizes = group_sizes("A")
+            x = rowwise_data["B"].view(b_rows, b_cols)
+            weight = rowwise_data["A"].view(a_rows, a_cols)
+
+        output_group_sizes = group_sizes("D")
+        if bias_scale is not None and bias is None:
+            raise ValueError("bias_scale requires bias")
+        if bias is not None:
+            bias_data = rowwise_data["bias"]
+            if bias_data.device != data_device or bias_data.dtype != input_dtype:
+                raise ValueError("bias must have the same device and dtype as A, B, and D")
+            if logical_shapes["bias"] != (num_tensors, d_cols):
+                raise ValueError(
+                    "Grouped bias must contain one row per group with D's last "
+                    f"dimension; expected {(num_tensors, d_cols)}, "
+                    f"got {logical_shapes['bias']}"
+                )
+            if bias_scale is not None:
+                if not isinstance(bias_scale, torch.Tensor):
+                    raise TypeError("bias_scale must be a torch.Tensor")
+                if bias_scale.device != data_device:
+                    raise ValueError("bias_scale must be on the same NPU device as D")
+                if bias_scale.numel() != d_rows:
+                    raise ValueError(
+                        f"bias_scale must contain {d_rows} values, got {bias_scale.numel()}"
+                    )
+
+        # A one-group group_list_type=1 call is rejected by some torch_npu
+        # versions. A regular NPU matmul is semantically identical in that case.
+        if num_tensors == 1:
+            if layout == "TN":
+                product = torch.matmul(x, weight[0])
+            elif layout == "NN":
+                product = torch.matmul(x, weight[0])
+            else:
+                product = torch.matmul(x.transpose(0, 1), weight)
+        elif d_rows == 0 or (layout == "NT" and a_rows == 0):
+            product = torch.zeros_like(rowwise_data["D"]).view(d_rows, d_cols)
+        else:
+            torch_npu = _get_torch_npu()
+            if layout in ("TN", "NN"):
+                product = torch_npu.npu_grouped_matmul(
+                    [x],
+                    [weight],
+                    group_list=split_sizes,
+                    output_dtype=rowwise_data["D"].dtype,
+                    group_type=0,
+                    group_list_type=1,
+                    split_item=3,
+                )[0]
+            else:
+                # aclnnGroupedMatmulAdd requires an FP32 accumulation target
+                # for dense BF16/FP16 inputs on the tested Ascend stack.
+                product = torch.zeros(
+                    (num_tensors, b_cols, a_cols),
+                    dtype=torch.float32,
+                    device=data_device,
+                )
+                torch_npu.npu_grouped_matmul_add_(
+                    product,
+                    x,
+                    weight,
+                    torch.cumsum(split_sizes, dim=0),
+                )
+
+        if product.numel() != rowwise_data["D"].numel():
+            raise RuntimeError(
+                "Unexpected NPU grouped GEMM output size: expected "
+                f"{rowwise_data['D'].numel()} elements, got {product.numel()}"
+            )
+
+        product_2d = product.reshape(d_rows, d_cols)
+        destination_2d = rowwise_data["D"].view(d_rows, d_cols)
+
+        def expand_group_values(values: torch.Tensor) -> torch.Tensor:
+            if values.numel() == 1:
+                return values.reshape(())
+            return torch.repeat_interleave(
+                values,
+                output_group_sizes,
+                output_size=d_rows,
+            ).view(d_rows, 1)
+
+        # The NPU GEMM result has already been rounded to D's dtype. Perform
+        # the alpha/beta combination in FP32 before the final in-place write.
+        combined = product_2d.float() * expand_group_values(alpha)
+        combined = combined + destination_2d.float() * expand_group_values(beta)
+        destination_2d.copy_(combined.to(destination_2d.dtype))
+
+        if bias is not None:
+            bias_2d = bias_data.view(num_tensors, d_cols).float()
+            expanded_bias = torch.repeat_interleave(
+                bias_2d,
+                output_group_sizes,
+                dim=0,
+                output_size=d_rows,
+            )
+            if bias_scale is not None:
+                expanded_bias = expanded_bias * bias_scale.view(d_rows, 1).float()
+            destination_2d.copy_((destination_2d.float() + expanded_bias).to(input_dtype))
+
+        return D
