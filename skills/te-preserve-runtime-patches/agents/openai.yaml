@@ -1,0 +1,4 @@
+interface:
+  display_name: "TE Runtime Patch Protector"
+  short_description: "Protect invasive runtime and device patches"
+  default_prompt: "Use $te-preserve-runtime-patches to audit TransformerEngine-FL invasive patches after an upstream merge."
