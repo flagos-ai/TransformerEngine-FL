@@ -731,3 +731,16 @@ class NPUBackend(TEFLBackendBase):
 
         _ = math_sm_count  # CUDA-only tuning knob.
         return bias
+
+    def gated_delta_net_forward(
+        self, query, key, value, g, beta, initial_state=None,
+        output_final_state=False, use_qk_l2norm=False, chunk_size=64,
+    ):
+        """Return GDN output/state, or NotImplemented for caller-owned fallback."""
+        from .gated_delta_net import gated_delta_net_forward
+
+        return gated_delta_net_forward(
+            query, key, value, g, beta, initial_state=initial_state,
+            output_final_state=output_final_state, use_qk_l2norm=use_qk_l2norm,
+            chunk_size=chunk_size,
+        )
