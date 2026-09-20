@@ -19,16 +19,20 @@ from ....ops import *
 from ..compat import vendor_te_compat
 
 
+_enflame_libs_loaded = False
+_enflame_libs_load_error = None
+
+
 def _ensure_enflame_libs():
-    global _enflame_libs_loaded
+    global _enflame_libs_load_error, _enflame_libs_loaded
     if not _enflame_libs_loaded:
         try:
             from migration.patches.transformer_engine import v2_9_0
 
             _enflame_libs_loaded = True
-        except Exception:
-            _enflame_libs_loaded = False
-            pass
+            _enflame_libs_load_error = None
+        except Exception as error:
+            _enflame_libs_load_error = error
         if _enflame_libs_loaded:
             print(f"[Enflame] Successfully loaded Enflame libs")
     return _enflame_libs_loaded
@@ -39,7 +43,9 @@ def _get_tex():
         from migration.patches.transformer_engine import v2_9_0
 
         return v2_9_0
-    return None
+    raise RuntimeError(
+        f"Failed to load Enflame Transformer Engine extension: {_enflame_libs_load_error}"
+    ) from _enflame_libs_load_error
 
 
 def _check_enflame_available() -> bool:

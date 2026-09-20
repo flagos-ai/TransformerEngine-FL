@@ -62,6 +62,7 @@ from .impl import (
     multi_tensor_sgd_torch,
     multi_tensor_compute_scale_and_scale_inv_torch,
     multi_tensor_compute_scale_inv_e8m0_torch,
+    thd_get_partitioned_indices_torch,
 )
 
 
@@ -772,6 +773,15 @@ class ReferenceBackend(TEFLBackendBase):
             seq_len = end - start
             output[i, :seq_len] = tensor[start:end]
         return output
+
+    def thd_get_partitioned_indices(
+        self,
+        cu_seqlens: torch.Tensor,
+        total_tokens: int,
+        world_size: int,
+        rank: int,
+    ) -> torch.Tensor:
+        return thd_get_partitioned_indices_torch(cu_seqlens, total_tokens, world_size, rank)
 
     def convert_bshd_to_thd(
         self,
