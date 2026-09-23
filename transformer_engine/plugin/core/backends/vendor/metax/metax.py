@@ -9,6 +9,7 @@ from pathlib import Path
 import importlib.util
 import platform
 import os
+import sys
 import functools
 import inspect
 
@@ -26,6 +27,8 @@ def _load_metax_libs():
 
     ext = get_ext()
 
+    # Layout 1 (legacy): MetaX TE <= 2.9 ships as a `transformer_engine_metax`
+    # package with the core lib next to it.
     try:
         import transformer_engine_metax
 
@@ -36,9 +39,24 @@ def _load_metax_libs():
                 if matches:
                     ctypes.CDLL(str(matches[0]), mode=ctypes.RTLD_GLOBAL)
                     return True
-        return False
-    except Exception as e:
-        return False
+    except Exception:
+        pass
+
+    # Layout 2 (vanilla): MetaX TE >= 2.13 ships as a plain `transformer_engine`
+    # wheel. Installing it into site-packages would clobber this (editable)
+    # TE-FL package, so it is expected at an isolated prefix pointed to by the
+    # TE_METAX_TE_HOME environment variable.
+    home = os.environ.get("TE_METAX_TE_HOME", "").strip()
+    if home:
+        home = Path(home)
+        pkg = home / "transformer_engine" if (home / "transformer_engine").is_dir() else home
+        for search_dir in [pkg, home]:
+            if search_dir.exists():
+                matches = sorted(search_dir.glob(f"libtransformer_engine{ext}*"))
+                if matches:
+                    ctypes.CDLL(str(matches[0]), mode=ctypes.RTLD_GLOBAL)
+                    return True
+    return False
 
 
 _metax_libs_loaded = False
@@ -51,6 +69,64 @@ def _ensure_metax_libs():
         if _metax_libs_loaded:
             print(f"[Metax] Successfully loaded Metax libs")
     return _metax_libs_loaded
+
+
+def _import_tex_module():
+    """Import the Metax torch extension robustly, both package layouts.
+
+    - Legacy: ``transformer_engine_torch_metax`` importable next to the
+      ``transformer_engine_metax`` package (MetaX TE 2.9 era).
+    - Vanilla: MetaX TE >= 2.13 ships the extension as
+      ``transformer_engine/transformer_engine_torch*.so`` inside a plain
+      ``transformer_engine`` wheel. It is loaded by file path from the
+      isolated prefix in ``TE_METAX_TE_HOME`` and aliased to
+      ``transformer_engine_torch_metax`` in ``sys.modules``.
+
+    Extensions built against torch<=2.8 headers reference
+    ``c10::SymInt::sym_ne``, which torch>=2.10 no longer exports (it became
+    header-inline). Loading under RTLD_LAZY defers that dangling binding; it
+    is harmless on call paths that never touch it.
+    """
+    mod = sys.modules.get("transformer_engine_torch_metax")
+    if mod is not None:
+        return mod
+
+    if importlib.util.find_spec("transformer_engine_metax") is not None:
+        import transformer_engine_torch_metax
+
+        return transformer_engine_torch_metax
+
+    home = os.environ.get("TE_METAX_TE_HOME", "").strip()
+    if not home:
+        raise ImportError(
+            "transformer_engine_torch_metax not found and TE_METAX_TE_HOME is not set"
+        )
+    home = Path(home)
+    pkg = home / "transformer_engine" if (home / "transformer_engine").is_dir() else home
+    matches = sorted(pkg.glob("transformer_engine_torch*.so"))
+    if not matches:
+        raise ImportError(f"no transformer_engine_torch*.so found under {pkg}")
+
+    old_flags = sys.getdlopenflags()
+    # Single-phase extension init registers itself in sys.modules under its
+    # PyInit name ("transformer_engine_torch"), which would shadow the TEFL
+    # dispatch module that plugin.core._module_setup installs under the same
+    # name. Save the current owner and restore it right after exec_module.
+    saved_owner = sys.modules.pop("transformer_engine_torch", None)
+    try:
+        sys.setdlopenflags(os.RTLD_LAZY | os.RTLD_GLOBAL)
+        spec = importlib.util.spec_from_file_location("transformer_engine_torch", str(matches[0]))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+    finally:
+        sys.setdlopenflags(old_flags)
+        if sys.modules.get("transformer_engine_torch") is mod:
+            if saved_owner is not None:
+                sys.modules["transformer_engine_torch"] = saved_owner
+            else:
+                del sys.modules["transformer_engine_torch"]
+    sys.modules["transformer_engine_torch_metax"] = mod
+    return mod
 
 
 def _check_metax_available() -> bool:
@@ -71,7 +147,7 @@ def _check_metax_available() -> bool:
     try:
         if not _ensure_metax_libs():
             return False
-        import transformer_engine_torch_metax
+        _import_tex_module()
 
         return True
     except (ImportError, OSError) as e:
@@ -81,9 +157,7 @@ def _check_metax_available() -> bool:
 
 def _get_tex():
     _ensure_metax_libs()
-    import transformer_engine_torch_metax
-
-    return transformer_engine_torch_metax
+    return _import_tex_module()
 
 
 class MetaxBackend(TEFLBackendBase):
