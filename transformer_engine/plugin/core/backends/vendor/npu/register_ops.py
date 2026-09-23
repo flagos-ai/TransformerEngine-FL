@@ -53,6 +53,24 @@ def register_builtins(registry) -> None:
             vendor="NPU",
             priority=100,
         ),
+        # LayerNorm forward
+        OpImpl(
+            op_name="layernorm_fwd",
+            impl_id="vendor.npu",
+            kind=BackendImplKind.VENDOR,
+            fn=_bind_is_available(backend.layernorm_fwd, is_avail),
+            vendor="NPU",
+            priority=100,
+        ),
+        # LayerNorm backward
+        OpImpl(
+            op_name="layernorm_bwd",
+            impl_id="vendor.npu",
+            kind=BackendImplKind.VENDOR,
+            fn=_bind_is_available(backend.layernorm_bwd, is_avail),
+            vendor="NPU",
+            priority=100,
+        ),
         # RMSNorm forward
         OpImpl(
             op_name="rmsnorm_fwd",
@@ -86,6 +104,15 @@ def register_builtins(registry) -> None:
             impl_id="vendor.npu",
             kind=BackendImplKind.VENDOR,
             fn=_bind_is_available(backend.multi_tensor_l2norm, is_avail),
+            vendor="NPU",
+            priority=100,
+        ),
+        # Multi-tensor Adam/AdamW
+        OpImpl(
+            op_name="multi_tensor_adam",
+            impl_id="vendor.npu",
+            kind=BackendImplKind.VENDOR,
+            fn=_bind_is_available(backend.multi_tensor_adam, is_avail),
             vendor="NPU",
             priority=100,
         ),
