@@ -2,7 +2,6 @@
 #
 # See LICENSE for license information.
 
-from contextlib import nullcontext
 import os
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import warnings
@@ -13,7 +12,6 @@ from transformer_engine import te_device_type
 from transformer_engine.pytorch.utils import (
     get_device_compute_capability,
 )
-from transformer_engine.pytorch.utils import nvtx_range_push, nvtx_range_pop
 
 from transformer_engine.pytorch.quantized_tensor import (
     prepare_for_saving,
@@ -21,7 +19,6 @@ from transformer_engine.pytorch.quantized_tensor import (
 )
 from transformer_engine.pytorch.tensor.float8_tensor import Float8Tensor
 from transformer_engine.pytorch.constants import (
-    TE_DType,
     QKVLayouts,
     dist_group_type,
 )
@@ -38,6 +35,32 @@ import flag_gems
 
 
 class AttnFuncFL(torch.autograd.Function):
+    """FlagGems SDPA adapter for dense and packed, unpadded training inputs.
+
+    Packed sequences are dispatched separately so attention never crosses a
+    sequence boundary. FlagGems SDPA itself consumes contiguous BHSD tensors.
+    This adapter supports zero-dropout, non-paged attention without sliding
+    windows. THD inputs must have no padding between sequences.
+    """
+
+    @staticmethod
+    def _to_bhsd(x, fmt):
+        """Convert one dense batch or one packed sequence to the SDPA layout."""
+        if fmt == "sbhd":
+            return x.permute(1, 2, 0, 3).contiguous()
+        if fmt == "bshd":
+            return x.permute(0, 2, 1, 3).contiguous()
+        return x.transpose(0, 1).unsqueeze(0).contiguous()
+
+    @staticmethod
+    def _from_bhsd(x, fmt):
+        """Restore the caller's layout for outputs and Q/K/V gradients."""
+        if fmt == "sbhd":
+            return x.permute(2, 0, 1, 3).contiguous()
+        if fmt == "bshd":
+            return x.permute(0, 2, 1, 3).contiguous()
+        return x.squeeze(0).transpose(0, 1).contiguous()
+
     @staticmethod
     def forward(
         ctx,
@@ -60,157 +83,116 @@ class AttnFuncFL(torch.autograd.Function):
         deterministic,
         layer_number,
     ):
-        nvtx_label = "transformer_engine.AttnFuncFL.forward"
-        nvtx_range_push(f"{nvtx_label}")
-
-        assert isinstance(k, q.__class__) and isinstance(
-            v, q.__class__
-        ), "q, k, v must be of the same class, e.g. torch.Tensor or Float8Tensor."
-
-        out_nominal_dtype = q.dtype
-
-        max_logit = None
-
-        is_causal = attn_mask_type == "causal"
-
-        q_permuted = q.permute(1, 2, 0, 3).contiguous()
-        k_permuted = k.permute(1, 2, 0, 3).contiguous()
-        v_permuted = v.permute(1, 2, 0, 3).contiguous()
-
-        (out_permuted, m) = flag_gems.scaled_dot_product_attention_forward(
-            q_permuted,
-            k_permuted,
-            v_permuted,
-            attn_mask=None,
-            dropout_p=dropout_p,
-            is_causal=is_causal,
-            scale=attn_scale,
-            enable_gqa=True,
-        )
-        # Must be contiguous for .view() in FlashAttentionFL.forward
-        out = out_permuted.permute(2, 0, 1, 3).contiguous()
-
-        aux_ctx_tensors = [out_permuted, m]
-        out_ret = out
-        qkvo_tensors = (q_permuted, k_permuted, v_permuted, out_permuted)
-
-        nvtx_range_pop(f"{nvtx_label}")
-
-        ctx.nominal_dtype = out_nominal_dtype
-
+        fmt, q_fmt, kv_fmt = dpa_utils.get_qkv_format(qkv_layout, None)
+        layouts = {
+            "".join(char for char in part if char.isalpha())
+            for part in qkv_layout.replace("paged_kv_", "").split("_")
+        }
+        if fmt not in ("sbhd", "bshd", "thd") or q_fmt != kv_fmt or len(layouts) != 1:
+            raise NotImplementedError(f"FlagGems SDPA layout: {qkv_layout}")
+        expected_ndim = 3 if fmt == "thd" else 4
+        if any(x.ndim != expected_ndim for x in (q, k, v)):
+            raise ValueError(f"FlagGems SDPA {fmt} inputs must have {expected_ndim} dimensions")
+        if k.shape != v.shape:
+            raise ValueError("FlagGems SDPA K and V must have matching shapes")
+        if dropout_p or page_table_k is not None or page_table_v is not None:
+            raise NotImplementedError("FlagGems SDPA requires zero dropout and non-paged inputs")
+        if attn_mask_type not in ("no_mask", "causal", "padding", "padding_causal"):
+            raise NotImplementedError(f"FlagGems SDPA mask: {attn_mask_type}")
+        causal = attn_mask_type in ("causal", "padding_causal")
+        if window_size not in (None, (-1, -1), (-1, 0) if causal else (-1, -1)):
+            raise NotImplementedError("FlagGems SDPA does not implement sliding windows")
+        if fmt != "thd" and "padding" in attn_mask_type:
+            raise NotImplementedError("FlagGems SDPA padding requires packed THD inputs")
+        if fmt == "thd":
+            if any(
+                bounds is None or bounds.ndim != 1 or bounds.dtype not in (torch.int32, torch.int64)
+                for bounds in (cu_seqlens_q, cu_seqlens_kv)
+            ):
+                raise ValueError("Packed cu_seqlens must be one-dimensional integer tensors")
+            # FlagGems' dense SDPA has no cu_seqlens argument. Split at actual
+            # sequence boundaries instead of treating packed tokens as one
+            # sequence; the latter would allow attention across samples.
+            # Reading these bounds synchronizes device metadata to the host.
+            q_bounds = cu_seqlens_q.tolist()
+            k_bounds = cu_seqlens_kv.tolist()
+            if (
+                len(q_bounds) != len(k_bounds)
+                or len(q_bounds) < 2
+                or q_bounds[0] != 0
+                or k_bounds[0] != 0
+                or q_bounds[-1] != q.shape[0]
+                or k_bounds[-1] != k.shape[0]
+            ):
+                raise ValueError("Packed cu_seqlens must span unpadded Q/KV tensors")
+            parts = []
+            for qa, qb, ka, kb in zip(q_bounds[:-1], q_bounds[1:], k_bounds[:-1], k_bounds[1:]):
+                if qb <= qa or kb <= ka:
+                    raise NotImplementedError("Empty packed attention sequences are unsupported")
+                parts.append((q[qa:qb], k[ka:kb], v[ka:kb]))
+        else:
+            parts = [(q, k, v)]
+        saved, outputs = [], []
+        for qp, kp, vp in parts:
+            qp, kp, vp = (AttnFuncFL._to_bhsd(x, fmt) for x in (qp, kp, vp))
+            if causal and qp.shape[2] != kp.shape[2]:
+                raise NotImplementedError("Non-square causal alignment is unsupported")
+            with torch.cuda.nvtx.range("transformer_engine.AttnFuncFL.forward"):
+                op, m = flag_gems.scaled_dot_product_attention_forward(
+                    qp,
+                    kp,
+                    vp,
+                    attn_mask=None,
+                    dropout_p=0.0,
+                    is_causal=causal,
+                    scale=attn_scale,
+                    enable_gqa=True,
+                )
+            saved.extend((qp, kp, vp, op, m))
+            outputs.append(AttnFuncFL._from_bhsd(op, fmt))
+        out = torch.cat(outputs, dim=0) if fmt == "thd" else outputs[0]
         from transformer_engine.pytorch.cpu_offload import (
             is_cpu_offload_enabled,
             mark_activation_offload,
         )
 
         if is_cpu_offload_enabled():
-            tensor_list = [q, k, v, out]
-
-            mark_activation_offload(*tensor_list)
-            mark_activation_offload(*aux_ctx_tensors)
-
-        tensors_to_save, tensor_objects = prepare_for_saving(
-            *qkvo_tensors,
-            cu_seqlens_q,
-            cu_seqlens_kv,
-            *aux_ctx_tensors,
-        )
-        ctx.save_for_backward(*tensors_to_save)
-        ctx.tensor_objects = tensor_objects
-
-        ctx.layer_number = layer_number
-
-        ctx.max_seqlen_q = max_seqlen_q
-        ctx.max_seqlen_kv = max_seqlen_kv
-        ctx.attn_scale = attn_scale
-        ctx.dropout_p = dropout_p
-        ctx.is_causal = is_causal
-
-        ctx.qkv_layout = qkv_layout
-        ctx.attn_mask_type = attn_mask_type
-        ctx.window_size = window_size
-        ctx.deterministic = deterministic
-
-        return out_ret
+            mark_activation_offload(q, k, v, out, *saved)
+        tensors, ctx.tensor_objects = prepare_for_saving(*saved)
+        ctx.save_for_backward(*tensors)
+        ctx.fmt, ctx.is_causal, ctx.attn_scale = fmt, causal, attn_scale
+        return out
 
     @staticmethod
     def backward(ctx, d_out, *_args):
-        d_out = d_out.contiguous()
-        (
-            q_permuted,
-            k_permuted,
-            v_permuted,
-            out_permuted,
-            cu_seqlens_q,
-            cu_seqlens_kv,
-            *other_tensors,
-        ) = restore_from_saved(ctx.tensor_objects, ctx.saved_tensors)
-
-        aux_ctx_tensors = other_tensors
-
-        if not aux_ctx_tensors[0].is_contiguous():
-            aux_ctx_tensors[0] = aux_ctx_tensors[0].contiguous()
-        if not aux_ctx_tensors[1].is_contiguous():
-            aux_ctx_tensors[1] = aux_ctx_tensors[1].contiguous()
-        out_permuted, m = aux_ctx_tensors
-        rest = [None]
-
-        with torch.cuda.nvtx.range("AttnFuncFL.backward"):
-            dqkv_nominal_dtype = ctx.nominal_dtype
-
-            dqkv_te_dtype = TE_DType[d_out.dtype]
-
-            q_permuted = q_permuted.contiguous() if not q_permuted.is_contiguous() else q_permuted
-            k_permuted = k_permuted.contiguous() if not k_permuted.is_contiguous() else k_permuted
-            v_permuted = v_permuted.contiguous() if not v_permuted.is_contiguous() else v_permuted
-            out_permuted = (
-                out_permuted.contiguous() if not out_permuted.is_contiguous() else out_permuted
-            )
-            m = m.contiguous() if not m.is_contiguous() else m
-
-            # d_out is (seq, batch, heads, dim) from autograd, permute to (batch, heads, seq, dim)
-            d_out_permuted = d_out.permute(1, 2, 0, 3).contiguous()
-
-            dq_permuted, dk_permuted, dv_permuted = flag_gems.scaled_dot_product_attention_backward(
-                d_out_permuted,
-                q_permuted,
-                k_permuted,
-                v_permuted,
-                out_permuted,
-                m,
-                attn_mask=None,
-                dropout_p=ctx.dropout_p,
-                is_causal=ctx.is_causal,
-                scale=ctx.attn_scale,
-                enable_gqa=True,
-            )
-
-            dq = dq_permuted.permute(2, 0, 1, 3)
-            dk = dk_permuted.permute(2, 0, 1, 3)
-            dv = dv_permuted.permute(2, 0, 1, 3)
-
-            rest = None
-
-        return (
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            dq,
-            dk,
-            dv,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-            None,
-        )
+        saved = restore_from_saved(ctx.tensor_objects, ctx.saved_tensors)
+        grads = [[], [], []]
+        offset = 0
+        for i in range(0, len(saved), 5):
+            q, k, v, out, m = saved[i : i + 5]
+            if ctx.fmt == "thd":
+                dout = d_out[offset : offset + q.shape[2]]
+                offset += q.shape[2]
+            else:
+                dout = d_out
+            with torch.cuda.nvtx.range("transformer_engine.AttnFuncFL.backward"):
+                dq, dk, dv = flag_gems.scaled_dot_product_attention_backward(
+                    AttnFuncFL._to_bhsd(dout, ctx.fmt),
+                    q,
+                    k,
+                    v,
+                    out.contiguous(),
+                    m.contiguous(),
+                    attn_mask=None,
+                    dropout_p=0.0,
+                    is_causal=ctx.is_causal,
+                    scale=ctx.attn_scale,
+                    enable_gqa=True,
+                )
+            for pieces, grad in zip(grads, (dq, dk, dv)):
+                pieces.append(AttnFuncFL._from_bhsd(grad, ctx.fmt))
+        dq, dk, dv = (torch.cat(g, dim=0) if ctx.fmt == "thd" else g[0] for g in grads)
+        return (None,) * 7 + (dq, dk, dv) + (None,) * 8
 
 
 class FlashAttentionFL(FlashAttentionBase):
@@ -283,6 +265,16 @@ class FlashAttentionFL(FlashAttentionBase):
         cu_seqlens_q_padded: Optional[torch.Tensor] = None,
         cu_seqlens_kv_padded: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
+        if pad_between_seqs:
+            raise NotImplementedError("FlagGems SDPA does not support padding between sequences")
+        if alibi_slopes is not None:
+            raise NotImplementedError("FlagGems SDPA does not support ALiBi")
+        if (
+            fp8
+            or fp8_output
+            or any(isinstance(x, Float8Tensor) for x in (query_layer, key_layer, value_layer))
+        ):
+            raise NotImplementedError("FlagGems SDPA supports FP16/BF16 inputs and outputs only")
         assert all(
             x.dtype in [torch.float16, torch.bfloat16] or isinstance(x, Float8Tensor)
             for x in [query_layer, key_layer, value_layer]
