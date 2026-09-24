@@ -1,0 +1,49 @@
+# PPU local/container QA; runner label must match the deployed PPU runner.
+hardware_name: ppu
+display_name: 'PPU ZW810E'
+ci_image: harbor.baai.ac.cn/flagos-dev/transformerengine-fl:f826afe-ppu-dev
+container_pull_policy: never
+runner_labels: flagcicd-810e
+container_volumes: []
+container_options: >-
+  --privileged
+  --ipc=host
+  --shm-size=100g
+  --ulimit memlock=-1
+  --ulimit stack=67108864
+  --user root
+  -e PLATFORM=ppu
+  -e TE_FL_SKIP_CUDA=1
+  -e NVTE_FRAMEWORK=pytorch
+  -e TE_FL_PREFER=flagos
+  -e NVTE_FLASH_ATTN=0
+  -e NVTE_FUSED_ATTN=0
+  -e NVTE_UNFUSED_ATTN=1
+  -e NVTE_TORCH_COMPILE=0
+  -e TE_FL_PER_OP=generic_gemm=reference
+  -e PPU_STEP_TIMEOUT=9000
+device_types:
+  - 810e
+nproc_per_node: 2
+setup_script: .github/scripts/setup_ppu.sh
+unit_test_timeout_minutes: 240
+unit_test_matrix:
+  - name: pytorch_unittest
+    runner: script
+    path: tests/plugin/backend/ppu/run_unit_tests.sh
+integration_test_matrix:
+  - name: pytorch_mcore_integration
+    path: tests/plugin/backend/ppu/run_integration_tests.sh
+coverage:
+  enabled: true
+  required: false
+  python: python3
+  sources:
+    - transformer_engine
+  include:
+    - transformer_engine/pytorch/*
+    - transformer_engine/debug/*
+    - transformer_engine/plugin/*
+  omit:
+    - '*/setup.py'
+    - '*/transformer_engine/plugin/core/_build_config.py'

@@ -28,7 +28,9 @@ retry_command() {
 }
 
 detect_platform() {
-    if command -v nvidia-smi &>/dev/null; then
+    if command -v ppu-smi &>/dev/null; then
+        echo ppu
+    elif command -v nvidia-smi &>/dev/null; then
         echo cuda
     elif command -v mx-smi &>/dev/null || [ -d /opt/maca ]; then
         echo metax
@@ -50,6 +52,7 @@ detect_platform() {
 : "${DATA_CACHE_PATH:=/tmp/data_cache}"
 : "${PLATFORM:=$(detect_platform)}"
 : "${TE_FL_PREFER:=vendor}"
+: "${MCORE_FP8_MODE:=auto}"
 
 : "${DISTRIBUTED_BACKEND:=nccl}"
 if [ "${PLATFORM}" = "ascend" ]; then
@@ -86,15 +89,25 @@ fi
 
 # Check whether FP8 is supported
 WITH_FP8=
-if command -v nvidia-smi &>/dev/null; then
-    DEVICE_ARCH=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader | head -n 1 | sed 's/[^0-9]//g')
-    if [[ ${DEVICE_ARCH} -ge 89 ]]; then
-        WITH_FP8=1
-    fi
-elif command -v mx-smi &>/dev/null; then
-    # Metax hardware does not support FP8; leave WITH_FP8 unset
-    :
-fi
+case "${MCORE_FP8_MODE}" in
+    off) ;;
+    on) WITH_FP8=1 ;;
+    auto)
+        if [ "${PLATFORM}" = "cuda" ] && command -v nvidia-smi &>/dev/null; then
+            # Consume the full command output so pipefail does not turn an
+            # early reader exit into a false nvidia-smi failure.
+            DEVICE_ARCH=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader \
+                | sed -n '1{s/[^0-9]//gp;}')
+            if [[ ${DEVICE_ARCH} -ge 89 ]]; then
+                WITH_FP8=1
+            fi
+        fi
+        ;;
+    *)
+        echo "MCORE_FP8_MODE must be one of auto, on, or off: ${MCORE_FP8_MODE}" >&2
+        exit 2
+        ;;
+esac
 
 # Download or sync Megatron-LM-FL to the requested repo/ref.
 if [ ! -d "${MCORE_PATH}" ]; then
@@ -153,6 +166,7 @@ echo "Using Megatron-LM-FL ref: ${MCORE_REF}"
 git -C "${MCORE_PATH}" rev-parse --short HEAD
 echo "Platform: ${PLATFORM}"
 echo "Distributed backend: ${DISTRIBUTED_BACKEND}"
+echo "FP8 mode: ${MCORE_FP8_MODE}"
 if [ -n "${WITH_FP8}" ]; then
     echo "FP8 enabled: yes"
 else
