@@ -1,0 +1,4 @@
+interface:
+  display_name: "TE Upstream Conflict Integrator"
+  short_description: "Resolve upstream conflicts with semantic safeguards"
+  default_prompt: "Use $te-integrate-upstream-conflicts to classify and safely resolve TransformerEngine upgrade conflicts."
