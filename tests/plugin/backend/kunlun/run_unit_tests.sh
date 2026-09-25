@@ -2,17 +2,14 @@
 # KunlunXin backend test entrypoint.
 set -euo pipefail
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/config.sh"
+source "$SCRIPT_DIR/set_env.sh"
+
 TE_PATH="${TE_PATH:-/opt/transformerengine}"
 XML_LOG_DIR="${XML_LOG_DIR:-/logs}"
 mkdir -p "$XML_LOG_DIR"
 XML_LOG_ROOT="$XML_LOG_DIR"
-
-export TE_FL_SKIP_CUDA="${TE_FL_SKIP_CUDA:-1}"
-export NVTE_FLASH_ATTN="${NVTE_FLASH_ATTN:-0}"
-export NVTE_FUSED_ATTN="${NVTE_FUSED_ATTN:-0}"
-export NVTE_UNFUSED_ATTN="${NVTE_UNFUSED_ATTN:-1}"
-export NVTE_TEST_NVINSPECT_FEATURE_DIRS="${NVTE_TEST_NVINSPECT_FEATURE_DIRS:-$TE_PATH/transformer_engine/debug/features}"
-export NVTE_TEST_NVINSPECT_CONFIGS_DIR="${NVTE_TEST_NVINSPECT_CONFIGS_DIR:-$TE_PATH/tests/pytorch/debug/test_configs/}"
 
 FAIL=0
 OVERALL_FAIL=0

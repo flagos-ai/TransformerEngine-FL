@@ -6,8 +6,8 @@
 set -uo pipefail
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
-: "${TE_PATH:=$(cd -- "${SCRIPT_DIR}/../../../.." && pwd)}"
-: "${XML_LOG_DIR:=/logs}"
+source "$SCRIPT_DIR/config.sh"
+source "$SCRIPT_DIR/set_env.sh"
 
 mkdir -p "${XML_LOG_DIR}"
 XML_LOG_ROOT="${XML_LOG_DIR}"

@@ -9,7 +9,8 @@ plugin test ownership, see [`plugin/README.md`](plugin/README.md).
 
 ## CI architecture
 
-Each hardware platform is connected to CI through three files:
+Each hardware platform is connected to CI through the workflow/config/setup
+files below, plus a mandatory four-file backend test directory:
 
 | Component | Location | Responsibility |
 | --- | --- | --- |
@@ -42,14 +43,15 @@ the integration matrix for the same platform workflow.
 
 ## Platform test-runner layout
 
-Platform-owned launchers and their support files live together:
+Every platform directory has the same four entry files. Platform-owned
+launchers and support files live together:
 
 ```text
 tests/plugin/backend/<platform>/
-  run_unit_tests.sh
-  run_integration_tests.sh
-  config.sh                    # Optional test selection and exclusions
-  set_env.sh                   # Optional sourceable runtime environment
+  config.sh                    # Required platform constants
+  set_env.sh                   # Required runtime environment
+  run_unit_tests.sh            # Required unit entry point
+  run_integration_tests.sh     # Required integration entry point
   <platform support files>     # Optional narrowly scoped helpers
 ```
 
@@ -57,8 +59,8 @@ Use these names consistently:
 
 - `run_unit_tests.sh` is the script entry point for `unit_test_matrix` groups.
 - `run_integration_tests.sh` is the entry point for `integration_test_matrix`.
-- `config.sh` contains test selection, exclusions, and runner knobs, not image
-  or device allocation configuration.
+- `config.sh` contains platform constants, test selection, exclusions, and
+  runner knobs, not image or device allocation configuration.
 - `set_env.sh` exports runtime variables needed by both setup and test runners.
 - Support scripts use names that describe their operation, such as
   `patch_megatron_mccl.py`.
@@ -70,9 +72,10 @@ point and platform-specific support files belong under the plugin backend.
 An `__init__.py` is only needed when the directory is intentionally imported as
 a Python package. Shell-only runner directories do not need one.
 
-A platform that needs no runtime wrapper may point its matrix directly at a
-shared QA script or use a declarative pytest group. Do not add an empty platform
-launcher solely to satisfy the directory shape.
+Every configured platform matrix points to its platform-owned entry point. A
+launcher may delegate to a shared QA script, while Python-native collections
+may use a declaration-only launcher that reports they are collected by another
+platform.
 
 ## Platform configuration contract
 
@@ -324,11 +327,11 @@ For platform-specific runtime behavior:
 1. Add `.github/configs/<platform>.yml` with image, runner, container, device,
    setup, and test matrices.
 2. Add `.github/scripts/setup_<platform>.sh` for image and device validation.
-3. Add `tests/plugin/backend/<platform>/run_unit_tests.sh` when unit execution
-   needs a platform wrapper; otherwise use a shared QA or declarative pytest
-   group.
-4. Add `run_integration_tests.sh` when integration coverage needs a platform
-   wrapper; otherwise point to the shared QA entry.
+3. Add all four files under `tests/plugin/backend/<platform>/`:
+   `config.sh`, `set_env.sh`, `run_unit_tests.sh`, and
+   `run_integration_tests.sh`.
+4. Keep `.github/configs/<platform>.yml` pointed at the platform-owned unit and
+   integration entry points, even when the launcher delegates to shared QA.
 5. Add `.github/workflows/all_tests_<platform>.yml` calling
    `all_tests_common.yml`.
 6. Validate the serial unit entry and one integration entry before enabling the

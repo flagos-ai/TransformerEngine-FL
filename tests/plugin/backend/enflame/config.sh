@@ -1,43 +1,45 @@
 #!/usr/bin/env bash
+# Enflame Backend Test Configuration
 
-# Enflame/GCU workflow configuration.
-# Keep chip-specific skips and runner knobs here instead of common workflows.
+set -euo pipefail
 
-ENFLAME_CONFIG_FILE="${ENFLAME_CONFIG_FILE:-${GITHUB_WORKSPACE:-$(pwd)}/.github/configs/enflame.yml}"
-if [ -z "${ENFLAME_NPROC_PER_NODE:-}" ]; then
-    ENFLAME_NPROC_PER_NODE="$(
-        PYTHONPATH= ENFLAME_CONFIG_FILE="$ENFLAME_CONFIG_FILE" python3 - <<'PY'
-import os
-from pathlib import Path
+readonly PLATFORM_NAME="enflame"
+readonly PLATFORM_DISPLAY_NAME="Enflame GCU"
+readonly PLATFORM_TYPE="shell_launcher"
+readonly PLATFORM_NPROC_PER_NODE=2
+readonly PLATFORM_DEVICE_ENV_VAR="GCU_VISIBLE_DEVICES"
+readonly PLATFORM_UNIT_TIMEOUT=14400
+readonly PLATFORM_INTEGRATION_TIMEOUT=1800
+readonly PLATFORM_UNIT_TEST_PATHS=(
+    "tests/plugin/backend/enflame"
+    "tests/plugin/backend/reference"
+    "tests/plugin/backend/flagos"
+)
+readonly PLATFORM_INTEGRATION_TEST_SCRIPT="qa/L1_pytorch_mcore_integration/test.sh"
+readonly PLATFORM_PYTEST_UNIT_MARKERS="not slow and not integration"
+readonly PLATFORM_PYTEST_INTEGRATION_MARKERS="integration"
+readonly PLATFORM_PYTEST_EXTRA_ARGS="--tb=short --verbose"
+readonly PLATFORM_PYTEST_DESELECT=""
+readonly PLATFORM_COVERAGE_ENABLED=true
 
-import yaml
-
-config_file = Path(os.environ["ENFLAME_CONFIG_FILE"])
-config = yaml.safe_load(config_file.read_text())
-print(config.get("nproc_per_node", 2))
-PY
-    )"
-fi
-export ENFLAME_NPROC_PER_NODE
-
-ENFLAME_UNITTEST_SKIP_FUSED_OPTIMIZER=(
+readonly -a ENFLAME_UNITTEST_SKIP_FUSED_OPTIMIZER=(
     "test_float"
     "test_half"
     "test_grad_scaler_capturable"
     "test_grad_scaler_capturable_master"
 )
 
-ENFLAME_UNITTEST_SKIP_HF_INTEGRATION=(
+readonly -a ENFLAME_UNITTEST_SKIP_HF_INTEGRATION=(
     "test_save_and_load_hf_model"
 )
 
-ENFLAME_DISTRIBUTED_SKIP_FILES=(
+readonly -a ENFLAME_DISTRIBUTED_SKIP_FILES=(
     "tests/pytorch/distributed/test_numerics.py"
     "tests/pytorch/distributed/test_numerics_exact.py"
     "tests/pytorch/distributed/test_torch_fsdp2.py"
 )
 
-ENFLAME_ONNX_SKIP_GROUPS=(
+readonly -a ENFLAME_ONNX_SKIP_GROUPS=(
     "test_export_linear"
     "test_export_layernorm_linear"
     "test_export_layernorm_mlp"

@@ -3,22 +3,12 @@
 # Called by unit_tests_common.yml for CUDA platforms (A100, H100, etc.)
 set -euo pipefail
 
-export TE_FL_SKIP_CUDA="${TE_FL_SKIP_CUDA:-0}"
-export SKIP_CUDA_BUILD="${SKIP_CUDA_BUILD:-0}"
-export NVTE_WITH_CUDA="${NVTE_WITH_CUDA:-1}"
-export NVTE_WITH_MACA="${NVTE_WITH_MACA:-0}"
-export TE_WITH_NCCL="${TE_WITH_NCCL:-1}"
-export NVTE_WITH_NCCL_EP="${NVTE_WITH_NCCL_EP:-0}"
-export NVTE_FRAMEWORK="${NVTE_FRAMEWORK:-pytorch}"
-export CUDA_HOME="${CUDA_HOME:-/usr/local/cuda-12.8}"
-export NVCC="${NVCC:-${CUDA_HOME}/bin/nvcc}"
-export NVTE_CUDA_ARCHS="${NVTE_CUDA_ARCHS:-80;90}"
+WORKSPACE="${GITHUB_WORKSPACE:-$(pwd)}"
 
 echo "===== Step 0: Activate Python environment ====="
 source /opt/miniconda3/etc/profile.d/conda.sh
 conda activate flagscale-train
-export PATH="${CUDA_HOME}/bin:$PATH"
-export LD_LIBRARY_PATH="${CUDA_HOME}/lib:${LD_LIBRARY_PATH:-}"
+source "$WORKSPACE/tests/plugin/backend/cuda/set_env.sh"
 {
     echo "TE_FL_SKIP_CUDA=$TE_FL_SKIP_CUDA"
     echo "SKIP_CUDA_BUILD=$SKIP_CUDA_BUILD"

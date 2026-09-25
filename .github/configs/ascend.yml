@@ -57,7 +57,7 @@ unit_test_matrix:
 
 integration_test_matrix:
   - name: pytorch_mcore_integration
-    path: qa/L1_pytorch_mcore_integration/test.sh
+    path: tests/plugin/backend/ascend/run_integration_tests.sh
 
 # Device types to run tests on
 device_types:

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# MUSA Backend Integration Tests Entry Point
+# Ascend Backend Integration Tests Entry Point
 
 set -euo pipefail
 
