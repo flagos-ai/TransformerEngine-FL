@@ -1734,6 +1734,19 @@ class TEFLBackendBase(ABC):
     ) -> None:
         raise NotImplementedError
 
+    # Device capability queries
+    def device_supports_multicast(self) -> bool:
+        """Check if current CUDA device supports multicast for comm+GEMM overlap."""
+        raise NotImplementedError
+
+    def ubuf_built_with_mpi(self) -> bool:
+        """Check if Userbuffers was built with MPI support."""
+        raise NotImplementedError
+
+    def get_stream_priority_range(self) -> tuple:
+        """Get the range of stream priorities (min_priority, max_priority)."""
+        raise NotImplementedError
+
     # Comm+GEMM Overlap
     def bulk_overlap_ag_with_external_gemm(
         self,
