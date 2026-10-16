@@ -62,3 +62,17 @@ integration_test_matrix:
 # Device types to run tests on
 device_types:
   - ascend
+
+# Exact paths or directory prefixes (ending in /) owned by this platform.
+# Shared and unknown code paths conservatively trigger all platforms.
+paths_watch:
+  - .github/configs/ascend.yml
+  - .github/scripts/setup_ascend.sh
+  - .github/workflows/all_tests_ascend.yml
+  - tests/plugin/backend/ascend/
+  - transformer_engine/plugin/core/backends/vendor/npu/
+  - tests/plugin/backend/npu/
+  - qa/L0_pytorch_debug_unittest/test_ascend.sh
+  - qa/L0_pytorch_unittest/test_ascend.sh
+  - qa/L1_pytorch_distributed_unittest/test_ascend.sh
+  - qa/L1_pytorch_onnx_unittest/test_ascend.sh

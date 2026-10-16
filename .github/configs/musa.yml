@@ -66,3 +66,12 @@ unit_test_matrix:
 integration_test_matrix:
   - name: pytorch_mcore_integration
     path: tests/plugin/backend/musa/run_integration_tests.sh
+
+# Exact paths or directory prefixes (ending in /) owned by this platform.
+# Shared and unknown code paths conservatively trigger all platforms.
+paths_watch:
+  - .github/configs/musa.yml
+  - .github/scripts/setup_musa.sh
+  - .github/workflows/all_tests_musa.yml
+  - tests/plugin/backend/musa/
+  - transformer_engine/plugin/core/backends/vendor/musa/

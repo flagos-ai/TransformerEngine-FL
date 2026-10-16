@@ -50,3 +50,12 @@ integration_test_matrix:
 
 device_types:
   - bw1000
+
+# Exact paths or directory prefixes (ending in /) owned by this platform.
+# Shared and unknown code paths conservatively trigger all platforms.
+paths_watch:
+  - .github/configs/hygon.yml
+  - .github/scripts/setup_hygon.sh
+  - .github/workflows/all_tests_hygon.yml
+  - tests/plugin/backend/hygon/
+  - transformer_engine/plugin/core/backends/vendor/hygon/

@@ -14,6 +14,7 @@ from pathlib import Path
 import shlex
 import subprocess
 import sys
+import time
 from typing import Any
 
 
@@ -104,6 +105,8 @@ def _run_pytest(group: dict[str, Any]) -> int:
         )
         print(f"[RUN] {step['name']}: {shlex.join(command)}", flush=True)
         result = subprocess.run(command, cwd=REPO_ROOT, env=step_env, check=False)
+        if result.returncode < 0 or result.returncode >= 128:
+            return result.returncode
         failed = failed or result.returncode != 0
 
     return 1 if failed else 0
@@ -112,11 +115,22 @@ def _run_pytest(group: dict[str, Any]) -> int:
 def main() -> int:
     group = _load_group()
     runner = group.get("runner", "script")
-    if runner == "script":
-        return _run_script(group)
-    if runner == "pytest":
-        return _run_pytest(group)
-    raise SystemExit(f"Unsupported test runner: {runner}")
+    runners = {"script": _run_script, "pytest": _run_pytest}
+    if runner not in runners:
+        raise SystemExit(f"Unsupported test runner: {runner}")
+    raw_retries = group.get("max_retries", os.environ.get("TE_TEST_MAX_RETRIES", "0"))
+    if isinstance(raw_retries, bool) or str(raw_retries) not in ("0", "1", "2"):
+        raise SystemExit("max_retries / TE_TEST_MAX_RETRIES must be 0, 1, or 2")
+    retries = int(raw_retries)
+    for attempt in range(retries + 1):
+        print(f"[ATTEMPT] {group['name']}: {attempt + 1}/{retries + 1}", flush=True)
+        result = runners[runner](group)
+        # Do not retry interrupted/killed commands, including shell signal exits.
+        if result == 0 or result < 0 or result >= 128 or attempt == retries:
+            return result
+        print(f"[RETRY] Test group failed with exit code {result}; retrying in 5s", flush=True)
+        time.sleep(5)
+    raise AssertionError("Unreachable retry state")
 
 
 if __name__ == "__main__":

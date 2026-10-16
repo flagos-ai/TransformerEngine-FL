@@ -1,0 +1,58 @@
+name: Requested CI
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  resolve:
+    if: >-
+      github.event.issue.pull_request &&
+       (startsWith(github.event.comment.body, '/ci run ') ||
+        startsWith(github.event.comment.body, '/test '))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      platforms: ${{ steps.request.outputs.platforms }}
+      checkout_ref: ${{ steps.request.outputs.checkout_ref }}
+    steps:
+      # Execute only the event's base-repository controller, never PR code here.
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Authorize and resolve requested tests
+        id: request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/ci/ci_requests.py
+
+  platform-pipeline:
+    needs: resolve
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ${{ fromJson(needs.resolve.outputs.platforms) }}
+    uses: ./.github/workflows/all_tests_common.yml
+    secrets:
+      FLAGCICD_API_TOKEN: ${{ secrets.FLAGCICD_API_TOKEN }}
+    with:
+      platform: ${{ matrix.platform }}
+      checkout_ref: ${{ needs.resolve.outputs.checkout_ref }}
+
+  complete:
+    name: Requested CI Complete
+    needs: [resolve, platform-pipeline]
+    if: always() && needs.resolve.result != 'skipped'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify requested tests
+        env:
+          RESOLVE_RESULT: ${{ needs.resolve.result }}
+          PIPELINE_RESULT: ${{ needs.platform-pipeline.result }}
+        run: |
+          test "$RESOLVE_RESULT" = success
+          test "$PIPELINE_RESULT" = success

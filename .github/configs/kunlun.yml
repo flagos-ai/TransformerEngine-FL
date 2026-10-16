@@ -60,3 +60,12 @@ unit_test_matrix:
 integration_test_matrix:
   - name: pytorch_mcore_integration
     path: tests/plugin/backend/kunlun/run_integration_tests.sh
+
+# Exact paths or directory prefixes (ending in /) owned by this platform.
+# Shared and unknown code paths conservatively trigger all platforms.
+paths_watch:
+  - .github/configs/kunlun.yml
+  - .github/scripts/setup_kunlun.sh
+  - .github/workflows/all_tests_kunlun.yml
+  - tests/plugin/backend/kunlun/
+  - transformer_engine/plugin/core/backends/vendor/kunlunxin/

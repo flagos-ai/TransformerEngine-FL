@@ -83,3 +83,12 @@ test_matrix:
       # example: tests/unit_tests/test_example.py
       # - tests/unit_tests/test_inference.py
       # - tests/unit_tests/test_rl_utils.py
+
+# Exact paths or directory prefixes (ending in /) owned by this platform.
+# Shared and unknown code paths conservatively trigger all platforms.
+paths_watch:
+  - .github/configs/metax.yml
+  - .github/scripts/setup_metax.sh
+  - .github/workflows/all_tests_metax.yml
+  - tests/plugin/backend/metax/
+  - transformer_engine/plugin/core/backends/vendor/metax/

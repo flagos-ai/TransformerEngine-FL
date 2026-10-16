@@ -2,10 +2,17 @@ name: Common Unit Tests
 
 on:
   workflow_call:
+    secrets:
+      FLAGCICD_API_TOKEN:
+        required: false
     inputs:
       platform:
         required: true
         type: string
+      checkout_ref:
+        required: false
+        type: string
+        default: ''
       device:
         required: true
         type: string
@@ -99,6 +106,7 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.checkout_ref }}
           fetch-depth: 0
           submodules: ${{ inputs.checkout_submodules }}
           set-safe-directory: true
@@ -125,6 +133,7 @@ jobs:
           COVERAGE_SOURCES: ${{ inputs.coverage_sources }}
           COVERAGE_INCLUDE: ${{ inputs.coverage_include }}
           COVERAGE_OMIT: ${{ inputs.coverage_omit }}
+          TE_TEST_MAX_RETRIES: '2'
         run: |
           set -euo pipefail
 
@@ -238,6 +247,7 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.checkout_ref }}
           fetch-depth: 0
           set-safe-directory: true
 
@@ -302,13 +312,13 @@ jobs:
           path: coverage-${{ inputs.platform }}-${{ inputs.device }}-pytorch-unittest.json
 
       - name: Upload coverage report to FlagCICD
-        if: steps.aggregate.outputs.coverage_aggregated == 'true'
+        if: ${{ !cancelled() && steps.aggregate.outputs.coverage_aggregated == 'true' }}
         uses: flagos-ai/FlagOps/actions/post-pytest-report@v2
         continue-on-error: true
-        env:
-          NO_PROXY: flagcicd-inner.flagos.net
         with:
-          backend_url: http://flagcicd-inner.flagos.net:8000/metrics/
-          user_id: '000000000000000000'
+          backend_url: 'https://flagcicd.flagos.net/flagcicd/api/v1/cicd/metrics/'
+          api_token: ${{ secrets.FLAGCICD_API_TOKEN }}
           report_path: coverage-${{ inputs.platform }}-${{ inputs.device }}-pytorch-unittest.json
+          # Default github.job is shared by every platform/device.
+          job_name: coverage-${{ inputs.platform }}-${{ inputs.device }}-pytorch-unittest
           fail_on_error: 'false'

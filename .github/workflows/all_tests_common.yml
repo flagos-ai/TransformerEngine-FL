@@ -2,7 +2,14 @@ name: Common All Tests
 
 on:
   workflow_call:
+    secrets:
+      FLAGCICD_API_TOKEN:
+        required: false
     inputs:
+      checkout_ref:
+        required: false
+        type: string
+        default: ''
       platform:
         required: true
         type: string
@@ -52,6 +59,8 @@ jobs:
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout_ref }}
 
       - name: Load platform configuration
         id: config
@@ -189,6 +198,7 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.checkout_ref }}
           fetch-depth: 0
           submodules: ${{ needs.checkout_and_config.outputs.checkout_submodules }}
           set-safe-directory: true
@@ -214,7 +224,8 @@ jobs:
       always() && inputs.run_unit_tests &&
       needs.checkout_and_config.result == 'success' &&
       (needs.build_test_artifact.result == 'success' ||
-      needs.build_test_artifact.result == 'skipped')
+      (needs.build_test_artifact.result == 'skipped' &&
+      needs.checkout_and_config.outputs.test_artifact_enabled != 'true'))
     needs:
       - checkout_and_config
       - build_test_artifact
@@ -223,8 +234,11 @@ jobs:
       matrix:
         device: ${{ fromJson(needs.checkout_and_config.outputs.device_types) }}
     uses: ./.github/workflows/unit_tests_common.yml
+    secrets:
+      FLAGCICD_API_TOKEN: ${{ secrets.FLAGCICD_API_TOKEN }}
     with:
       platform: ${{ inputs.platform }}
+      checkout_ref: ${{ inputs.checkout_ref }}
       device: ${{ matrix.device }}
       image: ${{ needs.checkout_and_config.outputs.ci_image }}
       container_pull_policy: ${{ needs.checkout_and_config.outputs.container_pull_policy }}
@@ -253,8 +267,7 @@ jobs:
     steps:
       - name: Check unit tests result
         run: |
-          if [ "${{ needs.unit_tests.result }}" != "success" ] && \
-             [ "${{ needs.unit_tests.result }}" != "skipped" ]; then
+          if [ "${{ needs.unit_tests.result }}" != "success" ]; then
             echo "❌ Unit tests failed: ${{ needs.unit_tests.result }}"
             exit 1
           fi
@@ -266,9 +279,10 @@ jobs:
       always() && inputs.run_integration_tests &&
       needs.checkout_and_config.result == 'success' &&
       (needs.build_test_artifact.result == 'success' ||
-      needs.build_test_artifact.result == 'skipped') &&
+      (needs.build_test_artifact.result == 'skipped' &&
+      needs.checkout_and_config.outputs.test_artifact_enabled != 'true')) &&
       (needs.unit_tests_complete.result == 'success' ||
-      needs.unit_tests_complete.result == 'skipped')
+      (!inputs.run_unit_tests && needs.unit_tests_complete.result == 'skipped'))
     needs:
       - checkout_and_config
       - build_test_artifact
@@ -280,6 +294,7 @@ jobs:
     uses: ./.github/workflows/integration_tests_common.yml
     with:
       device: ${{ matrix.device }}
+      checkout_ref: ${{ inputs.checkout_ref }}
       image: ${{ needs.checkout_and_config.outputs.ci_image }}
       container_pull_policy: ${{ needs.checkout_and_config.outputs.container_pull_policy }}
       runs_on: ${{ needs.checkout_and_config.outputs.runs_on }}
@@ -300,8 +315,7 @@ jobs:
     steps:
       - name: Check integration tests result
         run: |
-          if [ "${{ needs.integration_tests.result }}" != "success" ] && \
-             [ "${{ needs.integration_tests.result }}" != "skipped" ]; then
+          if [ "${{ needs.integration_tests.result }}" != "success" ]; then
             echo "❌ Integration tests failed: ${{ needs.integration_tests.result }}"
             exit 1
           fi
@@ -321,7 +335,7 @@ jobs:
     steps:
       - name: Verify all tests passed
         run: |
-          # Check all test jobs (skip if not run)
+          # Only explicitly disabled work is allowed to be skipped.
           failed=false
 
           if [ "${{ needs.checkout_and_config.result }}" != "success" ]; then
@@ -329,20 +343,29 @@ jobs:
             failed=true
           fi
 
-          if [ "${{ needs.build_test_artifact.result }}" != "success" ] && \
-            [ "${{ needs.build_test_artifact.result }}" != "skipped" ]; then
+          expected_build=skipped
+          if [ "${{ needs.checkout_and_config.outputs.test_artifact_enabled }}" = "true" ]; then
+            expected_build=success
+          fi
+          if [ "${{ needs.build_test_artifact.result }}" != "$expected_build" ]; then
             echo "Test artifact build failed or was cancelled: ${{ needs.build_test_artifact.result }}"
             failed=true
           fi
 
-          if [ "${{ needs.unit_tests_complete.result }}" != "success" ] && \
-            [ "${{ needs.unit_tests_complete.result }}" != "skipped" ]; then
+          expected_unit=skipped
+          if [ "${{ inputs.run_unit_tests }}" = "true" ]; then
+            expected_unit=success
+          fi
+          if [ "${{ needs.unit_tests_complete.result }}" != "$expected_unit" ]; then
             echo "❌ Unit tests failed or cancelled: ${{ needs.unit_tests_complete.result }}"
             failed=true
           fi
 
-          if [ "${{ needs.integration_tests_complete.result }}" != "success" ] && \
-            [ "${{ needs.integration_tests_complete.result }}" != "skipped" ]; then
+          expected_integration=skipped
+          if [ "${{ inputs.run_integration_tests }}" = "true" ]; then
+            expected_integration=success
+          fi
+          if [ "${{ needs.integration_tests_complete.result }}" != "$expected_integration" ]; then
             echo "❌ Integration tests failed or cancelled: ${{ needs.integration_tests_complete.result }}"
             failed=true
           fi

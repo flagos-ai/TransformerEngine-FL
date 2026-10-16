@@ -48,3 +48,11 @@ coverage:
   omit:
     - '*/setup.py'
     - '*/transformer_engine/plugin/core/_build_config.py'
+
+# Exact paths or directory prefixes (ending in /) owned by this platform.
+# Shared and unknown code paths conservatively trigger all platforms.
+paths_watch:
+  - .github/configs/ppu.yml
+  - .github/scripts/setup_ppu.sh
+  - .github/workflows/all_tests_ppu.yml
+  - tests/plugin/backend/ppu/

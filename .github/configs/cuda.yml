@@ -92,3 +92,13 @@ test_matrix:
       - test_gpt_accuracy
       - test_basic_linear
       - test_layer_norm
+
+# Exact paths or directory prefixes (ending in /) owned by this platform.
+# Shared and unknown code paths conservatively trigger all platforms.
+paths_watch:
+  - .github/configs/cuda.yml
+  - .github/scripts/setup_cuda.sh
+  - .github/workflows/all_tests_cuda.yml
+  - tests/plugin/backend/cuda/
+  - transformer_engine/plugin/core/backends/vendor/cuda/
+  - .github/scripts/build_cuda_test_wheel.sh

@@ -3,6 +3,10 @@ name: Common Integration Tests
 on:
   workflow_call:
     inputs:
+      checkout_ref:
+        required: false
+        type: string
+        default: ''
       device:
         required: true
         type: string
@@ -68,6 +72,7 @@ jobs:
       - name: Checkout Source Code
         uses: actions/checkout@v4
         with:
+          ref: ${{ inputs.checkout_ref }}
           fetch-depth: 0
           submodules: ${{ inputs.checkout_submodules }}
           set-safe-directory: true
@@ -86,9 +91,11 @@ jobs:
         run: bash "$GITHUB_WORKSPACE/${{ inputs.setup_script }}"
 
       - name: Execute Tests
+        env:
+          TE_TEST_GROUP_JSON: ${{ toJson(matrix.test_group) }}
+          TE_TEST_MAX_RETRIES: '2'
         run: |
           set -euo pipefail
           export TE_LIB_PATH="${TE_LIB_PATH:-$(python3 -c 'import site; print(site.getsitepackages()[0])')/transformer_engine}"
-          test -f "${{ matrix.test_group.path }}"
-          bash "${{ matrix.test_group.path }}"
+          python3 tests/test_utils/run_ci_test_group.py
         timeout-minutes: 30
