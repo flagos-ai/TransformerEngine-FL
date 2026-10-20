@@ -112,3 +112,12 @@ def register_builtins(registry: OpRegistry) -> None:
     except Exception as e:
         # NPU may not be available, this is expected
         pass
+
+    # Register Biren (VENDOR) implementations
+    try:
+        from .backends.vendor.biren.register_ops import register_builtins as register_biren
+
+        register_biren(registry)
+    except Exception as e:
+        # Biren may not be available, this is expected
+        print(f"[WARNING] Failed to register Biren operators: {e}")

@@ -76,6 +76,14 @@ try:
 except Exception as e:
     pass
 
+# Apply Biren/SUPA (VENDOR) Patches, such as torch.cuda.device -> torch_supa.device
+try:
+    from .plugin.core.backends.vendor.biren.patches import apply_patch as _biren_apply_patch
+
+    _biren_apply_patch()
+except Exception as e:
+    pass
+
 # Apply NPU (VENDOR) Patches, such as torch.cuda.device -> torch_npu.npu.device
 try:
     from .plugin.core.backends.vendor.npu.patches import apply_patch as _npu_apply_patch
