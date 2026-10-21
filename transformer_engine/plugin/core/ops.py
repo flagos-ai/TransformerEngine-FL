@@ -709,6 +709,32 @@ class TEFLBackendBase(ABC):
     ) -> List[Any]:
         raise NotImplementedError
 
+    # MoE routing-map permutation and chunk sort (TE-FL plugin logical ops)
+    def moe_permute_with_routing_map(self, tokens, routing_map, probs=None,
+                                   num_out_tokens=None, drop_and_pad=False):
+        """Dropless expert-major permutation -> tokens, FP32 probs or None, mapping.
+
+        num_out_tokens is the exact routing count as a Python int. Initially
+        supports FP32/BF16 tokens and no capacity/quantization padding.
+        Implementations own autograd; mapping must stay with a compatible
+        unpermute implementation throughout forward and backward.
+        """
+        raise NotImplementedError
+
+    def moe_unpermute_with_routing_map(self, permuted_tokens, sorted_indices,
+                                     restore_shape, probs=None, routing_map=None,
+                                     drop_and_pad=False):
+        """Dropless unweighted combine; probabilities were applied by experts."""
+        raise NotImplementedError
+
+    def moe_sort_chunks_fwd(self, input, split_sizes, sorted_idxs, probs=None):
+        """Reorder expert chunks and return (output, probs, inverse_row_map)."""
+        raise NotImplementedError
+
+    def moe_sort_chunks_bwd(self, grad_output, grad_probs, inverse_row_map):
+        """Apply the inverse row map to chunk-sort gradients."""
+        raise NotImplementedError
+
     # Permutation functions
     def moe_permute_fwd(
         self,
