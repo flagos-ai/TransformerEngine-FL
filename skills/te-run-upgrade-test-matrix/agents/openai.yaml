@@ -1,0 +1,4 @@
+interface:
+  display_name: "TE Upgrade Test Matrix"
+  short_description: "Run and report upgrade test coverage"
+  default_prompt: "Use $te-run-upgrade-test-matrix to execute and report TransformerEngine-FL upgrade tests by capability."
