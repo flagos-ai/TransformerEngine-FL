@@ -170,6 +170,15 @@ def register_builtins(registry) -> None:
             vendor="NPU",
             priority=100,
         ),
+        # cublas streams will not use on Ascend NPU
+        OpImpl(
+            op_name="get_num_cublas_streams",
+            impl_id="vendor.npu",
+            kind=BackendImplKind.VENDOR,
+            fn=_bind_is_available(backend.get_num_cublas_streams, is_avail),
+            vendor="NPU",
+            priority=100,
+        ),
     ]
 
     registry.register_many(impls)
