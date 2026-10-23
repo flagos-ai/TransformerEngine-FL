@@ -53,15 +53,33 @@ coverage:
     - '*/setup.py'
     - '*/transformer_engine/plugin/core/_build_config.py'
 
+# Devices per node used by multi-device and exclusive test groups. This is the
+# single source for the device count; launchers read it from here if needed.
+nproc_per_node: 2
+
+# Each matrix key maps to a test group in .flagcicd/project.yaml (name, level,
+# resource class, required). Entry names must match catalog group names.
+# Optional per-entry keys read by the planner only:
+#   timeout_minutes: overrides the catalog timeout for this platform
+#   blocked: declared hardware reason; the group is reported, not executed
 # Platform-owned launchers live under tests/plugin/backend/<platform>/.
 # A pytest group may instead declare pytest_args, env, log_dir, and steps.
 unit_test_matrix:
   - name: pytorch_unittest
     runner: script
     path: tests/plugin/backend/example/run_unit_tests.sh
+    timeout_minutes: 90
 
 # Integration groups use the same common workflow. Put test-specific
 # environment defaults in the test script, not in the workflow.
 integration_test_matrix:
   - name: pytorch_mcore_integration
     path: tests/plugin/backend/example/run_integration_tests.sh
+
+# Optional L3 compatibility groups. Omit the key when the platform does not
+# provide the group; a "blocked" entry keeps it visible in plans and reports.
+compat_test_matrix:
+  - name: fa_versions
+    runner: script
+    path: tests/plugin/backend/example/run_fa_versions_tests.sh
+    blocked: example accelerator has no Flash Attention build

@@ -1,83 +1,237 @@
 schema_version: flagcicd.project/v1
 repository: TransformerEngine-FL
 
-# This manifest describes the repository-facing contract. The existing
-# platform files remain the source of truth for runners and test matrices.
-entry_workflow: .github/workflows/flagcicd-entry.yml
+# Repository-facing CI contract. Platform files under .github/configs remain
+# the source of truth for images, runners, setup scripts, and per-platform test
+# entries; this file owns stages, levels, resources, and the test-group catalog.
+# .github/scripts/ci/flagcicd_planner.py turns both into a flagcicd.plan/v1.
 platform_config_glob: .github/configs/*.yml
+plan_schema: flagcicd.plan/v1
 
+# Stage semantics. "affected" narrows platforms and groups from the PR diff;
+# "all" runs every platform; "requested" runs the platforms named by the caller.
+# fixed_level stages ignore requested levels and risk inference.
+stages:
+  pr:
+    entry_workflow: .github/workflows/ci.yml (pull_request)
+    selection: affected
+    default_level: L1
+    default_risk: R1
+  branch:
+    entry_workflow: .github/workflows/ci.yml (push, workflow_dispatch)
+    selection: all
+    default_level: L2
+    default_risk: R1
+  nightly:
+    entry_workflow: .github/workflows/daily.yml (schedule, workflow_dispatch)
+    selection: all
+    default_level: L3
+    default_risk: R3
+    fixed_level: true
+  manual:
+    # Requested runs keep the previous unit + integration default; callers
+    # may request any level, and changed_files (if given) can only raise it.
+    entry_workflow: .github/workflows/ci-requested.yml (/ci comment, workflow_dispatch)
+    selection: requested
+    default_level: L2
+    default_risk: R1
+  release:
+    entry_workflow: .github/workflows/release-acceptance.yml (workflow_dispatch)
+    selection: all
+    default_level: L4
+    default_risk: R4
+    fixed_level: true
+
+# Levels are cumulative: a plan at level N selects every catalog group whose
+# level is <= N. Group timeouts live in test_groups[*].resources.
 levels:
   L0:
-    support: supported
-    purpose: preflight-and-smoke
-    timeout_minutes: 15
-    workflows:
-      - .github/workflows/all_tests_common.yml (preflight job only)
+    purpose: checkout, config, image, device, wheel, dependencies, preflight
   L1:
-    support: supported
-    purpose: pull-request-unit
-    timeout_minutes: 60
-    workflows:
-      - .github/workflows/all_tests_common.yml (unit_tests job)
+    purpose: single-device unit, operators, dispatch, numerical smoke
+    note: >-
+      pytorch_unittest is not split yet; its platform launchers also run the
+      distributed and ONNX suites, so the group declares multi_device.
   L2:
-    support: supported
-    purpose: representative-integration
-    timeout_minutes: 360
-    workflows:
-      - .github/workflows/all_tests_common.yml (unit_tests + integration_tests)
+    purpose: L1 + integration, distributed, ONNX, MCore
   L3:
-    support: partial
-    purpose: full-regression-and-compatibility
-    timeout_minutes: 480
-    workflows:
-      - .github/workflows/all_tests_common.yml (unit + integration)
-      - .github/workflows/qa-l3-te-pytorch-fa-versions-test.yml (disabled, requires Hopper+ GPU)
-    test_scope:
-      - Unit tests (all platforms)
-      - Integration tests (all platforms)
-      - Flash Attention version compatibility (requires Hopper+ GPU, currently disabled)
-      - Benchmark regression checks (planned)
-    note: FA tests require Hopper+ GPUs and workflow trigger enablement
+    purpose: L2 + FA versions, benchmark, performance and coverage regression
+    note: >-
+      fa_versions is blocked until an sm90+ runner exists; pytorch_benchmark is
+      blocked until a performance baseline exists. Nightly coverage regression
+      is statistical (see golden_baseline.json) and advisory.
   L4:
-    support: planned
-    purpose: release-and-model-validation
-    timeout_minutes: 2880
-    workflows:
-      - .github/workflows/all_tests_common.yml (full)
-      - Cross-repo integration tests (requires coordination)
-    test_scope:
-      - All L3 tests
-      - End-to-end model training validation
-      - Cross-repository integration (requires manual coordination)
-      - Release artifact validation
-      - Backward compatibility checks
-    note: L4 requires cross-repo coordination and extended runtime (48+ hours)
+    purpose: L3 + cross-repo, model, release wheel, backward compatibility, golden baseline
+    note: >-
+      Release acceptance only (release-acceptance.yml). Every L4 group is
+      blocked with a reason, so a release plan cannot report ready until each
+      contract is implemented.
 
+# Scheduling contract. Groups with exclusive: true or devices > 1 run in the
+# serial lane (max-parallel 1, after the parallel lane) so they never share a
+# platform runner pool with another group of the same run. Exclusive classes
+# cannot be relaxed by a group. devices: nproc_per_node reads the top-level
+# platform value once in the planner.
+resource_classes:
+  shared_cpu:
+    devices: 0
+    exclusive: false
+  single_device:
+    devices: 1
+    exclusive: false
+  multi_device:
+    devices: nproc_per_node
+    exclusive: false
+  communication_exclusive:
+    devices: nproc_per_node
+    exclusive: true
+  model_exclusive:
+    devices: nproc_per_node
+    exclusive: true
+  hopper_only:
+    devices: nproc_per_node
+    exclusive: true
+  release_exclusive:
+    devices: nproc_per_node
+    exclusive: true
+
+# Catalog order is the ledger order used by plans and reports.
+# matrix: platform-config key holding executable entries for the group. An
+# entry's timeout_minutes overrides the catalog timeout for that platform.
+# evidence: how a finished group proves it ran. junit requires at least one
+# non-skipped JUnit test case under XML_LOG_DIR; exit_code accepts exit 0 from
+# launchers that do not emit JUnit.
+# paths_watch: exact paths, globs, or "/"-terminated prefixes; {platform}
+# expands to the platform name. watch_platform_paths adds that platform's
+# paths_watch and the matrix entry path. A changed non-documentation path that
+# no in-level group watches selects every in-level group of that platform.
+# blocked: catalog-level reason; the group is reported, never executed.
+test_groups:
+  - name: preflight
+    kind: preflight
+    level: L0
+    required: true
+    evidence: exit_code
+    resources: {class: shared_cpu, timeout_minutes: 90}
+    paths_watch: []
+  - name: pytorch_unittest
+    kind: unit
+    level: L1
+    matrix: unit_test_matrix
+    required: true
+    coverage: true
+    evidence: junit
+    resources: {class: multi_device, timeout_minutes: 90}
+    watch_platform_paths: true
+    paths_watch:
+      - transformer_engine/
+      - tests/pytorch/
+      - tests/plugin/backend/{platform}/
+      - qa/L0_pytorch_debug_unittest/
+      - qa/L0_pytorch_unittest/
+      - qa/L1_pytorch_distributed_unittest/
+      - qa/L1_pytorch_onnx_unittest/
+  - name: pytorch_mcore_integration
+    kind: integration
+    level: L2
+    matrix: integration_test_matrix
+    required: true
+    # The MCore launcher reports through its exit code and writes no JUnit.
+    evidence: exit_code
+    # qa/L1_pytorch_mcore_integration/test.sh launches --nproc_per_node=1.
+    resources: {class: single_device, timeout_minutes: 30}
+    watch_platform_paths: true
+    paths_watch:
+      - transformer_engine/
+      - tests/plugin/backend/{platform}/
+      - qa/L1_pytorch_mcore_integration/
+  - name: fa_versions
+    kind: compat
+    level: L3
+    matrix: compat_test_matrix
+    required: false
+    evidence: junit
+    resources: {class: hopper_only, timeout_minutes: 240}
+    watch_platform_paths: true
+    paths_watch:
+      - qa/L3_pytorch_FA_versions_test/
+      - transformer_engine/pytorch/attention/
+  - name: pytorch_benchmark
+    kind: benchmark
+    level: L3
+    required: false
+    resources: {class: model_exclusive, timeout_minutes: 240}
+    blocked: no performance baseline or benchmark launcher is defined for TransformerEngine-FL
+  - name: cross_repo_integration
+    kind: release
+    level: L4
+    required: true
+    resources: {class: release_exclusive, timeout_minutes: 720}
+    blocked: no pinned Megatron-LM-FL/FlagScale version contract or acceptance runner
+  - name: model_validation
+    kind: release
+    level: L4
+    required: true
+    resources: {class: release_exclusive, timeout_minutes: 2880}
+    blocked: no end-to-end model training job or accuracy golden is defined
+  - name: release_wheel_validation
+    kind: release
+    level: L4
+    required: true
+    resources: {class: release_exclusive, timeout_minutes: 240}
+    blocked: no release wheel build or clean-environment install check is defined
+  - name: backward_compatibility
+    kind: release
+    level: L4
+    required: true
+    resources: {class: release_exclusive, timeout_minutes: 240}
+    blocked: no supported previous-version matrix is defined
+  - name: golden_baseline_acceptance
+    kind: release
+    level: L4
+    required: true
+    resources: {class: release_exclusive, timeout_minutes: 240}
+    blocked: golden_baseline.json holds coverage thresholds only, not numerical goldens
+
+# Changed files raise the requested level and risk. Each file takes the highest
+# level/risk among the rules it matches; a file matching no rule takes
+# unknown_level/unknown_risk. The plan takes the maximum over all files.
+# Documentation (docs/, *.md, *.rst) neither escalates nor selects platforms.
 risk_rules:
-  version: v1
-  default_level: L1
-  unknown_change: escalate
+  version: v2
+  unknown_level: L2
+  unknown_risk: R2
   rules:
     - id: ci-and-build
       paths:
         - .github/**
+        - .flagcicd/**
         - CMakeLists.txt
         - cmake/**
         - setup.py
         - pyproject.toml
       minimum_level: L2
+      risk: R2
     - id: native-extension
       paths:
         - transformer_engine/**/csrc/**
         - transformer_engine/**/cpp/**
         - transformer_engine/**/cuda/**
       minimum_level: L3
+      risk: R3
+    - id: mcore-integration
+      paths:
+        - qa/L1_pytorch_mcore_integration/**
+        - tests/plugin/backend/*/run_integration_tests.sh
+      minimum_level: L2
+      risk: R2
     - id: numerical-and-performance
       paths:
         - tests/pytorch/**
         - tests/plugin/**
         - qa/**
       minimum_level: L1
+      risk: R1
 
 coverage:
   language: python
@@ -89,6 +243,9 @@ coverage:
     - branch
   preserve_raw_fragments: true
   report_schema: flagcicd.report/v1
+  # PR: advisory absolute threshold against main. Nightly: advisory 3-sigma
+  # window over earlier nightly reports per platform/device/level.
+  regression_contract: .flagcicd/golden_baseline.json
 
 images:
   layers:
@@ -107,7 +264,10 @@ images:
     - instrumentation
 
 report:
-  artifact: flagcicd-report.json
+  group_schema: flagcicd.group-report/v1
+  platform_schema: flagcicd.platform-report/v1
+  gate_schema: flagcicd.gate/v1
+  coverage_schema: flagcicd.report/v1
   statuses:
     - passed
     - test_failed
@@ -117,3 +277,76 @@ report:
     - skipped
     - cancelled
     - report_error
+
+# FastCI optimisation switches (P0 placeholder — all capabilities default off).
+# Flip selection_mode to "hybrid" only after runtime evidence is available.
+# fallback_on_error: "static" means any evidence/selection failure reverts to
+# the existing path-match behaviour; "fail" blocks the pipeline instead.
+# This block is the single rollback point: set enabled: false to restore the
+# previous static-only behaviour completely.
+fastci:
+  enabled: false
+  selection_mode: static        # static | hybrid
+  evidence_mode: shadow         # off | shadow | enforced
+  pruning_enabled: false        # P3 equivalence-context pruning
+  priority_enabled: false       # P4 risk-wave ordering
+  workload_profile: nightly_spec # P5 workload config key
+  fallback_on_error: static     # static | fail
+
+# Context dimensions for equivalence pruning (P3). Two test executions are
+# treated as equivalent — and the second can be skipped — only when every
+# listed dimension matches between the cached result and the current run.
+# Do NOT include dimensions that legitimately vary run-to-run (timestamps,
+# run IDs, branch names). The planner validates against this list.
+context_dimensions:
+  - platform
+  - device
+  - image
+  - torch
+  - cuda
+  - vendor_sdk
+  - precision
+  - world_size
+  - model_family
+  - sequence_length
+  - test_kind
+  - communication_mode
+
+# Workload profiles (P5). Only low-risk knobs are listed initially.
+# High-risk parameters (model_size, world_size, precision, batch) require an
+# explicit "risk: high" declaration and must not be reduced without a nightly
+# spec comparison showing no coverage loss.
+workload_profiles:
+  nightly_spec:
+    description: full nightly specification — reference values, do not reduce
+    overrides: {}
+  pr_reduced:
+    description: reduced workload for PR fast-path — low-risk knobs only
+    risk: low
+    overrides:
+      log_interval: 10
+      profile_steps: 0
+      checkpoint_activations: false
+
+# Scheduling contract extensions (P4 wave structure). The planner emits a
+# wave_assignment for each group; the workflow creates needs dependencies that
+# enforce the ordering below. Serial groups always land in serial-wave.
+scheduling:
+  waves:
+    priority-wave-0:
+      description: high-risk, short-running, required smoke tests
+      max_parallel: 8
+    priority-wave-1:
+      description: normal-risk parallel groups
+      max_parallel: 32
+    serial-wave:
+      description: multi-device, communication-exclusive, long-running
+      max_parallel: 1
+
+# Validation scope for automated gate checks.
+validation_scope:
+  require_plan_hash: true
+  require_artifact_identity: true
+  require_group_report_for_required: true
+  allow_missing_optional: true
+  coverage_gate_advisory: true  # coverage failure is advisory, not blocking

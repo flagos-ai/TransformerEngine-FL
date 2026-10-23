@@ -1,0 +1,106 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Daily comprehensive testing at L3 across all platforms (FlagCICD stage
+# "nightly").  Runs every day at 02:17 Asia/Shanghai (18:17 UTC).
+
+name: Daily
+
+on:
+  schedule:
+    - cron: '17 18 * * *'  # 02:17 Asia/Shanghai
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: daily-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pre-commit
+        run: pip install --quiet pre-commit==4.2.0
+      - name: pre-commit (changed files only)
+        env:
+          BASE_REF: main
+        shell: bash
+        run: |
+          git fetch --no-tags origin "$BASE_REF"
+          # Scheduled runs check out main, so the diff is empty; a dispatch
+          # from another branch lints that branch's changes.
+          pre-commit run --show-diff-on-failure \
+            --from-ref "$(git merge-base "origin/$BASE_REF" HEAD)" --to-ref HEAD
+
+  plan:
+    name: Generate daily plan
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      plan: ${{ steps.plan.outputs.plan }}
+      plan_hash: ${{ steps.plan.outputs.plan_hash }}
+      platforms: ${{ steps.plan.outputs.platforms }}
+      source_sha: ${{ steps.plan.outputs.source_sha }}
+      test_level: ${{ steps.plan.outputs.test_level }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/flagcicd-plan
+        id: plan
+        with:
+          stage: nightly
+
+  platforms:
+    name: Daily / ${{ matrix.platform }}
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ${{ fromJson(needs.plan.outputs.platforms) }}
+    uses: ./.github/workflows/all_tests_common.yml
+    secrets:
+      FLAGCICD_API_TOKEN: ${{ secrets.FLAGCICD_API_TOKEN }}
+    with:
+      platform: ${{ matrix.platform }}
+      checkout_ref: ${{ needs.plan.outputs.source_sha }}
+      plan: ${{ needs.plan.outputs.plan }}
+
+  complete:
+    name: Daily Complete
+    needs: [lint, plan, platforms]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/flagcicd-gate
+        with:
+          plan: ${{ needs.plan.outputs.plan }}
+          needs-json: ${{ toJson(needs) }}
+          plan-job: plan
+          pipeline-job: platforms

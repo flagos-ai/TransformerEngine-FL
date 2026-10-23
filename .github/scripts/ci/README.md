@@ -1,122 +1,87 @@
-# Platform selection and CI gate
+# TransformerEngine-FL CI
 
-For pull requests to `main` and `devops`, `ci.yml` runs lint, computes the
-platform matrix, runs the selected platform pipelines, and reports `CI Complete`.
+The active entries are `ci.yml` (PR, push to main, manual dispatch),
+`daily.yml` (stage `nightly`, 02:17 Asia/Shanghai, or manual dispatch),
+`ci-requested.yml` (stage `manual`) and `release-acceptance.yml` (stage
+`release`). Each generates a plan and uses the shared platform and group
+workflows. `CI Complete`, `Daily Complete`, `CI Requested Complete` and
+`Release Acceptance Complete` gate the results.
 
-Each platform config defines `paths_watch` using exact repository paths or
-directory prefixes ending in `/`. Paths are case-sensitive; glob patterns are
-not supported. Vendor aliases include `npu` for Ascend and `kunlunxin` for Kunlun.
+## Selection and levels
 
-- A platform-owned change selects that platform. Multiple platforms are combined.
-- Every non-documentation path must match a rule. Shared or unknown paths run all
-  platforms, including in PRs that also contain a platform-owned change.
-- Changes under `docs/`, or to `.md` and `.rst` files, require no hardware tests.
-  Lint and `CI Complete` still run for documentation-only PRs.
-  This is an explicit routing policy, not a guarantee that these files can never
-  affect runtime behavior. If tests or builds start consuming files in this
-  category as inputs, update `_is_documentation` and its regression tests before
-  relying on hardware-test skipping for those paths.
-- Missing diff information or missing watch rules run all platforms. Invalid
-  platform configurations fail matrix generation.
-- Renames are treated as deletion plus addition to include both affected paths.
-- Pushes that trigger CI, schedules, and manual runs select all platforms.
+PR routing uses platform `paths_watch`. Vendor paths select their platforms;
+shared/unknown paths and unavailable diffs select all platforms. Documentation
+only changes skip hardware. `platform:<name>` labels override routing, so a
+narrowed shared-code run requires reviewer judgment. `level:L0` through
+`level:L4` labels can escalate the inferred level. Risk rules also raise it.
 
-### Optional routing and retries
+PR defaults to L1; branch/CI dispatch defaults to L2; Daily is fixed at L3.
+Each changed file takes the highest level of the risk rules it matches, or
+`unknown_level` when it matches none; the plan takes the maximum over files.
+Levels are cumulative, subject to group path filters and platform support.
+Daily has no diff filters and runs all currently executable configured groups.
+Groups with `watch_platform_paths` also watch the platform `paths_watch` and
+their matrix entry `path`, so a launcher-only PR runs the group it launches.
+Plans record per-platform `reasons`, `common_path_triggers` and an `excluded`
+ledger of in-level groups dropped by path filters or missing matrix entries.
+L1 unit launchers also include distributed/ONNX work and declare multi-device
+resources. Integration is L2. FA compatibility and benchmarks are L3 but are
+currently blocked by runner/baseline requirements. L4 acceptance groups remain
+blocked by explicit contract gaps. See `.flagcicd/project.yaml`.
 
-- `platform:<config-name>` PR labels override path routing; multiple labels take
-  their union, and `platform:all` selects all platforms. Unknown platform labels
-  fail generation. Adding/removing labels reruns CI; removing all restores path
-  routing. Non-PR runs are unaffected. Narrow shared-code changes only after review.
-- Unit/integration groups retry up to twice, five seconds apart, within the same
-  job timeout. Each attempt is logged; exhaustion fails the job. Signal exits are
-  not retried. A group can set `max_retries: 0`, `1`, or `2`; outside CI the default
-  is zero. Setup, builds and lint are not retried.
-- Writers/maintainers/admins can comment `/ci run ascend`, `/ci run cuda,ascend`,
-  `/ci run all`, or `/test musa` on an open PR. `ci-requested.yml` checks live
-  permissions and passes the current head SHA through all configuration/build/
-  test/coverage checkouts, including fork PRs. Authorization uses trusted base code
-  and a read-only token; requested PR code executes on selected self-hosted hardware.
-  Invalid commands/platforms, issue/edited comments, closed PRs and unauthorized
-  users cannot start tests. `Requested CI Complete` is supplemental to required
-  PR CI. Comment triggering requires this workflow on the default branch and uses
-  the GitHub CLI bundled with ubuntu-latest; existing manual workflows are unchanged.
+Requested runs: a PR comment `/ci run <platforms|all>` or `/test <platforms|all>`
+from a user with write access runs the PR head SHA (GitHub only runs
+`issue_comment` workflows from the default branch). `workflow_dispatch` on
+`ci-requested.yml` takes platforms, a test level and a checkout ref.
+`release-acceptance.yml` runs the fixed L4 release plan for one ref; required
+blocked groups fail it. Weekly is not configured.
 
-Keep shared dependencies out of individual platform watch lists: shared code
-must continue to trigger all platforms. A new platform without watch rules
-temporarily disables filtering rather than risking a missed test.
+## Execution and evidence
 
-`CI Complete` requires successful lint and matrix generation. A nonempty matrix
-requires successful platform pipelines. An empty matrix requires the platform
-pipeline to be skipped. Failure, cancellation, or an unexpected skip fails the
-gate. Inside each platform, tests may be skipped only when their workflow input
-explicitly disables them; artifact builds may be skipped only when disabled in
-the platform config.
+The plan pins source SHA, platform config hashes, group commands, resources,
+and coverage settings. Each platform slices it into parallel and serial lanes.
+Exclusive or multi-device groups run serially after parallel work finishes,
+whatever its result; the platform gate judges both lanes. This only
+orders jobs within a platform invocation; runner deployment must provide
+physical device isolation across PR/Nightly runs.
 
-After verifying a real PR run, configure the protected branch to require the
-`CI Complete` status check instead of individual platform test checks. This is a
-repository setting and is not changed by these files. Existing independent lint
-and other workflow requirements should be reviewed separately.
+Optional wheel artifacts carry identity metadata checked before setup. Group
+reports contain plan/source identity, status, execution and duration. Required
+groups are determined from the plan and must pass with execution evidence.
+Missing, duplicate, mismatched or failed required reports fail the platform gate.
+Each group declares `evidence`: `junit` groups need non-empty JUnit results,
+`exit_code` groups (preflight, script integration) pass on exit code 0.
+Missing or corrupt JUnit cannot be interpreted as passed. Preflight checks
+repository structure/Python syntax; it does not certify device availability.
+The global gate requires successful planning/pipeline results and complete
+platform reports. Required blocked groups fail acceptance.
 
-Run the hardware-independent regression checks with:
+## Coverage
+
+Coverage measures Python source, not C++ or device kernels. Group jobs collect
+the platform `coverage.sources` with `--cov-append`, upload raw hidden fragments,
+and `all_tests_common.yml` combines them, applying `coverage.include`/`omit`.
+Platforms with `coverage.required: true` fail if collection/aggregation fails
+or the coverage job is skipped. This requirement is separate from regression
+thresholds, which are advisory.
+
+PR coverage compares against a main-branch artifact of the same platform/device.
+Nightly uses a 14-run history with at least 8 samples and a lower bound of
+mean minus three standard deviations. Threshold configuration lives in
+`.flagcicd/golden_baseline.json`. Baselines are fetched with the Actions REST
+API from Python, not `gh`; live baseline collection must be validated on
+runners. FlagOps uploads are advisory and need
+`FLAGCICD_API_TOKEN`; fork runs usually have no secret.
+
+## Validation
 
 ```sh
-python -m pip install PyYAML==6.0.3
 python -m unittest discover -s .github/scripts/ci -p 'test_*.py'
+python .github/scripts/ci/flagcicd_planner.py --stage nightly --output /tmp/plan.json
 ```
 
-Inspect routing without running hardware tests:
-
-```sh
-python .github/scripts/ci/generate_matrix.py \
-  --event-name pull_request \
-  --changed-files tests/plugin/backend/ascend/run_unit_tests.sh
-```
-
-## FlagCICD coverage reports
-
-Coverage-enabled platforms collect Python coverage per unit-test group, combine
-raw data for groups named `pytorch_*`, and upload
-`coverage-<platform>-<device>-pytorch-unittest.json` as a GitHub artifact and
-to FlagCICD via `flagos-ai/FlagOps/actions/post-pytest-report@v2`. This does
-not measure C++ or device-kernel source coverage.
-
-The upload step runs inside the reusable `unit_tests_common.yml`, so the org
-secret `FLAGCICD_API_TOKEN` is forwarded explicitly at every `uses:` level
-(`ci.yml`, `_platform_pipeline.yml`, `ci-requested.yml`, `all_tests_*.yml`,
-`all_tests_common.yml`). Uploads are non-blocking (`continue-on-error`,
-`fail_on_error: 'false'`). Pull requests from forks receive no secrets, so their
-upload step fails with an empty `api_token` and is ignored; reports are sent
-from runs in this repository (push, schedule, dispatch, `/ci run`).
-
-## Validation on GitHub Actions
-
-Local checks validate routing and execute the gate commands, including failure,
-cancellation, and skip combinations. Running these checks on an accelerator
-machine still does not validate how GitHub propagates results through nested
-reusable workflows and matrices. Verify the following scenarios on GitHub before
-changing required checks.
-
-Use a test base branch that already contains this CI implementation, such as
-`devops` (which is included in the PR trigger). Create separate scenario branches
-and PRs against that base. The PR introducing the CI files itself selects the
-full matrix, so it cannot demonstrate documentation-only or vendor-only routing.
-
-| Scenario | Changes or action | Expected result |
-| --- | --- | --- |
-| Documentation only | Change only `README.rst` or a `.md` file | Lint and matrix generation succeed; matrix is `[]`; platform pipeline is skipped; `CI Complete` succeeds. |
-| Vendor only | Change a watched vendor test script, with lint passing | Only the corresponding platform runs; its summary and `CI Complete` succeed. |
-| Mixed vendor and shared code | Change a vendor file and a shared runtime file | All configured platforms are selected. |
-| Test failure | Temporarily add `exit 1` to a watched vendor test script in the scenario branch | The test, its enabled test summary, platform workflow, and `CI Complete` fail. |
-| Lint failure | Introduce a change rejected by an existing pre-commit hook | Lint fails; matrix and platform jobs are skipped; `CI Complete` runs and fails. |
-| Cancellation | Cancel a running selected test job or the workflow run | The cancelled work must not produce a successful `CI Complete`; the gate fails if it runs, or remains cancelled if the whole run is cancelled. |
-| Label routing | Add/remove `platform:ascend`, combine vendor labels, then use `platform:all` | Each label change reruns PR CI with the documented override; removing the labels restores path routing. |
-| Retry recovery/exhaustion | Use a disposable test group that fails once then passes; separately make it always fail | Attempt counts are visible; recovery succeeds, while exhaustion fails summaries and the final gate. |
-| Authorized comment | A writer comments `/ci run ascend` on an open PR | Only Ascend runs; every checkout uses the captured PR SHA; `Requested CI Complete` reports the outcome. |
-| Rejected comment | Use a read-only account, an invalid platform, an issue comment, or a closed PR | No hardware tests start. |
-| Pinned/fork PR request | Update the PR after resolution; separately request a fork PR | Every checkout still tests the captured SHA using base-repository workflows. |
-
-For each run, inspect the platform-selection summary, matrix jobs, nested test
-summaries, and the final check on the PR's current commit. Keep intentional
-failures in disposable scenario branches; do not merge them into the test base.
-Only switch branch protection to `CI Complete` after these scenarios have been
-observed. No live Actions results are claimed by the local regression suite.
+Local validation does not prove hardware compatibility or GitHub nested matrix
+behavior. Validate docs-only/vendor/shared routing, deliberate test/setup
+failure, absent reports, coverage failure and cancellation on Actions before
+changing required checks. Configure `CI Complete` in branch protection manually.
+Schedules require the workflow on the default branch and may be delayed.

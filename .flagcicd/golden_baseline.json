@@ -40,9 +40,11 @@
     },
     "statistical": {
       "method": "sigma",
-      "enabled": false,
+      "enabled": true,
+      "window_runs": 14,
       "minimum_history": 8,
-      "description": "Statistical mode requires FlagOps API - to be enabled in future PR"
+      "source_workflow": "daily.yml",
+      "description": "Daily (nightly stage) uses 3-sigma against a 14-run sliding window (advisory)"
     }
   },
   "storage": {

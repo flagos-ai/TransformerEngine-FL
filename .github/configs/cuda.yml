@@ -31,7 +31,6 @@ container_options: >-
 
 # Platform-specific environment setup script
 setup_script: .github/scripts/setup_cuda.sh
-unit_test_timeout_minutes: 240
 
 # Build the PR wheel once without exposing a GPU, then reuse it in every test
 # matrix job. The build still runs in the CUDA CI image on the self-hosted
@@ -67,14 +66,27 @@ coverage:
     - '*/setup.py'
     - '*/transformer_engine/plugin/core/_build_config.py'
 
+# Devices per node for multi-device groups; read once by the CI planner.
+nproc_per_node: 4
+
 unit_test_matrix:
   - name: pytorch_unittest
     runner: script
     path: tests/plugin/backend/cuda/run_unit_tests.sh
+    timeout_minutes: 240
 
 integration_test_matrix:
   - name: pytorch_mcore_integration
     path: tests/plugin/backend/cuda/run_integration_tests.sh
+
+# L3 compatibility groups. "blocked" is a declared hardware reason: the planner
+# reports the group as blocked instead of running or silently skipping it.
+# Remove "blocked" once a Hopper (sm90+) runner is registered.
+compat_test_matrix:
+  - name: fa_versions
+    runner: script
+    path: tests/plugin/backend/cuda/run_fa_versions_tests.sh
+    blocked: requires sm90+ (Hopper or newer); online CUDA runners are A100 (sm80)
 
 # Test matrix configuration
 test_matrix:
@@ -98,7 +110,6 @@ test_matrix:
 paths_watch:
   - .github/configs/cuda.yml
   - .github/scripts/setup_cuda.sh
-  - .github/workflows/all_tests_cuda.yml
   - tests/plugin/backend/cuda/
   - transformer_engine/plugin/core/backends/vendor/cuda/
   - .github/scripts/build_cuda_test_wheel.sh

@@ -1,24 +1,69 @@
-name: Requested CI
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Requested CI runs (FlagCICD stage "manual") on selected platforms.
+#
+#   - A PR comment "/ci run <platforms|all>" or "/test <platforms|all>" from a
+#     user with write access runs the PR head SHA.  GitHub only runs
+#     issue_comment workflows from the default branch.
+#   - workflow_dispatch runs one or more platforms at a chosen level and ref.
+#
+# Pipeline: resolve -> plan -> platform-pipeline (matrix) -> complete
+
+name: CI Requested
 
 on:
   issue_comment:
     types: [created]
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: 'Comma/space-separated platforms, or "all"'
+        required: true
+        default: cuda
+        type: string
+      test_level:
+        description: 'Test level; auto uses the manual stage default (L2)'
+        required: false
+        default: auto
+        type: choice
+        options: [auto, L0, L1, L2, L3, L4]
+      checkout_ref:
+        description: 'Branch, tag or SHA to test (default: the dispatched ref)'
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
+  actions: read
   pull-requests: read
 
 jobs:
   resolve:
+    name: Resolve request
     if: >-
-      github.event.issue.pull_request &&
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.issue.pull_request &&
        (startsWith(github.event.comment.body, '/ci run ') ||
-        startsWith(github.event.comment.body, '/test '))
+        startsWith(github.event.comment.body, '/test ')))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
       platforms: ${{ steps.request.outputs.platforms }}
       checkout_ref: ${{ steps.request.outputs.checkout_ref }}
+      test_level: ${{ steps.request.outputs.test_level }}
     steps:
       # Execute only the event's base-repository controller, never PR code here.
       - uses: actions/checkout@v4
@@ -30,29 +75,58 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: python3 .github/scripts/ci/ci_requests.py
 
-  platform-pipeline:
+  plan:
+    name: Generate execution plan
     needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      plan: ${{ steps.plan.outputs.plan }}
+      plan_hash: ${{ steps.plan.outputs.plan_hash }}
+      platforms: ${{ steps.plan.outputs.platforms }}
+      source_sha: ${{ steps.plan.outputs.source_sha }}
+      test_level: ${{ steps.plan.outputs.test_level }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.resolve.outputs.checkout_ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/flagcicd-plan
+        id: plan
+        with:
+          stage: manual
+          platforms: ${{ needs.resolve.outputs.platforms }}
+          requested-level: ${{ needs.resolve.outputs.test_level }}
+
+  platform-pipeline:
+    name: Platform pipeline (${{ matrix.platform }})
+    needs: plan
     strategy:
       fail-fast: false
       matrix:
-        platform: ${{ fromJson(needs.resolve.outputs.platforms) }}
-    uses: ./.github/workflows/all_tests_common.yml
+        platform: ${{ fromJson(needs.plan.outputs.platforms) }}
+    uses: ./.github/workflows/_platform_pipeline.yml
     secrets:
       FLAGCICD_API_TOKEN: ${{ secrets.FLAGCICD_API_TOKEN }}
     with:
       platform: ${{ matrix.platform }}
-      checkout_ref: ${{ needs.resolve.outputs.checkout_ref }}
+      checkout_ref: ${{ needs.plan.outputs.source_sha }}
+      plan: ${{ needs.plan.outputs.plan }}
 
   complete:
-    name: Requested CI Complete
-    needs: [resolve, platform-pipeline]
-    if: always() && needs.resolve.result != 'skipped'
+    name: CI Requested Complete
+    needs: [resolve, plan, platform-pipeline]
+    if: ${{ !cancelled() && needs.resolve.result != 'skipped' }}
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
-      - name: Verify requested tests
-        env:
-          RESOLVE_RESULT: ${{ needs.resolve.result }}
-          PIPELINE_RESULT: ${{ needs.platform-pipeline.result }}
-        run: |
-          test "$RESOLVE_RESULT" = success
-          test "$PIPELINE_RESULT" = success
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/flagcicd-gate
+        with:
+          plan: ${{ needs.plan.outputs.plan }}
+          needs-json: ${{ toJson(needs) }}
+          plan-job: plan
+          pipeline-job: platform-pipeline

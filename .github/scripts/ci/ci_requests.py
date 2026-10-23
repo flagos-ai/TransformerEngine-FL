@@ -1,4 +1,4 @@
-"""Resolve authorized PR comments to platforms and a fixed PR SHA."""
+"""Resolve authorized CI requests to platforms, a fixed ref and a test level."""
 
 import json
 import os
@@ -6,6 +6,18 @@ from pathlib import Path
 import re
 import subprocess
 from urllib.parse import quote
+
+PLATFORM_LIST = r"[a-z0-9_-]+(?:[ ,]+[a-z0-9_-]+)*"
+TEST_LEVELS = frozenset(("auto", "L0", "L1", "L2", "L3", "L4"))
+
+
+def select_platforms(requested, available):
+    if not re.fullmatch(PLATFORM_LIST, requested):
+        raise ValueError("Expected comma/space-separated platforms or 'all'")
+    selected = set(re.split(r"[ ,]+", requested))
+    if not available or selected - available - {"all"}:
+        raise ValueError("Unknown platform or no configured platforms")
+    return sorted(available if "all" in selected else selected)
 
 
 def resolve(event, api, available):
@@ -19,16 +31,26 @@ def resolve(event, api, available):
     permission = api(f"collaborators/{quote(login, safe='')}/permission")["permission"]
     if permission not in {"write", "maintain", "admin"}:
         raise PermissionError("Requesting CI requires repository write permission")
-    if number <= 0 or not re.fullmatch(r"[a-z0-9_-]+(?:[ ,]+[a-z0-9_-]+)*", requested):
-        raise ValueError("Expected a positive PR number and comma/space-separated platforms")
-    selected = set(re.split(r"[ ,]+", requested))
-    if not available or selected - available - {"all"}:
-        raise ValueError("Unknown platform or no configured platforms")
+    if number <= 0:
+        raise ValueError("Expected a positive PR number")
+    platforms = select_platforms(requested, available)
     pr = api(f"pulls/{number}")
     sha = pr["head"]["sha"]
     if pr["state"] != "open" or not re.fullmatch(r"[0-9a-f]{40}", sha):
         raise ValueError("Expected an open PR with a valid head SHA")
-    return sorted(available if "all" in selected else selected), sha
+    return platforms, sha
+
+
+def resolve_dispatch(inputs, available, default_ref):
+    """Resolve workflow_dispatch inputs; dispatching already requires write access."""
+    platforms = select_platforms(str(inputs.get("platforms", "")).strip(), available)
+    level = inputs.get("test_level") or "auto"
+    if level not in TEST_LEVELS:
+        raise ValueError(f"Unknown test level: {level}")
+    ref = str(inputs.get("checkout_ref", "")).strip() or default_ref
+    if not re.fullmatch(r"\S+", ref):
+        raise ValueError("Expected a checkout ref without whitespace")
+    return platforms, ref, level
 
 
 def main():
@@ -44,11 +66,15 @@ def main():
         for p in Path(".github/configs").glob("*.yml")
         if p.stem not in {"template", "image_sources", "platforms"}
     }
-    platforms, sha = resolve(
-        json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text()), api, available
-    )
+    event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
+    if os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch":
+        platforms, ref, level = resolve_dispatch(
+            event.get("inputs") or {}, available, os.environ["GITHUB_SHA"]
+        )
+    else:
+        (platforms, ref), level = resolve(event, api, available), "auto"
     with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-        output.write(f"platforms={json.dumps(platforms)}\ncheckout_ref={sha}\n")
+        output.write(f"platforms={json.dumps(platforms)}\ncheckout_ref={ref}\ntest_level={level}\n")
 
 
 if __name__ == "__main__":

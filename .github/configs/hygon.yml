@@ -39,6 +39,9 @@ coverage:
     - '*/setup.py'
     - '*/transformer_engine/plugin/core/_build_config.py'
 
+# Devices per node for multi-device groups; read once by the CI planner.
+nproc_per_node: 8
+
 unit_test_matrix:
   - name: pytorch_unittest
     runner: script
@@ -56,6 +59,5 @@ device_types:
 paths_watch:
   - .github/configs/hygon.yml
   - .github/scripts/setup_hygon.sh
-  - .github/workflows/all_tests_hygon.yml
   - tests/plugin/backend/hygon/
   - transformer_engine/plugin/core/backends/vendor/hygon/

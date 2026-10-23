@@ -50,6 +50,9 @@ coverage:
     - '*/setup.py'
     - '*/transformer_engine/plugin/core/_build_config.py'
 
+# Devices per node for multi-device groups; read once by the CI planner.
+nproc_per_node: 4
+
 unit_test_matrix:
   - name: pytorch_unittest
     runner: script
@@ -68,7 +71,6 @@ device_types:
 paths_watch:
   - .github/configs/ascend.yml
   - .github/scripts/setup_ascend.sh
-  - .github/workflows/all_tests_ascend.yml
   - tests/plugin/backend/ascend/
   - transformer_engine/plugin/core/backends/vendor/npu/
   - tests/plugin/backend/npu/

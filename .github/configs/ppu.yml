@@ -27,11 +27,11 @@ device_types:
   - 810e
 nproc_per_node: 2
 setup_script: .github/scripts/setup_ppu.sh
-unit_test_timeout_minutes: 240
 unit_test_matrix:
   - name: pytorch_unittest
     runner: script
     path: tests/plugin/backend/ppu/run_unit_tests.sh
+    timeout_minutes: 240
 integration_test_matrix:
   - name: pytorch_mcore_integration
     path: tests/plugin/backend/ppu/run_integration_tests.sh
@@ -54,5 +54,4 @@ coverage:
 paths_watch:
   - .github/configs/ppu.yml
   - .github/scripts/setup_ppu.sh
-  - .github/workflows/all_tests_ppu.yml
   - tests/plugin/backend/ppu/

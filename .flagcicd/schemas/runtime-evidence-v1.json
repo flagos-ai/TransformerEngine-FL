@@ -1,0 +1,92 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "flagcicd.runtime-evidence/v1",
+  "title": "FlagCICD Runtime Evidence",
+  "description": "Sampling-based runtime call evidence binding a test execution to the Python symbols it exercised.",
+  "type": "object",
+  "required": [
+    "schema_version", "repository", "source_sha", "base_sha",
+    "plan_hash", "platform", "device", "group",
+    "image_digest", "context", "frames", "edges",
+    "sampling_rate_hz", "complete", "status"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "flagcicd.runtime-evidence/v1"
+    },
+    "repository": {"type": "string"},
+    "source_sha":  {"type": "string", "minLength": 40, "maxLength": 40},
+    "base_sha":    {"type": ["string", "null"]},
+    "plan_hash":   {"type": "string", "minLength": 64, "maxLength": 64},
+    "platform":    {"type": "string"},
+    "device":      {"type": "string"},
+    "group":       {"type": "string"},
+    "image_digest": {
+      "type": "string",
+      "description": "sha256:... digest of the CI image; evidence is invalid if the digest changes."
+    },
+    "context": {
+      "type": "object",
+      "description": "Execution context dimensions that determine evidence equivalence.",
+      "properties": {
+        "torch":         {"type": ["string", "null"]},
+        "cuda":          {"type": ["string", "null"]},
+        "vendor_sdk":    {"type": ["string", "null"]},
+        "precision":     {"type": ["string", "null"]},
+        "world_size":    {"type": ["integer", "null"]},
+        "model_family":  {"type": ["string", "null"]},
+        "sequence_length": {"type": ["integer", "null"]}
+      },
+      "additionalProperties": true
+    },
+    "frames": {
+      "type": "array",
+      "description": "Sampled Python frames: {file, lineno, qualname}.",
+      "items": {
+        "type": "object",
+        "required": ["file"],
+        "properties": {
+          "file":    {"type": "string"},
+          "lineno":  {"type": "integer"},
+          "qualname":{"type": ["string", "null"]}
+        }
+      }
+    },
+    "edges": {
+      "type": "array",
+      "description": "Caller → callee pairs derived from the sampled frames.",
+      "items": {
+        "type": "object",
+        "required": ["caller", "callee"],
+        "properties": {
+          "caller": {"type": "string"},
+          "callee": {"type": "string"}
+        }
+      }
+    },
+    "sampling_rate_hz": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "description": "Approximate samples per second during test execution."
+    },
+    "complete": {
+      "type": "boolean",
+      "description": "False when the sampler was terminated before the test finished."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["passed", "failed", "cancelled", "unknown"]
+    },
+    "evidence_digest": {
+      "type": ["string", "null"],
+      "description": "SHA-256 of the canonical evidence payload (frames + context), set by the writer."
+    },
+    "created_at": {"type": "string", "format": "date-time"},
+    "sampler_overhead_ms": {
+      "type": ["number", "null"],
+      "description": "Wall-clock overhead added by the sampler."
+    }
+  },
+  "additionalProperties": false
+}

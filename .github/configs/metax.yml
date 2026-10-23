@@ -47,7 +47,7 @@ setup_script: .github/scripts/setup_metax.sh
 
 # Device types to run tests on
 device_types:
-  - c500
+  - c550
 
 coverage:
   enabled: true
@@ -63,6 +63,9 @@ coverage:
     - '*/setup.py'
     - '*/transformer_engine/plugin/core/_build_config.py'
 
+# Devices per node for multi-device groups; read once by the CI planner.
+nproc_per_node: 4
+
 unit_test_matrix:
   - name: pytorch_unittest
     runner: script
@@ -76,7 +79,7 @@ integration_test_matrix:
 test_matrix:
   unit:
     devices:
-      - c500
+      - c550
     # Ignored test files for unit tests
     # These files will be skipped when running pytest
     ignored_tests:
@@ -89,6 +92,5 @@ test_matrix:
 paths_watch:
   - .github/configs/metax.yml
   - .github/scripts/setup_metax.sh
-  - .github/workflows/all_tests_metax.yml
   - tests/plugin/backend/metax/
   - transformer_engine/plugin/core/backends/vendor/metax/

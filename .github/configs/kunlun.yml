@@ -52,6 +52,9 @@ coverage:
     - '*/setup.py'
     - '*/transformer_engine/plugin/core/_build_config.py'
 
+# Devices per node for multi-device groups; read once by the CI planner.
+nproc_per_node: 8
+
 unit_test_matrix:
   - name: pytorch_unittest
     runner: script
@@ -66,6 +69,5 @@ integration_test_matrix:
 paths_watch:
   - .github/configs/kunlun.yml
   - .github/scripts/setup_kunlun.sh
-  - .github/workflows/all_tests_kunlun.yml
   - tests/plugin/backend/kunlun/
   - transformer_engine/plugin/core/backends/vendor/kunlunxin/

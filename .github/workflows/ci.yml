@@ -14,18 +14,19 @@
 
 # Unified CI entry point for TransformerEngine-FL.
 #
-# Pipeline: lint → generate-matrix → platform-pipeline (matrix) → ci-complete
+# Pipeline: lint -> plan -> platform-pipeline (matrix) -> ci-complete
 #
-# Platform discovery is config-driven: generate_matrix.py scans
-# .github/configs/*.yml for platform names, then on pull_request events
-# intersects the changed-file list against per-platform paths_watch so
-# only affected platforms run.  All other events run the full matrix.
+# The FlagCICD planner (.github/actions/flagcicd-plan) reads
+# .flagcicd/project.yaml and .github/configs/*.yml.  On pull_request it
+# routes changed files through per-platform paths_watch and risk rules, so
+# only affected platforms and groups run; push and workflow_dispatch run the
+# branch stage on every platform.  ci-complete validates the platform reports
+# against the plan.  Daily, requested (/ci) and release runs have their own
+# entry workflows.
 
 name: CI
 
 on:
-  schedule:
-    - cron: '0 18 * * *'   # 02:00 CST daily
   push:
     branches: [main]
     paths-ignore:
@@ -36,6 +37,10 @@ on:
     branches: [main, devops]
     types: [opened, synchronize, reopened, labeled, unlabeled]
   workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -61,85 +66,67 @@ jobs:
       - name: pre-commit (changed files)
         env:
           BASE_REF: ${{ github.base_ref || 'main' }}
+        shell: bash
         run: |
           git fetch --no-tags origin "$BASE_REF"
           pre-commit run --show-diff-on-failure \
             --from-ref "$(git merge-base "origin/$BASE_REF" HEAD)" --to-ref HEAD
+      - name: CI self-tests
+        run: |
+          python -m pip install --quiet PyYAML==6.0.3
+          python -m unittest discover -s .github/scripts/ci -p 'test_*.py'
 
-  generate-matrix:
-    name: Generate platform matrix
+  plan:
+    name: Generate execution plan
     needs: lint
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      platforms: ${{ steps.matrix.outputs.platforms }}
+      plan: ${{ steps.plan.outputs.plan }}
+      plan_hash: ${{ steps.plan.outputs.plan_hash }}
+      platforms: ${{ steps.plan.outputs.platforms }}
+      source_sha: ${{ steps.plan.outputs.source_sha }}
+      test_level: ${{ steps.plan.outputs.test_level }}
+      stage: ${{ steps.plan.outputs.stage }}
+      lint_only: ${{ steps.plan.outputs.lint_only }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - uses: ./.github/actions/flagcicd-plan
+        id: plan
         with:
-          python-version: '3.12'
-      - name: Install matrix dependencies
-        run: python -m pip install --quiet PyYAML==6.0.3
-      - name: Verify CI routing and gate logic
-        run: python -m unittest discover -s .github/scripts/ci -p 'test_*.py'
-      - name: Compute platform matrix
-        id: matrix
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          BASE_REF: ${{ github.base_ref || 'main' }}
-        run: |
-          python .github/scripts/ci/generate_matrix.py \
-            --event-name "$EVENT_NAME" \
-            --base-ref "$BASE_REF" \
-            --configs-dir .github/configs \
-            >> "$GITHUB_OUTPUT"
+          stage: ${{ github.event_name == 'pull_request' && 'pr' || 'branch' }}
+          base-ref: ${{ github.base_ref || 'main' }}
+          labels-from-event: ${{ github.event_name == 'pull_request' }}
 
   platform-pipeline:
     name: Platform pipeline (${{ matrix.platform }})
-    needs: generate-matrix
-    if: needs.generate-matrix.outputs.platforms != '[]'
+    needs: plan
+    if: needs.plan.outputs.lint_only != 'true' && needs.plan.outputs.platforms != '[]'
     strategy:
       fail-fast: false
       matrix:
-        platform: ${{ fromJson(needs.generate-matrix.outputs.platforms) }}
+        platform: ${{ fromJson(needs.plan.outputs.platforms) }}
     uses: ./.github/workflows/_platform_pipeline.yml
     secrets:
       FLAGCICD_API_TOKEN: ${{ secrets.FLAGCICD_API_TOKEN }}
     with:
       platform: ${{ matrix.platform }}
+      checkout_ref: ${{ needs.plan.outputs.source_sha }}
+      plan: ${{ needs.plan.outputs.plan }}
 
   ci-complete:
     name: CI Complete
-    needs: [lint, generate-matrix, platform-pipeline]
-    if: always()
+    needs: [lint, plan, platform-pipeline]
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      # Keep the gate independent of checkout and PR-controlled dependencies.
-      - name: Verify required CI results
-        env:
-          LINT_RESULT: ${{ needs.lint.result }}
-          MATRIX_RESULT: ${{ needs.generate-matrix.result }}
-          PLATFORMS: ${{ needs.generate-matrix.outputs.platforms }}
-          PIPELINE_RESULT: ${{ needs.platform-pipeline.result }}
-        run: |
-          python3 - <<'PY'
-          import json
-          import os
-
-          if os.environ['LINT_RESULT'] != 'success':
-              raise SystemExit('Lint failed, was cancelled, or did not run')
-          if os.environ['MATRIX_RESULT'] != 'success':
-              raise SystemExit('Platform matrix generation did not succeed')
-          platforms = json.loads(os.environ['PLATFORMS'])
-          if not isinstance(platforms, list) or any(
-              not isinstance(platform, str) or not platform for platform in platforms
-          ):
-              raise SystemExit('Invalid platform matrix')
-          expected = 'success' if platforms else 'skipped'
-          if os.environ['PIPELINE_RESULT'] != expected:
-              raise SystemExit(f'Platform pipeline must be {expected}')
-          print('All required CI checks passed')
-          PY
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/flagcicd-gate
+        with:
+          plan: ${{ needs.plan.outputs.plan }}
+          needs-json: ${{ toJson(needs) }}
+          plan-job: plan
+          pipeline-job: platform-pipeline

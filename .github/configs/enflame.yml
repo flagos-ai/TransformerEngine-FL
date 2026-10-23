@@ -64,6 +64,5 @@ integration_test_matrix:
 paths_watch:
   - .github/configs/enflame.yml
   - .github/scripts/setup_enflame.sh
-  - .github/workflows/all_tests_enflame.yml
   - tests/plugin/backend/enflame/
   - transformer_engine/plugin/core/backends/vendor/enflame/
