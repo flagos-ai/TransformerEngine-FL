@@ -296,8 +296,7 @@ def test_grouped_gemm_zero_element_inputs(single_output, grad, accumulate):
 def real_flag_gems():
     """Swap the zeros-returning mock for real torch ops, then restore it."""
     saved = {
-        name: getattr(mock_flag_gems, name)
-        for name in ("mm", "addmm", "add_", "copy_", "sum_dim")
+        name: getattr(mock_flag_gems, name) for name in ("mm", "addmm", "add_", "copy_", "sum_dim")
     }
     mock_flag_gems.mm = torch.mm
     mock_flag_gems.addmm = lambda bias, a, b, beta=1, alpha=1: torch.addmm(
@@ -389,17 +388,35 @@ def test_generic_gemm_matches_reference(
 
     # D is written in place, so each implementation needs its own copy.
     got = _call(
-        generic_gemm_fl, A, transA, B, transB,
-        None if D is None else D.clone(), bias_t, grad, accumulate, alpha, beta,
+        generic_gemm_fl,
+        A,
+        transA,
+        B,
+        transB,
+        None if D is None else D.clone(),
+        bias_t,
+        grad,
+        accumulate,
+        alpha,
+        beta,
     )
     want = _call(
-        general_gemm_torch, A, transA, B, transB,
-        None if D is None else D.clone(), bias_t, grad, accumulate, alpha, beta,
+        general_gemm_torch,
+        A,
+        transA,
+        B,
+        transB,
+        None if D is None else D.clone(),
+        bias_t,
+        grad,
+        accumulate,
+        alpha,
+        beta,
     )
 
-    assert tuple(got[0].shape) == tuple(want[0].shape), (
-        f"{label}: shape {tuple(got[0].shape)} != reference {tuple(want[0].shape)}"
-    )
+    assert tuple(got[0].shape) == tuple(
+        want[0].shape
+    ), f"{label}: shape {tuple(got[0].shape)} != reference {tuple(want[0].shape)}"
     torch.testing.assert_close(got[0], want[0], rtol=0, atol=1e-12)
 
     if want[1] is None:
