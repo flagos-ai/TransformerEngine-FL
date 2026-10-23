@@ -83,12 +83,12 @@ def generic_gemm_fl(
     shape_b_changed = False
 
     if A.ndim == 3:
-        A = A.view(-1, A.shape[-1])
+        A = A.reshape(-1, A.shape[-1])
         shape_a_changed = True
 
     if B.ndim == 3:
         s, b, _ = B.shape
-        B = B.view(-1, B.shape[-1])
+        B = B.reshape(-1, B.shape[-1])
         shape_b_changed = True
 
     A_comp = A.T if transA else A
@@ -97,6 +97,8 @@ def generic_gemm_fl(
     bias_grad = None
     if grad:
         out1 = flag_gems.mm(B_comp, A_comp)
+        if alpha != 1.0:
+            out1 = out1 * alpha
         if bias is not None:
             bias_grad = flag_gems.sum_dim(B, dim=[0])
     else:
@@ -106,8 +108,13 @@ def generic_gemm_fl(
             out1 = flag_gems.addmm(bias, B_comp, A_comp, beta=1, alpha=alpha)
         else:
             out1 = flag_gems.mm(B_comp, A_comp)
+            if alpha != 1.0:
+                out1 = out1 * alpha
 
-    if shape_b_changed:
+    # A non-transposed B contributes its outer dimensions to the output. A
+    # transposed B does not, so its flattened shape must not be restored (the
+    # latter is the layout normally used by weight-gradient GEMMs).
+    if shape_b_changed and not transB:
         out1 = out1.view(s, b, -1)
 
     torch_out_dtype = _convert_dtype(output_dtype)
@@ -119,7 +126,12 @@ def generic_gemm_fl(
 
     if D is not None:
         if accumulate:
-            flag_gems.add_(D, out1)
+            # beta scales D, the accumulator. Scaling out of place keeps the
+            # common beta == 1.0 case on the single add_ it used before.
+            if beta != 1.0:
+                flag_gems.copy_(D, D * beta + out1)
+            else:
+                flag_gems.add_(D, out1)
         else:
             flag_gems.copy_(D, out1)
         return D, bias_grad, gelu_input, extra_output_ret
