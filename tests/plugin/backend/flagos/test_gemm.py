@@ -277,3 +277,133 @@ def test_grouped_gemm_zero_element_inputs(single_output, grad, accumulate):
         math_sm_count=80,
     )
     assert returned_bias == bias
+
+
+# ==============================================================================
+# Part 4: Numerical Agreement With The Reference Backend
+#
+# The matrix above walks every structural permutation but asserts only the
+# arity of the result, and the module-level mock returns zeros, so it cannot
+# observe what the op computes. These cases route the mock through real torch
+# ops instead and compare against general_gemm_torch, which defines the
+# semantics of this op and which the NPU vendor backend states it follows.
+# float64 keeps the two paths within rounding of each other, so the tolerance
+# can stay tight enough to catch a dropped scale factor.
+# ==============================================================================
+
+
+@pytest.fixture
+def real_flag_gems():
+    """Swap the zeros-returning mock for real torch ops, then restore it."""
+    saved = {
+        name: getattr(mock_flag_gems, name)
+        for name in ("mm", "addmm", "add_", "copy_", "sum_dim")
+    }
+    mock_flag_gems.mm = torch.mm
+    mock_flag_gems.addmm = lambda bias, a, b, beta=1, alpha=1: torch.addmm(
+        bias, a, b, beta=beta, alpha=alpha
+    )
+    mock_flag_gems.add_ = lambda tensor, other: tensor.add_(other)
+    mock_flag_gems.copy_ = lambda tensor, other: tensor.copy_(other)
+    mock_flag_gems.sum_dim = lambda x, dim, *a, **k: x.sum(
+        dim=tuple(dim) if isinstance(dim, (list, tuple)) else dim
+    )
+    yield
+    for name, fn in saved.items():
+        setattr(mock_flag_gems, name, fn)
+
+
+def _call(fn, A, transA, B, transB, D, bias, grad, accumulate, alpha, beta):
+    return fn(
+        A=A,
+        transA=transA,
+        B=B,
+        transB=transB,
+        D=D,
+        quantizer=None,
+        output_dtype=None,
+        bias=bias,
+        bias_type=None,
+        gelu=False,
+        gelu_in=None,
+        grad=grad,
+        workspace=torch.zeros((1,)),
+        workspace_size=0,
+        accumulate=accumulate,
+        use_split_accumulator=False,
+        alpha=alpha,
+        beta=beta,
+    )
+
+
+# out = B_comp(m,k) @ A_comp(k,n); deliberately non-square so a wrong
+# reshape cannot hide behind equal dimensions.
+_M, _N, _K = 8, 6, 4
+
+
+def _operands(transA, transB, b_ndim, bias, has_D, dtype=torch.float64):
+    torch.manual_seed(0)
+    A = torch.randn((_N, _K) if transA else (_K, _N), dtype=dtype)
+    b_shape = (_K, _M) if transB else (_M, _K)
+    if b_ndim == 3:
+        B = torch.randn((b_shape[0] // 2, 2, b_shape[1]), dtype=dtype)
+    else:
+        B = torch.randn(b_shape, dtype=dtype)
+    return (
+        A,
+        B,
+        torch.randn((_N,), dtype=dtype) if bias else None,
+        torch.randn((_M, _N), dtype=dtype) if has_D else None,
+    )
+
+
+@pytest.mark.parametrize(
+    "label, transA, transB, b_ndim, bias, has_D, grad, accumulate, alpha, beta",
+    [
+        # alpha must scale every branch, not just the fused-bias one.
+        ("alpha, no bias", False, False, 2, False, False, False, False, 2.0, None),
+        ("alpha, bias", False, False, 2, True, False, False, False, 2.0, None),
+        ("alpha, grad", False, False, 2, False, False, True, False, 2.0, None),
+        ("alpha, grad, bias", False, False, 2, True, False, True, False, 2.0, None),
+        # beta scales the accumulator D, not the GEMM result.
+        ("beta accumulate", False, False, 2, False, True, False, True, 1.0, 0.5),
+        ("alpha and beta", False, False, 2, False, True, False, True, 2.0, 0.5),
+        # A transposed B contributes no outer dimensions to the output.
+        ("3D B, transB", False, True, 3, False, False, False, False, 1.0, None),
+        ("3D B, transB, bias", False, True, 3, True, False, False, False, 1.0, None),
+        ("3D B, no transB", False, False, 3, False, False, False, False, 1.0, None),
+        # Baselines that already agreed, kept so a fix cannot regress them.
+        ("plain", False, False, 2, False, False, False, False, 1.0, None),
+        ("transA", True, False, 2, False, False, False, False, 1.0, None),
+        ("D overwrite", False, False, 2, False, True, False, False, 1.0, None),
+    ],
+)
+def test_generic_gemm_matches_reference(
+    real_flag_gems, label, transA, transB, b_ndim, bias, has_D, grad, accumulate, alpha, beta
+):
+    from transformer_engine.plugin.core.backends.reference.impl.gemm import (
+        general_gemm_torch,
+    )
+
+    A, B, bias_t, D = _operands(transA, transB, b_ndim, bias, has_D)
+
+    # D is written in place, so each implementation needs its own copy.
+    got = _call(
+        generic_gemm_fl, A, transA, B, transB,
+        None if D is None else D.clone(), bias_t, grad, accumulate, alpha, beta,
+    )
+    want = _call(
+        general_gemm_torch, A, transA, B, transB,
+        None if D is None else D.clone(), bias_t, grad, accumulate, alpha, beta,
+    )
+
+    assert tuple(got[0].shape) == tuple(want[0].shape), (
+        f"{label}: shape {tuple(got[0].shape)} != reference {tuple(want[0].shape)}"
+    )
+    torch.testing.assert_close(got[0], want[0], rtol=0, atol=1e-12)
+
+    if want[1] is None:
+        assert got[1] is None, f"{label}: bias gradient returned where reference returns none"
+    else:
+        assert got[1] is not None, f"{label}: bias gradient missing"
+        torch.testing.assert_close(got[1], want[1], rtol=0, atol=1e-12)
