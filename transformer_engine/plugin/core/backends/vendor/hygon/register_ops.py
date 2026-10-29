@@ -46,6 +46,11 @@ def register_builtins(registry) -> None:
     # Bind is_available to all methods
     is_avail = backend.is_available
 
+    from ....decorators import register_overrides
+    from .cross_entropy import CrossEntropyFunctionHygon
+
+    register_overrides(registry, CrossEntropyFunctionHygon)
+
     impls = [
         # Normalization
         OpImpl(
