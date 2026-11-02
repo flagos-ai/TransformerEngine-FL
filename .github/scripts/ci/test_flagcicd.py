@@ -567,7 +567,9 @@ class GateSliceTests(unittest.TestCase):
                 self.assertEqual(out["has_integration"], "true")
                 self.assertEqual(out["has_parallel"], "false")
                 self.assertEqual(out["has_serial"], "false")
-                self.assertEqual(json.loads(out["integration_matrix"])["include"][0]["name"], "mcore")
+                self.assertEqual(
+                    json.loads(out["integration_matrix"])["include"][0]["name"], "mcore"
+                )
 
     def test_empty_lanes_report_false(self):
         code, out = self.run_slice(self.plan_for([make_group("preflight", "preflight")]))
