@@ -558,6 +558,17 @@ class GateSliceTests(unittest.TestCase):
             (serial["path"], serial["devices"]), ("run_pytorch_mcore_integration.sh", 8)
         )
 
+    def test_integration_is_separated_from_both_unit_lanes(self):
+        for lane in ("parallel", "serial"):
+            with self.subTest(lane=lane):
+                group = make_group("mcore", lane, kind="integration", evidence="exit_code")
+                code, out = self.run_slice(self.plan_for([group]))
+                self.assertEqual(code, 0)
+                self.assertEqual(out["has_integration"], "true")
+                self.assertEqual(out["has_parallel"], "false")
+                self.assertEqual(out["has_serial"], "false")
+                self.assertEqual(json.loads(out["integration_matrix"])["include"][0]["name"], "mcore")
+
     def test_empty_lanes_report_false(self):
         code, out = self.run_slice(self.plan_for([make_group("preflight", "preflight")]))
         self.assertEqual(code, 0)
@@ -1203,7 +1214,7 @@ class GroupReportEvidenceTests(unittest.TestCase):
 class GatePlatformReportTests(unittest.TestCase):
     """Test gate platform-report validation logic."""
 
-    def run_platform(self, plan, reports):
+    def run_platform(self, plan, reports, unit_only=False):
         with tempfile.TemporaryDirectory() as tmp:
             folder = Path(tmp)
             for index, report in enumerate(reports):
@@ -1211,6 +1222,7 @@ class GatePlatformReportTests(unittest.TestCase):
                 target.parent.mkdir()
                 target.write_text(json.dumps(report))
             args = argparse.Namespace(
+                unit_only=unit_only,
                 platform="cuda",
                 reports_dir=folder,
                 coverage_required=False,
@@ -1220,6 +1232,19 @@ class GatePlatformReportTests(unittest.TestCase):
             with patch.dict(os.environ, FLAGCICD_PLAN=json.dumps(plan)):
                 code = gate.cmd_platform(args)
             return code, json.loads(args.output.read_text())
+
+    def test_unit_gate_does_not_wait_for_integration_but_rejects_failed_units(self):
+        unit = make_group("pytorch_unit", "serial")
+        integration = make_group("mcore", "parallel", kind="integration", evidence="exit_code")
+        plan = make_plan(platforms=[{"name": "cuda"}], test_groups=[unit, integration])
+        valid = execution_report(plan, plan["execution_groups"][0])
+        self.assertEqual(self.run_platform(plan, [valid], unit_only=True)[0], 0)
+        self.assertEqual(self.run_platform(plan, [], unit_only=True)[0], 1)
+        failed = copy.deepcopy(valid)
+        failed["status"] = "failed"
+        self.assertEqual(self.run_platform(plan, [failed], unit_only=True)[0], 1)
+        # Final platform validation must still require integration evidence.
+        self.assertEqual(self.run_platform(plan, [valid])[0], 1)
 
     def test_logical_reports_must_cover_the_plan_and_match_execution(self):
         runtime = make_group("pytorch_unit", "serial")

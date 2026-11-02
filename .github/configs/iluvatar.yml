@@ -80,5 +80,7 @@ paths_watch:
 # common numerics, CUDA Graphs, both CPU offload files, public attention/KV cache,
 # historical checkpoint tests, and distributed numerics (normal and debug).
 # These gaps are not passing tests; config.sh records restoration conditions.
-# No entire test group is excluded; capability skips and failures remain in JUnit.
-unsupported_test_groups: {}
+# Restore quantization when the selected targets produce passing JUnit evidence
+# on this CoreX baseline and the required-group evidence gate passes.
+unsupported_test_groups:
+  quantization: Current CoreX 4.5.0 CI skips all selected quantization targets (18674 skipped, zero passed in run 41381184040); no passing evidence is available. Restore after vendor/runtime adaptation yields passing quantization tests and the required-group evidence gate passes.
