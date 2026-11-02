@@ -3,8 +3,9 @@
 hardware_name: iluvatar
 display_name: 'Iluvatar BI-V150 (CoreX 4.5.0)'
 checkout_submodules: 'false'
-# Prepared QA image must be preloaded on the runner (pull policy: never).
-ci_image: harbor.baai.ac.cn/flagos-dev/transformerengine-fl:iluvatar-corex4.5.0-ci
+# Build with docker build --target ci -f docker/iluvatar/Dockerfile -t <ci_image> .
+# Preload the resulting image on the runner (pull policy: never).
+ci_image: harbor.baai.ac.cn/flagos-dev/transformerengine-fl:iluvatar-corex4.5.0-ci-recipe
 container_pull_policy: never
 runner_labels:
   - ts-8g-cicd-te
