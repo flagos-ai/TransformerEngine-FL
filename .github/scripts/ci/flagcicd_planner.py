@@ -40,6 +40,11 @@ def load_platforms(configs_dir: Path) -> dict[str, Any]:
             continue
         config_bytes = path.read_bytes()
         config = yaml.safe_load(config_bytes)
+        enabled = config.get("enabled", True)
+        if not isinstance(enabled, bool):
+            raise ValueError(f"{path.name}: enabled must be a boolean")
+        if not enabled:
+            continue
         nproc = config.get("nproc_per_node")
         if isinstance(nproc, bool) or not isinstance(nproc, int) or nproc < 1:
             raise ValueError(f"{path.name}: nproc_per_node must be a positive integer")

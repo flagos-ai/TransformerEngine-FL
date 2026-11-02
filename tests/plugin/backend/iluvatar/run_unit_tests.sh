@@ -15,7 +15,7 @@ for suite in "$@"; do
 done
 source "$SCRIPT_DIR/config.sh"
 source "$SCRIPT_DIR/set_env.sh"
-XML_LOG_ROOT="${XML_LOG_DIR:-${RUNNER_TEMP:-$TE_PATH/logs}/iluvatar}"
+XML_LOG_ROOT="$XML_LOG_DIR"
 FAILED=0
 FAILED_TESTS=()
 
@@ -31,6 +31,7 @@ run_pytest() {
         fi
     done
     local rule scope details expression reason
+    local combined_filter=""
     for rule in "${ILUVATAR_KNOWN_FAILURE_FILTERS[@]}"; do
         scope=${rule%%|*}
         details=${rule#*|}
@@ -40,9 +41,12 @@ run_pytest() {
             reason=${details#*|}
             echo "[DESELECT][$suite] $target: $reason"
             echo "[DESELECT][$suite] -k not ($expression)"
-            set -- "$@" -k "not ($expression)"
+            combined_filter="${combined_filter:+$combined_filter and }not ($expression)"
         fi
     done
+    if [ -n "$combined_filter" ]; then
+        set -- "$@" -k "$combined_filter"
+    fi
     echo "[RUN][$suite] $target"
     local python_command=("$PYTHON_BIN")
     if [ "$target" = "tests/plugin/plugin" ]; then

@@ -1,3 +1,6 @@
+# Platform registration switch. Omission defaults to true for compatibility.
+# Set false to exclude this platform from plans, including manual requests.
+enabled: true
 # Hardware configuration template for TransformerEngine-FL CI.
 # Copy this file and provide a setup script when adding a platform.
 

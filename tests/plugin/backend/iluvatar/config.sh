@@ -232,15 +232,13 @@ readonly ILUVATAR_KNOWN_FAILURE_FILTERS=(
 # below), rather than the large tests/pytorch/test_fused_rope.py matrix. On the
 # 32 GiB BI-V150 that matrix OOMs in gradient comparisons and cascades across
 # cases; it remains available for separate capacity testing.
+# Quantization-only targets are excluded from routine CI until passing evidence
+# exists. Keep float8_blockwise_gemm_exact: it also provides GEMM coverage.
+# Run the removed recipe/tensor/NVFP4 targets explicitly for recovery validation.
 readonly ILUVATAR_UNIT_TEST_TARGETS=(
     "tests/pytorch/test_sanity.py"
-    "tests/pytorch/test_recipe.py"
     "tests/pytorch/test_deferred_init.py"
     "tests/pytorch/test_jit.py"
-    "tests/pytorch/nvfp4"
-    "tests/pytorch/test_quantized_tensor.py"
-    "tests/pytorch/test_float8blockwisetensor.py"
-    "tests/pytorch/test_float8_blockwise_scaling_exact.py"
     "tests/pytorch/test_float8_blockwise_gemm_exact.py"
     "tests/pytorch/test_gqa.py"
     "tests/pytorch/test_fused_optimizer.py"

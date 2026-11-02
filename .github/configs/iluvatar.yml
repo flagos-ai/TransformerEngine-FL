@@ -1,9 +1,12 @@
 # Iluvatar BI-V150 / CoreX QA configuration, following the Hygon adapter layout.
-# Provision the prepared QA image and runner before enabling this on main.
+# Set enabled: false to exclude this platform from automatic and manual plans.
+# Enable only after the runner and the CI image are provisioned.
+enabled: true
 hardware_name: iluvatar
 display_name: 'Iluvatar BI-V150 (CoreX 4.5.0)'
 checkout_submodules: 'false'
 # Build with docker build --target ci -f docker/iluvatar/Dockerfile -t <ci_image> .
+# The published -dev tag was built using --target ci; the suffix is a tag name.
 # Preload the resulting image on the runner (pull policy: never).
 ci_image: harbor.baai.ac.cn/flagos-dev/transformerengine-fl:f886262-iluvatar-dev
 container_pull_policy: never
@@ -70,6 +73,7 @@ integration_test_matrix:
   - name: pytorch_mcore_integration
     path: tests/plugin/backend/iluvatar/run_integration_tests.sh
 paths_watch:
+  - docker/iluvatar/
   - .github/configs/iluvatar.yml
   - .github/scripts/setup_iluvatar.sh
   - tests/plugin/backend/iluvatar/

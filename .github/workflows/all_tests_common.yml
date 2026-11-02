@@ -319,7 +319,7 @@ jobs:
           overwrite: true
 
   # Unit lanes share a runner pool and execute before the report gate.
-  # Integration starts only after required unit evidence has passed.
+  # Integration waits for unit evidence, but still runs when unit tests fail.
   parallel_groups:
     name: parallel-lane
     needs: [checkout_and_config, preflight, build_test_artifact]
@@ -409,6 +409,15 @@ jobs:
           python3 .github/scripts/ci/flagcicd_gate.py platform
           --unit-only --platform "${{ inputs.platform }}"
           --reports-dir group-reports --output unit-report.json
+      - name: Upload unit report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: flagcicd-unit-${{ inputs.platform }}
+          path: unit-report.json
+          if-no-files-found: warn
+          retention-days: 14
+          overwrite: true
 
   integration_groups:
     name: integration-tests
@@ -417,7 +426,7 @@ jobs:
       !cancelled() &&
       needs.checkout_and_config.result == 'success' &&
       needs.checkout_and_config.outputs.has_integration == 'true' &&
-      needs.unit_tests_complete.result == 'success' &&
+      (needs.unit_tests_complete.result == 'success' || needs.unit_tests_complete.result == 'failure') &&
       (needs.checkout_and_config.outputs.preflight_selected != 'true' || needs.preflight.result == 'success') &&
       (needs.build_test_artifact.result == 'success' ||
        needs.build_test_artifact.result == 'skipped')

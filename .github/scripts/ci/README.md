@@ -179,3 +179,21 @@ universal torchrun override. Keep it aligned with container-visible devices and
 platform launchers; launchers can use fewer devices in individual phases. Changing
 physical card allocation also requires checking the runner, device mounts and
 visibility settings. Runtime device isolation remains a runner responsibility.
+
+
+### Platform enablement and test ordering
+
+Platform YAML files accept `enabled: true|false` (default: true for existing
+configurations). Disabled platforms are excluded from automatic plans and cannot
+be requested manually. Provision runners and preload images before enabling.
+
+Integration runs after the unit lanes and their evidence report complete, even
+when unit evidence fails. The final platform gate still rejects required failed
+or missing tests. Unit reports are retained for 14 days.
+
+Iluvatar quantization-only recipe/tensor/NVFP4 targets are omitted from routine
+CI until recovery validation supplies passing evidence. The shared blockwise
+GEMM target remains selected. Whole-file and partial exclusions are currently
+recorded in the Iluvatar shell configuration; a per-target coverage-gap schema
+and report is follow-up work, and passing group results do not imply complete
+coverage of those excluded targets.

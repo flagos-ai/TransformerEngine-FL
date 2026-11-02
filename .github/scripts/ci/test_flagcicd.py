@@ -149,6 +149,7 @@ def execution_report(plan, execution, **overrides):
         "platform": execution["platform"],
         "device": execution["device"],
         "group": execution["group"],
+        "kind": execution["kind"],
         "status": "passed",
         "executed": True,
         "test_group_reports": [
@@ -527,7 +528,7 @@ class GateSliceTests(unittest.TestCase):
             [
                 make_group("preflight", "preflight"),
                 make_group("pytorch_unit", "parallel"),
-                make_group("pytorch_mcore_integration", "serial", evidence="exit_code"),
+                make_group("pytorch_serial_unit", "serial", evidence="exit_code"),
             ],
             coverage_groups=["pytorch_unit"],
         )
@@ -542,7 +543,7 @@ class GateSliceTests(unittest.TestCase):
             {
                 "preflight": ["preflight"],
                 "parallel": ["pytorch_unit"],
-                "serial": ["pytorch_mcore_integration"],
+                "serial": ["pytorch_serial_unit"],
             },
         )
         self.assertEqual(
@@ -554,9 +555,7 @@ class GateSliceTests(unittest.TestCase):
         preflight = json.loads(out["preflight_matrix"])["include"][0]
         self.assertEqual((preflight["device"], preflight["timeout"]), ("a100", 90))
         serial = json.loads(out["serial_matrix"])["include"][0]
-        self.assertEqual(
-            (serial["path"], serial["devices"]), ("run_pytorch_mcore_integration.sh", 8)
-        )
+        self.assertEqual((serial["path"], serial["devices"]), ("run_pytorch_serial_unit.sh", 8))
 
     def test_integration_is_separated_from_both_unit_lanes(self):
         for lane in ("parallel", "serial"):
@@ -1245,6 +1244,8 @@ class GatePlatformReportTests(unittest.TestCase):
         failed = copy.deepcopy(valid)
         failed["status"] = "failed"
         self.assertEqual(self.run_platform(plan, [failed], unit_only=True)[0], 1)
+        integration_report = execution_report(plan, plan["execution_groups"][1])
+        self.assertEqual(self.run_platform(plan, [valid, integration_report], unit_only=True)[0], 0)
         # Final platform validation must still require integration evidence.
         self.assertEqual(self.run_platform(plan, [valid])[0], 1)
 

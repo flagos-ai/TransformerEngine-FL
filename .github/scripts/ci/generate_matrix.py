@@ -69,6 +69,11 @@ def _load_watch_rules(configs_dir: pathlib.Path) -> dict[str, list[str]]:
         data = yaml.safe_load(config.read_text())
         if not isinstance(data, dict):
             raise ValueError(f"Invalid platform configuration: {config}")
+        enabled = data.get("enabled", True)
+        if not isinstance(enabled, bool):
+            raise ValueError(f"enabled must be a boolean: {config}")
+        if not enabled:
+            continue
         watch = data.get("paths_watch", [])
         if not isinstance(watch, list) or any(
             not isinstance(path, str) or not path for path in watch

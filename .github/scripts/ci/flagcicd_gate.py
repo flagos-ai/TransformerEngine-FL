@@ -538,6 +538,8 @@ def cmd_platform(args: argparse.Namespace) -> int:
         try:
             report = json.loads(report_file.read_text())
             if report.get("platform") == platform:
+                if getattr(args, "unit_only", False) and report.get("kind") == "integration":
+                    continue
                 group_reports.append(report)
         except (OSError, json.JSONDecodeError) as exc:
             print(f"WARNING: Failed to load {report_file}: {exc}", file=sys.stderr)

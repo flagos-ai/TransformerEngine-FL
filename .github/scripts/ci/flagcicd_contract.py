@@ -138,6 +138,14 @@ def validate_plan(plan: dict[str, Any]) -> list[str]:
                 errors.append("Logical test groups do not match execution groups")
         except (KeyError, TypeError):
             errors.append("Malformed test-group execution mapping")
+    for collection in ("execution_groups", "test_groups"):
+        for group in plan.get(collection, []) if isinstance(plan.get(collection), list) else []:
+            if not isinstance(group, dict) or group.get("kind") not in (
+                "unit",
+                "integration",
+                "preflight",
+            ):
+                errors.append(f"Invalid or missing kind in {collection}")
     if plan.get("test_level") not in LEVELS:
         errors.append(f"test_level must be one of {LEVELS}")
     expected_hash = compute_plan_hash(plan)
