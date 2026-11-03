@@ -76,7 +76,7 @@ jobs:
           stage: nightly
 
   platforms:
-    name: Nightly / ${{ matrix.platform }}
+    name: Platform pipeline (${{ matrix.platform }})
     needs: plan
     strategy:
       fail-fast: false

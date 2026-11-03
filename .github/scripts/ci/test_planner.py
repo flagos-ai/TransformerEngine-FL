@@ -47,6 +47,23 @@ class PlannerTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 planner.gm._load_watch_rules(root)
 
+    def test_summary_separates_routing_scope_and_platform_counts(self):
+        plan = self.run_planner(
+            "pr", changed_files=json.dumps(["transformer_engine/pytorch/new_shared.py"])
+        )
+        plan["reasons"] = ["shared <source> | test"]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp, "summary.md")
+            planner.write_summary(path, plan)
+            text = path.read_text()
+        self.assertIn("### Platform selection", text)
+        self.assertIn("### Unit test plan", text)
+        self.assertIn("shared &lt;source&gt; &#124; test", text)
+        for platform in plan["platforms"]:
+            self.assertIn(f"| {platform['name']} |", text)
+        self.assertIn(plan["plan_hash"], text)
+        self.assertIn("Declared platform coverage gaps", text)
+
     def assert_all_platforms(self, plan):
         expected = set(planner.load_platforms(ROOT / ".github/configs"))
         self.assertTrue(expected)

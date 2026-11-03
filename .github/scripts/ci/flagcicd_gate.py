@@ -835,6 +835,14 @@ def cmd_gate(args: argparse.Namespace) -> int:
             f.write(f"- Stage: {plan['stage']}\n")
             f.write(f"- Level: {plan['test_level']}\n")
             f.write(f"- Platforms: {len(plan['platforms'])}\n\n")
+            f.write("| Platform | Result |\n| --- | --- |\n")
+            for platform in plan["platforms"]:
+                report = next(
+                    (r for r in platform_reports if r.get("platform") == platform["name"]), None
+                )
+                result = report.get("status", "unknown") if report else "missing report"
+                f.write(f"| {platform['name']} | {result} |\n")
+            f.write("\n")
             if errors:
                 f.write("**Errors:**\n\n")
                 for error in errors:

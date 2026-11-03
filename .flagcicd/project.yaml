@@ -137,13 +137,11 @@ test_groups:
       class: shared_cpu
       timeout_minutes: 90
     description: Repository structure and Python syntax preflight.
-    status: active
     paths: []
     depends_on: []
   - name: core
     description: Portable initialization, graph/JIT and checkpoint smoke tests.
     level: L1
-    status: active
     depends_on: []
     paths:
     - transformer_engine/pytorch/cpu_offload*.py
@@ -177,7 +175,6 @@ test_groups:
   - name: plugin_core
     description: Plugin policy, registration and dispatch tests.
     level: L1
-    status: active
     depends_on:
     - core
     paths:
@@ -199,7 +196,6 @@ test_groups:
   - name: reference_backend
     description: Reference backend lifecycle and operator tests.
     level: L1
-    status: active
     depends_on:
     - plugin_core
     paths:
@@ -220,7 +216,6 @@ test_groups:
   - name: vendor_backend
     description: Vendor and FlagOS backend lifecycle and operator tests.
     level: L1
-    status: active
     depends_on:
     - core
     paths:
@@ -246,7 +241,6 @@ test_groups:
   - name: normalization
     description: LayerNorm, RMSNorm and fused normalization tests.
     level: L1
-    status: active
     depends_on:
     - core
     paths:
@@ -287,7 +281,6 @@ test_groups:
   - name: gemm
     description: Linear, grouped GEMM and fused linear operator tests.
     level: L1
-    status: active
     depends_on:
     - core
     paths:
@@ -335,7 +328,6 @@ test_groups:
   - name: attention
     description: Attention, RoPE, GQA and attention integration tests.
     level: L1
-    status: active
     depends_on:
     - core
     paths:
@@ -371,7 +363,6 @@ test_groups:
   - name: quantization
     description: Recipes, quantized tensors, FP8 and NVFP4 tests.
     level: L1
-    status: active
     depends_on:
     - core
     paths:
@@ -415,7 +406,6 @@ test_groups:
   - name: optimizer
     description: Fused optimizer and multi-tensor operator tests.
     level: L1
-    status: active
     depends_on:
     - core
     paths:
@@ -444,7 +434,6 @@ test_groups:
   - name: debug
     description: Debug configuration and numerical inspection tests.
     level: L1
-    status: active
     depends_on:
     - core
     paths:
@@ -465,7 +454,6 @@ test_groups:
   - name: distributed
     description: Distributed, context-parallel and communication tests.
     level: L2
-    status: active
     depends_on:
     - core
     paths:
@@ -498,7 +486,6 @@ test_groups:
   - name: onnx
     description: ONNX export and runtime compatibility tests.
     level: L2
-    status: active
     depends_on:
     - core
     paths:
@@ -519,7 +506,6 @@ test_groups:
   - name: mcore
     description: Megatron Core integration training smoke test.
     level: L2
-    status: active
     depends_on:
     - core
     paths:
@@ -543,7 +529,6 @@ test_groups:
       class: hopper_only
       timeout_minutes: 240
     description: FlashAttention version compatibility tests.
-    status: active
     depends_on: []
     paths:
     - qa/L3_pytorch_FA_versions_test/
@@ -560,7 +545,6 @@ test_groups:
       timeout_minutes: 240
     blocked: no performance baseline or benchmark launcher is defined for TransformerEngine-FL
     description: Performance benchmark acceptance.
-    status: active
     depends_on: []
     paths: []
   - name: cross_repo_integration
@@ -572,7 +556,6 @@ test_groups:
       timeout_minutes: 720
     blocked: no pinned Megatron-LM-FL/FlagScale version contract or acceptance runner
     description: Pinned cross-repository integration acceptance.
-    status: active
     depends_on: []
     paths: []
   - name: model_validation
@@ -584,7 +567,6 @@ test_groups:
       timeout_minutes: 2880
     blocked: no end-to-end model training job or accuracy golden is defined
     description: End-to-end model training and numerical acceptance.
-    status: active
     depends_on: []
     paths: []
   - name: release_wheel_validation
@@ -596,7 +578,6 @@ test_groups:
       timeout_minutes: 240
     blocked: no release wheel build or clean-environment install check is defined
     description: Release wheel build and clean installation acceptance.
-    status: active
     depends_on: []
     paths: []
   - name: backward_compatibility
@@ -608,7 +589,6 @@ test_groups:
       timeout_minutes: 240
     blocked: no supported previous-version matrix is defined
     description: Supported previous-version compatibility acceptance.
-    status: active
     depends_on: []
     paths: []
   - name: golden_baseline_acceptance
@@ -620,7 +600,6 @@ test_groups:
       timeout_minutes: 240
     blocked: golden_baseline.json holds coverage thresholds only, not numerical goldens
     description: Numerical golden baseline acceptance.
-    status: active
     depends_on: []
     paths: []
 
