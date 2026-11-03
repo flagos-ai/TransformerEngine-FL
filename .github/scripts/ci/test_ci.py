@@ -193,7 +193,7 @@ class WorkflowGateTests(unittest.TestCase):
             ("ci", "platform-pipeline"),
             ("ci-requested", "platform-pipeline"),
             ("release-acceptance", "platform-pipeline"),
-            ("daily", "platforms"),
+            ("nightly", "platforms"),
         ):
             with self.subTest(workflow=name):
                 workflow = yaml.safe_load((ROOT / f".github/workflows/{name}.yml").read_text())
@@ -205,7 +205,7 @@ class WorkflowGateTests(unittest.TestCase):
         # always() cannot be cancelled; flagcicd jobs and steps use !cancelled().
         for name in (
             "ci",
-            "daily",
+            "nightly",
             "ci-requested",
             "release-acceptance",
             "all_tests_common",
@@ -431,7 +431,7 @@ sys.exit(2)
         # Every entry plans at a fixed ref, runs that plan's SHA and gates on it.
         for name, stage in (
             ("ci", None),
-            ("daily", "nightly"),
+            ("nightly", "nightly"),
             ("ci-requested", "manual"),
             ("release-acceptance", "release"),
         ):

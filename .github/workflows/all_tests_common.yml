@@ -599,7 +599,7 @@ jobs:
 
           echo "PASS: No coverage regression"
 
-      - name: Check daily 3-sigma regression
+      - name: Check nightly 3-sigma regression
         if: |
           steps.aggregate.outputs.aggregated == 'true' &&
           needs.checkout_and_config.outputs.coverage_comparable == 'true' &&
@@ -613,7 +613,7 @@ jobs:
         run: |
           history_file="$RUNNER_TEMP/coverage-history.json"
 
-          # Collect totals.percent_covered from earlier successful daily runs
+          # Collect totals.percent_covered from earlier successful nightly runs
           # through the GitHub REST API; vendor containers may lack the gh CLI.
           # The history file is written only when the window has enough samples.
           python3 - "$history_file" << 'FETCH_EOF'

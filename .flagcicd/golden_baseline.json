@@ -43,8 +43,8 @@
       "enabled": true,
       "window_runs": 14,
       "minimum_history": 8,
-      "source_workflow": "daily.yml",
-      "description": "Daily (nightly stage) uses 3-sigma against a 14-run sliding window (advisory)"
+      "source_workflow": "nightly.yml",
+      "description": "Nightly (nightly stage) uses 3-sigma against a 14-run sliding window (advisory)"
     }
   },
   "storage": {

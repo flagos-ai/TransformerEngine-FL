@@ -683,7 +683,7 @@ class GateSliceTests(unittest.TestCase):
             "${{ steps.slice.outputs.coverage_comparable }}",
         )
         steps = {step["name"]: step for step in workflow["jobs"]["coverage"]["steps"]}
-        for name in ("Check PR coverage regression", "Check daily 3-sigma regression"):
+        for name in ("Check PR coverage regression", "Check nightly 3-sigma regression"):
             self.assertIn("outputs.coverage_comparable == 'true'", steps[name]["if"])
         artifact_name = steps["Upload coverage report"]["with"]["name"]
         self.assertIn("outputs.coverage_comparable != 'true' && '-partial'", artifact_name)

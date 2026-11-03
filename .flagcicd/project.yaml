@@ -21,7 +21,7 @@ stages:
     selection: all
     default_level: L2
   nightly:
-    entry_workflow: .github/workflows/daily.yml (schedule, workflow_dispatch)
+    entry_workflow: .github/workflows/nightly.yml (schedule, workflow_dispatch)
     selection: all
     default_level: L2
     fixed_level: true

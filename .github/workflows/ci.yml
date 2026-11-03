@@ -21,7 +21,7 @@
 # routes changed files through per-platform paths_watch and test-level rules, so
 # only affected platforms and groups run; push and workflow_dispatch run the
 # branch stage on every platform.  ci-complete validates the platform reports
-# against the plan.  Daily, requested (/ci) and release runs have their own
+# against the plan.  Nightly, requested (/ci) and release runs have their own
 # entry workflows.
 
 name: CI

@@ -1,10 +1,10 @@
 # TransformerEngine-FL CI
 
 The active entries are `ci.yml` (PR, push to main, manual dispatch),
-`daily.yml` (stage `nightly`, 02:17 Asia/Shanghai, or manual dispatch),
+`nightly.yml` (stage `nightly`, 00:00 Asia/Shanghai, or manual dispatch),
 `ci-requested.yml` (stage `manual`) and `release-acceptance.yml` (stage
 `release`). Each generates a plan and directly calls `all_tests_common.yml` for its
-platform matrix; test jobs use `test_groups_common.yml`. `CI Complete`, `Daily Complete`, `CI Requested Complete` and
+platform matrix; test jobs use `test_groups_common.yml`. `CI Complete`, `Nightly Complete`, `CI Requested Complete` and
 `Release Acceptance Complete` gate the results.
 
 ## Selection and levels
@@ -15,11 +15,11 @@ only changes skip hardware. `platform:<name>` labels override routing, so a
 narrowed shared-code run requires reviewer judgment. `level:L0` through
 `level:L4` labels can escalate the inferred level. Path-based test level rules also raise it.
 
-PR defaults to L1; branch/CI dispatch defaults to L2; Daily is fixed at L2.
+PR defaults to L1; branch/CI dispatch defaults to L2; Nightly is fixed at L2.
 Each changed file takes the highest level of the test level rules it matches, or
 `unknown_level` when it matches none; the plan takes the maximum over files.
 Levels are cumulative, subject to group path filters and platform support.
-Daily has no diff filters and runs all currently executable configured L0-L2 groups.
+Nightly has no diff filters and runs all currently executable configured L0-L2 groups.
 L1 includes debug and portable unit modules. L2 adds distributed, ONNX and
 MCore integration. Their source/test/launcher paths explicitly escalate to L2;
 shared TE source also has an L2 floor. Level is an eligibility ceiling: affected
