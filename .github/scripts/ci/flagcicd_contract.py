@@ -16,6 +16,8 @@ PLATFORM_REPORT_SCHEMA = "flagcicd.platform-report/v1"
 GATE_SCHEMA = "flagcicd.gate/v1"
 IDENTITY_SCHEMA = "flagcicd.artifact-identity/v1"
 
+KINDS = frozenset(("unit", "integration", "preflight", "compat", "benchmark", "release"))
+
 STATUSES = frozenset(
     (
         "passed",
@@ -140,11 +142,7 @@ def validate_plan(plan: dict[str, Any]) -> list[str]:
             errors.append("Malformed test-group execution mapping")
     for collection in ("execution_groups", "test_groups"):
         for group in plan.get(collection, []) if isinstance(plan.get(collection), list) else []:
-            if not isinstance(group, dict) or group.get("kind") not in (
-                "unit",
-                "integration",
-                "preflight",
-            ):
+            if not isinstance(group, dict) or group.get("kind") not in KINDS:
                 errors.append(f"Invalid or missing kind in {collection}")
     if plan.get("test_level") not in LEVELS:
         errors.append(f"test_level must be one of {LEVELS}")

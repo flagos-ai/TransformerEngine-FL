@@ -166,6 +166,13 @@ def execution_report(plan, execution, **overrides):
 class ContractSchemaTests(unittest.TestCase):
     """Test contract schema constants and validation."""
 
+    def test_all_catalog_kinds_are_valid(self):
+        for kind in ("unit", "preflight", "integration", "compat", "benchmark", "release"):
+            with self.subTest(kind=kind):
+                group = make_group("sample", "serial", kind=kind)
+                plan = make_plan(platforms=[{"name": "cuda"}], test_groups=[group])
+                self.assertEqual(contract.validate_plan(plan), [])
+
     def test_schema_version_constants(self):
         """Verify schema version constants are defined."""
         self.assertEqual(contract.PLAN_SCHEMA, "flagcicd.plan/v1")

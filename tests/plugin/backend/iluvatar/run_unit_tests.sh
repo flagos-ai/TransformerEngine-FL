@@ -32,6 +32,7 @@ run_pytest() {
     done
     local rule scope details expression reason
     local combined_filter=""
+    local expressions=()
     for rule in "${ILUVATAR_KNOWN_FAILURE_FILTERS[@]}"; do
         scope=${rule%%|*}
         details=${rule#*|}
@@ -41,6 +42,7 @@ run_pytest() {
             reason=${details#*|}
             echo "[DESELECT][$suite] $target: $reason"
             echo "[DESELECT][$suite] -k not ($expression)"
+            expressions+=("$expression")
             combined_filter="${combined_filter:+$combined_filter and }not ($expression)"
         fi
     done
@@ -54,8 +56,32 @@ run_pytest() {
         # policy, independent of the device QA's backend preference.
         python_command=(env -u TE_FL_ALLOW_VENDORS -u TE_FL_PREFER -u TE_FL_PER_OP -u TE_FL_STRICT "$PYTHON_BIN")
     fi
-    if ! "${python_command[@]}" -m pytest -v -s --tb=short "$TE_PATH/$target" "$@" \
-        --junitxml="$XML_LOG_DIR/$name.xml"; then
+    # Use an inline plugin so each rule is checked before pytest applies -k.
+    if ! "${python_command[@]}" - "${#expressions[@]}" "${expressions[@]}" \
+        -v -s --tb=short "$TE_PATH/$target" "$@" --junitxml="$XML_LOG_DIR/$name.xml" <<'CHECK'
+import sys
+import pytest
+from _pytest.mark import KeywordMatcher
+from _pytest.mark.expression import Expression
+
+count = int(sys.argv[1])
+rules = sys.argv[2:2 + count]
+
+class QuarantineAudit:
+    @pytest.hookimpl(tryfirst=True)
+    def pytest_collection_modifyitems(self, items):
+        for rule in rules:
+            expression = Expression.compile(rule)
+            matched = [item.nodeid for item in items if expression.evaluate(KeywordMatcher.from_item(item))]
+            print(f"[QUARANTINE] {len(matched)}/{len(items)} matched: {rule}")
+            for nodeid in matched:
+                print(f"[QUARANTINE-NODE] {nodeid}")
+            if not matched or len(matched) == len(items):
+                raise pytest.UsageError(f"Quarantine selector drift (zero or all tests matched): {rule}")
+
+raise SystemExit(pytest.main(sys.argv[2 + count:], plugins=[QuarantineAudit()]))
+CHECK
+    then
         FAILED=1
         FAILED_TESTS+=("$suite:$name")
     fi

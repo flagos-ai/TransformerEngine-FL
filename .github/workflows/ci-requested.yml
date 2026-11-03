@@ -74,6 +74,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+      - name: Install controller dependencies
+        run: python3 -m pip install --quiet PyYAML==6.0.3
       - name: Authorize and resolve requested tests
         id: request
         env:

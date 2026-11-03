@@ -35,6 +35,12 @@ class PlannerTests(unittest.TestCase):
             (root / "off.yml").write_text("enabled: false\nnproc_per_node: 1\n")
             self.assertEqual(set(planner.load_platforms(root)), {"on"})
             self.assertEqual(set(planner.gm._load_watch_rules(root)), {"on"})
+            import ci_requests
+
+            available = ci_requests.AvailablePlatforms(root)
+            self.assertEqual(ci_requests.select_platforms("all", available), ["on"])
+            with self.assertRaisesRegex(ValueError, "Platform disabled"):
+                ci_requests.select_platforms("off", available)
             (root / "off.yml").write_text("enabled: 'false'\n")
             with self.assertRaises(ValueError):
                 planner.load_platforms(root)

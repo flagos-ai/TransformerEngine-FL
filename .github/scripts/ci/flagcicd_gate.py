@@ -526,7 +526,7 @@ def cmd_platform(args: argparse.Namespace) -> int:
         # Keep original plan identity while validating only the pre-integration scope.
         plan = dict(plan)
         for key in ("execution_groups", "test_groups"):
-            plan[key] = [group for group in plan[key] if group["kind"] != "integration"]
+            plan[key] = [group for group in plan[key] if group["kind"] in ("unit", "preflight")]
     reports_dir = Path(args.reports_dir)
 
     # Ensure reports directory exists (may be empty if no groups ran)
@@ -538,7 +538,12 @@ def cmd_platform(args: argparse.Namespace) -> int:
         try:
             report = json.loads(report_file.read_text())
             if report.get("platform") == platform:
-                if getattr(args, "unit_only", False) and report.get("kind") == "integration":
+                if getattr(args, "unit_only", False) and report.get("kind") in (
+                    "integration",
+                    "compat",
+                    "benchmark",
+                    "release",
+                ):
                     continue
                 group_reports.append(report)
         except (OSError, json.JSONDecodeError) as exc:

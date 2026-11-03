@@ -197,3 +197,14 @@ GEMM target remains selected. Whole-file and partial exclusions are currently
 recorded in the Iluvatar shell configuration; a per-target coverage-gap schema
 and report is follow-up work, and passing group results do not imply complete
 coverage of those excluded targets.
+
+The Megatron checkout retry is shared by all platforms: partial-clone checkout
+may download blobs from the promisor remote, so it now retries up to three times
+with a five-second delay, just like clone and fetch. Exhausted retries still fail.
+
+The unit evidence report checks unit/preflight groups only; compatibility,
+benchmark and release groups remain subject to the final platform gate.
+Iluvatar quarantine rules are audited inline before keyword deselection. Each
+rule must match some but not all collected tests; matched node IDs are logged.
+This detects missing selectors but does not prove historical quarantine membership
+is unchanged. Review the logged node IDs after upstream parameter changes.
