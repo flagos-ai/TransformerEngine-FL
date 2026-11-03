@@ -73,11 +73,9 @@ jobs:
             --from-ref "$(git merge-base "origin/$BASE_REF" HEAD)" --to-ref HEAD
       - name: CI self-tests
         # Self-tests exercise simulated gates; keep their output out of Actions summaries.
-        env:
-          GITHUB_STEP_SUMMARY: ''
         run: |
           python -m pip install --quiet PyYAML==6.0.3 pytest==8.4.2
-          python -m unittest discover -s .github/scripts/ci -p 'test_*.py'
+          env -u GITHUB_STEP_SUMMARY python -m unittest discover -s .github/scripts/ci -p 'test_*.py'
 
   plan:
     name: Generate execution plan

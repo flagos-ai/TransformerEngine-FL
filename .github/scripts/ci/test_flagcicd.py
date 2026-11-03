@@ -1482,9 +1482,11 @@ class GateTests(unittest.TestCase):
             env = {
                 "FLAGCICD_PLAN": json.dumps(plan),
                 "FLAGCICD_NEEDS": json.dumps(needs),
+                "GITHUB_STEP_SUMMARY": str(Path(tmpdir, "summary.md")),
             }
             with patch.dict(gate.os.environ, env):
                 code = gate.cmd_gate(args)
+            self.rendered_summary = Path(env["GITHUB_STEP_SUMMARY"]).read_text()
             return code, json.loads(output.read_text())
 
     def setUp(self):
@@ -1497,11 +1499,14 @@ class GateTests(unittest.TestCase):
         ]
         code, summary = self.run_gate(self.plan, reports)
         self.assertEqual((code, summary["status"], summary["errors"]), (0, "passed", []))
+        self.assertIn("| cuda | passed |", self.rendered_summary)
+        self.assertIn("| ascend | passed |", self.rendered_summary)
 
     def test_missing_platform_report_fails(self):
         code, summary = self.run_gate(self.plan, [platform_report(self.plan, "cuda")])
         self.assertEqual(code, 1)
         self.assertIn("Missing platform report: ascend", summary["errors"])
+        self.assertIn("| ascend | missing report |", self.rendered_summary)
 
     def test_duplicate_platform_report_fails(self):
         reports = [
