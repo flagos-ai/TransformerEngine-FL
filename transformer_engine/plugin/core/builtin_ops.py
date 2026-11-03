@@ -120,4 +120,4 @@ def register_builtins(registry: OpRegistry) -> None:
         register_biren(registry)
     except Exception as e:
         # Biren may not be available, this is expected
-        print(f"[WARNING] Failed to register Biren operators: {e}")
+        pass
