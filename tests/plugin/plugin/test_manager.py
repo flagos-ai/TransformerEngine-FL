@@ -470,18 +470,24 @@ def test_resolve_cache_invalidates_after_registry_mutation():
         op_name="late_vendor_op",
     )
     vendor = create_mock_impl(
-        "vendor.npu",
+        "vendor.acme",
         BackendImplKind.VENDOR,
         op_name="late_vendor_op",
-        vendor="NPU",
+        vendor="acme",
     )
     registry.register_impl(native)
     mgr = OpManager(registry=registry)
 
+    # Pin the order instead of relying on the ambient default: vendor
+    # platforms export TE_FL_PREFER=reference, which would keep te.native
+    # winning and make this assert about policy rather than cache staleness.
+    policy = SelectionPolicy.from_dict(per_op_order={"late_vendor_op": ["vendor", "reference"]})
+
     with patch.object(mgr, "ensure_initialized"):
-        assert mgr.resolve("late_vendor_op") is native.fn
-        registry.register_impl(vendor)
-        assert mgr.resolve("late_vendor_op") is vendor.fn
+        with patch("transformer_engine.plugin.core.manager.get_policy", return_value=policy):
+            assert mgr.resolve("late_vendor_op") is native.fn
+            registry.register_impl(vendor)
+            assert mgr.resolve("late_vendor_op") is vendor.fn
 
 
 def test_call_cache_invalidates_after_registry_mutation():
@@ -493,10 +499,10 @@ def test_call_cache_invalidates_after_registry_mutation():
         op_name="late_call_vendor_op",
     )
     vendor = create_mock_impl(
-        "vendor.npu",
+        "vendor.acme",
         BackendImplKind.VENDOR,
         op_name="late_call_vendor_op",
-        vendor="NPU",
+        vendor="acme",
     )
     registry.register_impl(native)
     mgr = OpManager(registry=registry)
@@ -543,7 +549,7 @@ def test_policy_epoch_prevents_reusing_stale_fingerprint_cache():
         "vendor.first",
         BackendImplKind.VENDOR,
         op_name="policy_epoch_op",
-        vendor="NPU",
+        vendor="acme",
     )
     registry.register_impl(impl)
     mgr = OpManager(registry=registry)
@@ -566,9 +572,9 @@ def test_call_does_not_stamp_old_selection_with_new_registry_generation():
 
     vendor_impl = OpImpl(
         op_name="registration_during_call",
-        impl_id="vendor.npu",
+        impl_id="vendor.acme",
         kind=BackendImplKind.VENDOR,
-        vendor="NPU",
+        vendor="acme",
         fn=vendor,
     )
 
