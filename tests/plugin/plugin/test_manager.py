@@ -459,3 +459,157 @@ def test_get_selected_impl_id():
     with patch.object(mgr, "ensure_initialized"):
         with patch.object(OpImpl, "is_available", return_value=True):
             assert mgr.get_selected_impl_id("validated_op") == "v1"
+
+
+def test_resolve_cache_invalidates_after_registry_mutation():
+    registry = OpRegistry()
+
+    native = create_mock_impl(
+        "te.native",
+        BackendImplKind.REFERENCE,
+        op_name="late_vendor_op",
+    )
+    vendor = create_mock_impl(
+        "vendor.npu",
+        BackendImplKind.VENDOR,
+        op_name="late_vendor_op",
+        vendor="NPU",
+    )
+    registry.register_impl(native)
+    mgr = OpManager(registry=registry)
+
+    with patch.object(mgr, "ensure_initialized"):
+        assert mgr.resolve("late_vendor_op") is native.fn
+        registry.register_impl(vendor)
+        assert mgr.resolve("late_vendor_op") is vendor.fn
+
+
+def test_call_cache_invalidates_after_registry_mutation():
+    registry = OpRegistry()
+
+    native = create_mock_impl(
+        "te.native",
+        BackendImplKind.REFERENCE,
+        op_name="late_call_vendor_op",
+    )
+    vendor = create_mock_impl(
+        "vendor.npu",
+        BackendImplKind.VENDOR,
+        op_name="late_call_vendor_op",
+        vendor="NPU",
+    )
+    registry.register_impl(native)
+    mgr = OpManager(registry=registry)
+
+    with patch.object(mgr, "ensure_initialized"):
+        mgr._update_cache("late_call_vendor_op", native)
+        assert mgr._is_cache_valid("late_call_vendor_op") is True
+        registry.register_impl(vendor)
+        assert mgr._is_cache_valid("late_call_vendor_op") is False
+
+
+def test_registry_register_many_is_atomic():
+    registry = OpRegistry()
+    existing = create_mock_impl(
+        "existing",
+        BackendImplKind.REFERENCE,
+        op_name="atomic_op",
+    )
+    new = create_mock_impl(
+        "new",
+        BackendImplKind.REFERENCE,
+        op_name="atomic_op",
+    )
+    duplicate = create_mock_impl(
+        "existing",
+        BackendImplKind.REFERENCE,
+        op_name="atomic_op",
+    )
+    registry.register_impl(existing)
+    generation = registry.generation
+
+    with pytest.raises(ValueError, match="Duplicate impl_id"):
+        registry.register_many([new, duplicate])
+
+    assert registry.get_implementation("atomic_op", "new") is None
+    assert registry.generation == generation
+
+
+def test_policy_epoch_prevents_reusing_stale_fingerprint_cache():
+    from transformer_engine.plugin.core.policy import bump_policy_epoch
+
+    registry = OpRegistry()
+    impl = create_mock_impl(
+        "vendor.first",
+        BackendImplKind.VENDOR,
+        op_name="policy_epoch_op",
+        vendor="NPU",
+    )
+    registry.register_impl(impl)
+    mgr = OpManager(registry=registry)
+
+    with patch.object(mgr, "ensure_initialized"):
+        assert mgr.resolve("policy_epoch_op") is impl.fn
+        old_keys = set(mgr._dispatch_cache)
+        bump_policy_epoch()
+        assert mgr.resolve("policy_epoch_op") is impl.fn
+
+    assert set(mgr._dispatch_cache) != old_keys
+
+
+def test_call_does_not_stamp_old_selection_with_new_registry_generation():
+    registry = OpRegistry()
+    mgr = OpManager(registry=registry)
+
+    def vendor():
+        return "vendor"
+
+    vendor_impl = OpImpl(
+        op_name="registration_during_call",
+        impl_id="vendor.npu",
+        kind=BackendImplKind.VENDOR,
+        vendor="NPU",
+        fn=vendor,
+    )
+
+    def native():
+        registry.register_impl(vendor_impl)
+        return "native"
+
+    registry.register_impl(
+        OpImpl(
+            op_name="registration_during_call",
+            impl_id="te.native",
+            kind=BackendImplKind.REFERENCE,
+            fn=native,
+        )
+    )
+
+    with patch.object(mgr, "ensure_initialized"):
+        assert mgr.call("registration_during_call") == "native"
+        assert mgr.call("registration_during_call") == "vendor"
+
+
+def test_resolve_discards_obsolete_dispatch_cache_entries():
+    registry = OpRegistry()
+    native = create_mock_impl(
+        "te.native",
+        BackendImplKind.REFERENCE,
+        op_name="bounded_dispatch_cache",
+    )
+    registry.register_impl(native)
+    mgr = OpManager(registry=registry)
+
+    with patch.object(mgr, "ensure_initialized"):
+        for index in range(5):
+            assert mgr.resolve("bounded_dispatch_cache") is native.fn
+            registry.register_impl(
+                create_mock_impl(
+                    f"reference.{index}",
+                    BackendImplKind.REFERENCE,
+                    op_name=f"unrelated_{index}",
+                )
+            )
+
+    keys = [key for key in mgr._dispatch_cache if key[0] == "bounded_dispatch_cache"]
+    assert len(keys) == 1
