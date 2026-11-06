@@ -112,6 +112,13 @@ def _import_tex_module():
     # PyInit name ("transformer_engine_torch"), which would shadow the TEFL
     # dispatch module that plugin.core._module_setup installs under the same
     # name. Save the current owner and restore it right after exec_module.
+    #
+    # The restore must be UNCONDITIONAL: whether the extension registers
+    # itself in sys.modules during exec_module depends on the build. The
+    # torch2.8 build (single-phase PyInit) self-registers, so the old
+    # conditional check happened to work; the torch2.10 build does not,
+    # which silently dropped the TEFL alias and broke
+    # `import transformer_engine.pytorch` downstream.
     saved_owner = sys.modules.pop("transformer_engine_torch", None)
     try:
         sys.setdlopenflags(os.RTLD_LAZY | os.RTLD_GLOBAL)
@@ -120,11 +127,10 @@ def _import_tex_module():
         spec.loader.exec_module(mod)
     finally:
         sys.setdlopenflags(old_flags)
-        if sys.modules.get("transformer_engine_torch") is mod:
-            if saved_owner is not None:
-                sys.modules["transformer_engine_torch"] = saved_owner
-            else:
-                del sys.modules["transformer_engine_torch"]
+        if saved_owner is not None:
+            sys.modules["transformer_engine_torch"] = saved_owner
+        else:
+            sys.modules.pop("transformer_engine_torch", None)
     sys.modules["transformer_engine_torch_metax"] = mod
     return mod
 
