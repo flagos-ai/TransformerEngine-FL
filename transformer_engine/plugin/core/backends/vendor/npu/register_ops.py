@@ -44,6 +44,15 @@ def register_builtins(registry) -> None:
     is_avail = backend.is_available
 
     impls = [
+        # cuDNN is not available on Ascend NPU.
+        OpImpl(
+            op_name="get_cudnn_version",
+            impl_id="vendor.npu",
+            kind=BackendImplKind.VENDOR,
+            fn=_bind_is_available(backend.get_cudnn_version, is_avail),
+            vendor="NPU",
+            priority=100,
+        ),
         # FlashAttention class getter
         OpImpl(
             op_name="get_flash_attention_class",
