@@ -266,7 +266,7 @@ class OpManager:
         self._dispatch_cache[cache_key] = chosen.fn
         return chosen.fn
 
-    def resolve_candidates(self, op_name: str) -> list[OpImpl]:
+    def resolve_candidates(self, op_name: str, *, optional: bool = False) -> list[OpImpl]:
         """
         Resolve and return all available implementations for an operator,
         sorted by priority (highest first).
@@ -309,6 +309,8 @@ class OpManager:
         candidates = available
 
         if not candidates:
+            if optional:
+                return []
             raise RuntimeError(
                 f"No available implementation for op='{op_name}'. "
                 f"Registered: {[impl.impl_id for impl in snap.impls_by_op.get(op_name, [])]}"
@@ -335,6 +337,8 @@ class OpManager:
                 unique_candidates.append(c)
 
         if not unique_candidates:
+            if optional:
+                return []
             raise RuntimeError(
                 f"No implementation selected for op='{op_name}'. "
                 f"Candidates: {[c.impl_id for c in candidates]}, Order: {order}"
