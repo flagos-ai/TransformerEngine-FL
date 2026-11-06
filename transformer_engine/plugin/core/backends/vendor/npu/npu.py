@@ -1023,3 +1023,39 @@ class NPUBackend(TEFLBackendBase):
 
         _ = math_sm_count  # CUDA-only tuning knob.
         return bias
+
+
+    # ===================== MoE permutation =====================
+
+    def moe_permute_with_routing_map(self, tokens, routing_map, probs=None,
+                                     num_out_tokens=None, drop_and_pad=False):
+        from .permutation import moe_permute_with_routing_map
+        return moe_permute_with_routing_map(tokens, routing_map, probs, num_out_tokens,
+                                            drop_and_pad)
+
+    def moe_unpermute_with_routing_map(self, permuted_tokens, sorted_indices,
+                                       restore_shape, probs=None, routing_map=None,
+                                       drop_and_pad=False):
+        from .permutation import moe_unpermute_with_routing_map
+        return moe_unpermute_with_routing_map(permuted_tokens, sorted_indices, restore_shape,
+                                              probs, routing_map, drop_and_pad)
+
+    def moe_sort_chunks_fwd(self, input, split_sizes, sorted_idxs, probs=None):
+        from .permutation import ensure_chunk_sort_kernels_registered
+
+        ensure_chunk_sort_kernels_registered()
+
+        return torch.ops.te_moe.chunk_sort_fwd(input, split_sizes, sorted_idxs, probs)
+
+    def moe_sort_chunks_bwd(self, grad_output, grad_probs, inverse_row_map):
+        from .permutation import ensure_chunk_sort_kernels_registered
+
+        ensure_chunk_sort_kernels_registered()
+
+        # Match the existing TE custom-op schema. The NPU kernel treats the
+        # mapping as patch3's inverse row index.
+        return torch.ops.te_moe.chunk_sort_bwd(
+            grad_output,
+            grad_probs,
+            inverse_row_map,
+            grad_output.size(0),
