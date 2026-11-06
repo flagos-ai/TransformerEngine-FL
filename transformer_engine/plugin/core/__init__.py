@@ -54,9 +54,12 @@ from ._module_setup import setup_module_aliases, register_as_transformer_engine_
 
 setup_module_aliases()
 
-# Import backends - this loads all available backends (flagos, reference, vendor/cuda, etc.)
+from .triton_dispatch import install as _install_triton_dispatch
+
+_install_triton_dispatch()
+
+# Import the backends package; concrete implementations are registered lazily.
 from . import backends
 
-# Register transformer_engine_torch AFTER backends are loaded
-# so that get_tefl_module() can find a registered backend
+# Register transformer_engine_torch after the backends namespace is available.
 register_as_transformer_engine_torch()
