@@ -8,6 +8,20 @@ import subprocess
 from urllib.parse import quote
 
 PLATFORM_LIST = r"[a-z0-9_-]+(?:[ ,]+[a-z0-9_-]+)*"
+
+
+class AvailablePlatforms(set):
+    def __init__(self, configs_dir):
+        import generate_matrix as matrix
+
+        enabled = matrix._load_watch_rules(configs_dir)
+        super().__init__(enabled)
+        configured = {
+            p.stem for p in configs_dir.glob("*.yml") if p.stem not in matrix._NON_PLATFORM_STEMS
+        }
+        self.disabled = configured - self
+
+
 TEST_LEVELS = frozenset(("auto", "L0", "L1", "L2", "L3", "L4"))
 
 
@@ -15,6 +29,9 @@ def select_platforms(requested, available):
     if not re.fullmatch(PLATFORM_LIST, requested):
         raise ValueError("Expected comma/space-separated platforms or 'all'")
     selected = set(re.split(r"[ ,]+", requested))
+    disabled = selected & getattr(available, "disabled", set())
+    if disabled:
+        raise ValueError(f"Platform disabled: {', '.join(sorted(disabled))}")
     if not available or selected - available - {"all"}:
         raise ValueError("Unknown platform or no configured platforms")
     return sorted(available if "all" in selected else selected)
@@ -77,11 +94,7 @@ def main():
             )
         )
 
-    available = {
-        p.stem
-        for p in Path(".github/configs").glob("*.yml")
-        if p.stem not in {"template", "image_sources", "platforms"}
-    }
+    available = AvailablePlatforms(Path(".github/configs"))
     event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
     if os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch":
         platforms, ref, level = resolve_dispatch(

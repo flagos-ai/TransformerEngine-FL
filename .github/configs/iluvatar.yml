@@ -1,0 +1,90 @@
+# Iluvatar BI-V150 / CoreX QA configuration, following the Hygon adapter layout.
+# Set enabled: false to exclude this platform from automatic and manual plans.
+# Enable only after the runner and the CI image are provisioned.
+enabled: true
+hardware_name: iluvatar
+display_name: 'Iluvatar BI-V150 (CoreX 4.5.0)'
+checkout_submodules: 'false'
+# Build with docker build --target ci -f docker/iluvatar/Dockerfile -t <ci_image> .
+# The published -dev tag was built using --target ci; the suffix is a tag name.
+# Preload the resulting image on the runner (pull policy: never).
+ci_image: harbor.baai.ac.cn/flagos-dev/transformerengine-fl:f886262-iluvatar-dev
+container_pull_policy: never
+runner_labels:
+  - ts-8g-cicd-te
+container_volumes: []
+container_options: >-
+  --privileged
+  --ipc=host
+  --shm-size=100g
+  --ulimit memlock=-1
+  --ulimit stack=67108864
+  --user root
+  --group-add video
+  -e CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7
+  --device=/dev/itrctl
+  --device=/dev/iluvatar0
+  --device=/dev/iluvatar1
+  --device=/dev/iluvatar2
+  --device=/dev/iluvatar3
+  --device=/dev/iluvatar4
+  --device=/dev/iluvatar5
+  --device=/dev/iluvatar6
+  --device=/dev/iluvatar7
+setup_script: .github/scripts/setup_iluvatar.sh
+device_types:
+  - bi-v150
+# Eight devices are exposed to match the existing multi-device QA launchers.
+nproc_per_node: 8
+coverage:
+  enabled: true
+  required: false
+  python: python3
+  sources: [transformer_engine]
+  include:
+    - transformer_engine/pytorch/*
+    - transformer_engine/debug/*
+    - transformer_engine/plugin/*
+  omit:
+    - '*/setup.py'
+    - '*/transformer_engine/plugin/core/_build_config.py'
+unit_test_matrix:
+  - name: pytorch_debug
+    runner: script
+    path: tests/plugin/backend/iluvatar/run_unit_tests.sh
+    args: [debug]
+    timeout_minutes: 240
+  - name: pytorch_unit
+    runner: script
+    path: tests/plugin/backend/iluvatar/run_unit_tests.sh
+    args: [unittest]
+    timeout_minutes: 240
+  - name: pytorch_distributed
+    runner: script
+    path: tests/plugin/backend/iluvatar/run_unit_tests.sh
+    args: [distributed]
+    timeout_minutes: 240
+  - name: pytorch_onnx
+    runner: script
+    path: tests/plugin/backend/iluvatar/run_unit_tests.sh
+    args: [onnx]
+    timeout_minutes: 240
+integration_test_matrix:
+  - name: pytorch_mcore_integration
+    path: tests/plugin/backend/iluvatar/run_integration_tests.sh
+paths_watch:
+  - docker/iluvatar/
+  - .github/configs/iluvatar.yml
+  - .github/scripts/setup_iluvatar.sh
+  - tests/plugin/backend/iluvatar/
+  - transformer_engine/plugin/core/backends/vendor/iluvatar/
+# RoPE uses the FlagOS backend tests, as on PPU; the common large-shape RoPE
+# matrix is not launched on this 32 GiB baseline (see the Iluvatar config.sh).
+# Whole-file exclusions and reproduction reasons are recorded in config.sh:
+# common numerics, CUDA Graphs, both CPU offload files, public attention/KV cache,
+# historical checkpoint tests, and distributed numerics (normal and debug).
+# These gaps are not passing tests; config.sh records restoration conditions.
+# Restore quantization when the selected targets produce passing JUnit evidence
+# on this CoreX baseline and the required-group evidence gate passes.
+unsupported_test_groups:
+  quantization: Current CoreX 4.5.0 CI skips all selected quantization targets (18674 skipped, zero passed in run 41381184040); no passing evidence is available. Restore after vendor/runtime adaptation yields passing quantization tests and the required-group evidence gate passes.

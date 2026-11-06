@@ -52,6 +52,8 @@ jobs:
       preflight_matrix: ${{ steps.slice.outputs.preflight_matrix }}
       parallel_matrix: ${{ steps.slice.outputs.parallel_matrix }}
       serial_matrix: ${{ steps.slice.outputs.serial_matrix }}
+      integration_matrix: ${{ steps.slice.outputs.integration_matrix }}
+      has_integration: ${{ steps.slice.outputs.has_integration }}
       has_parallel: ${{ steps.slice.outputs.has_parallel }}
       has_serial: ${{ steps.slice.outputs.has_serial }}
       preflight_selected: ${{ steps.slice.outputs.preflight_selected }}
@@ -316,10 +318,8 @@ jobs:
           retention-days: 1
           overwrite: true
 
-  # Both lanes require preflight (when planned) and the test artifact (when
-  # configured). The serial lane only waits for the parallel lane to finish so
-  # the two never share a runner pool; group results are judged by
-  # platform_gate, not by lane success.
+  # Unit lanes share a runner pool and execute before the report gate.
+  # Integration waits for unit evidence, but still runs when unit tests fail.
   parallel_groups:
     name: parallel-lane
     needs: [checkout_and_config, preflight, build_test_artifact]
@@ -382,10 +382,79 @@ jobs:
       coverage_required: ${{ needs.checkout_and_config.outputs.coverage_required }}
       coverage_sources: ${{ needs.checkout_and_config.outputs.coverage_sources }}
 
+
+  unit_tests_complete:
+    name: unit-tests-complete
+    needs: [checkout_and_config, preflight, build_test_artifact, parallel_groups, serial_groups]
+    if: |
+      !cancelled() &&
+      needs.checkout_and_config.result == 'success' &&
+      (needs.checkout_and_config.outputs.preflight_selected != 'true' || needs.preflight.result == 'success') &&
+      (needs.build_test_artifact.result == 'success' || needs.build_test_artifact.result == 'skipped')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout_ref }}
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: flagcicd-group-${{ inputs.platform }}-*
+          path: group-reports
+          merge-multiple: false
+      - name: Validate required unit test reports
+        env:
+          FLAGCICD_PLAN: ${{ inputs.plan }}
+        run: >-
+          python3 .github/scripts/ci/flagcicd_gate.py platform
+          --unit-only --platform "${{ inputs.platform }}"
+          --reports-dir group-reports --output unit-report.json
+      - name: Upload unit report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: flagcicd-unit-${{ inputs.platform }}
+          path: unit-report.json
+          if-no-files-found: warn
+          retention-days: 14
+          overwrite: true
+
+  integration_groups:
+    name: integration-tests
+    needs: [checkout_and_config, preflight, build_test_artifact, unit_tests_complete]
+    if: |
+      !cancelled() &&
+      needs.checkout_and_config.result == 'success' &&
+      needs.checkout_and_config.outputs.has_integration == 'true' &&
+      (needs.unit_tests_complete.result == 'success' || needs.unit_tests_complete.result == 'failure') &&
+      (needs.checkout_and_config.outputs.preflight_selected != 'true' || needs.preflight.result == 'success') &&
+      (needs.build_test_artifact.result == 'success' ||
+       needs.build_test_artifact.result == 'skipped')
+    uses: ./.github/workflows/test_groups_common.yml
+    with:
+      platform: ${{ inputs.platform }}
+      checkout_ref: ${{ inputs.checkout_ref }}
+      plan: ${{ inputs.plan }}
+      matrix: ${{ needs.checkout_and_config.outputs.integration_matrix }}
+      max_parallel: 1
+      image: ${{ needs.checkout_and_config.outputs.ci_image }}
+      container_pull_policy: ${{ needs.checkout_and_config.outputs.container_pull_policy }}
+      runs_on: ${{ needs.checkout_and_config.outputs.runs_on }}
+      container_volumes: ${{ needs.checkout_and_config.outputs.container_volumes }}
+      container_options: ${{ needs.checkout_and_config.outputs.container_options }}
+      setup_script: ${{ needs.checkout_and_config.outputs.setup_script }}
+      checkout_submodules: ${{ needs.checkout_and_config.outputs.checkout_submodules }}
+      test_artifact_name: ${{ needs.checkout_and_config.outputs.test_artifact_name }}
+      test_artifact_path: ${{ needs.checkout_and_config.outputs.test_artifact_path }}
+      config_hash: ${{ needs.checkout_and_config.outputs.config_hash }}
+      source_sha: ${{ needs.checkout_and_config.outputs.source_sha }}
+      coverage_required: ${{ needs.checkout_and_config.outputs.coverage_required }}
+      coverage_sources: ${{ needs.checkout_and_config.outputs.coverage_sources }}
+
   coverage:
     name: coverage-${{ matrix.device }}
     continue-on-error: ${{ needs.checkout_and_config.outputs.coverage_required != 'true' }}
-    needs: [checkout_and_config, build_test_artifact, parallel_groups, serial_groups]
+    needs: [checkout_and_config, build_test_artifact, parallel_groups, serial_groups, integration_groups]
     if: |
       !cancelled() &&
       needs.checkout_and_config.outputs.coverage_active == 'true'
@@ -530,7 +599,7 @@ jobs:
 
           echo "PASS: No coverage regression"
 
-      - name: Check daily 3-sigma regression
+      - name: Check nightly 3-sigma regression
         if: |
           steps.aggregate.outputs.aggregated == 'true' &&
           needs.checkout_and_config.outputs.coverage_comparable == 'true' &&
@@ -544,7 +613,7 @@ jobs:
         run: |
           history_file="$RUNNER_TEMP/coverage-history.json"
 
-          # Collect totals.percent_covered from earlier successful daily runs
+          # Collect totals.percent_covered from earlier successful nightly runs
           # through the GitHub REST API; vendor containers may lack the gh CLI.
           # The history file is written only when the window has enough samples.
           python3 - "$history_file" << 'FETCH_EOF'
@@ -657,7 +726,7 @@ jobs:
 
   platform_gate:
     name: platform-gate
-    needs: [checkout_and_config, preflight, build_test_artifact, parallel_groups, serial_groups, coverage]
+    needs: [checkout_and_config, preflight, build_test_artifact, parallel_groups, serial_groups, unit_tests_complete, integration_groups, coverage]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     steps:

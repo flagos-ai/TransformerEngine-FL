@@ -26,6 +26,50 @@ UNIT_SUITES = {
 
 
 class PlannerTests(unittest.TestCase):
+    def test_disabled_platform_is_not_registered(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "on.yml").write_text(
+                "enabled: true\nnproc_per_node: 1\npaths_watch: [vendor/on/]\n"
+            )
+            (root / "off.yml").write_text("enabled: false\nnproc_per_node: 1\n")
+            self.assertEqual(set(planner.load_platforms(root)), {"on"})
+            self.assertEqual(set(planner.gm._load_watch_rules(root)), {"on"})
+            import ci_requests
+
+            available = ci_requests.AvailablePlatforms(root)
+            self.assertEqual(ci_requests.select_platforms("all", available), ["on"])
+            with self.assertRaisesRegex(ValueError, "Platform disabled"):
+                ci_requests.select_platforms("off", available)
+            (root / "off.yml").write_text("enabled: 'false'\n")
+            with self.assertRaises(ValueError):
+                planner.load_platforms(root)
+            with self.assertRaises(ValueError):
+                planner.gm._load_watch_rules(root)
+
+    def test_summary_separates_routing_scope_and_platform_counts(self):
+        plan = self.run_planner(
+            "pr", changed_files=json.dumps(["transformer_engine/pytorch/new_shared.py"])
+        )
+        plan["reasons"] = ["shared <source> | test"]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp, "summary.md")
+            planner.write_summary(path, plan)
+            text = path.read_text()
+        self.assertIn("### Platform selection", text)
+        self.assertIn("### Unit test plan", text)
+        self.assertIn("shared &lt;source&gt; &#124; test", text)
+        for platform in plan["platforms"]:
+            self.assertIn(f"| {platform['name']} |", text)
+        self.assertIn(plan["plan_hash"], text)
+        self.assertIn("Declared platform coverage gaps", text)
+
+    def assert_all_platforms(self, plan):
+        expected = set(planner.load_platforms(ROOT / ".github/configs"))
+        self.assertTrue(expected)
+        self.assertIn("cuda", expected)
+        self.assertEqual({entry["name"] for entry in plan["platforms"]}, expected)
+
     def supported_suites(self, platform):
         return set(UNIT_SUITES) - ({"pytorch_debug"} if platform == "hygon" else set())
 
@@ -337,7 +381,7 @@ class PlannerTests(unittest.TestCase):
             with self.subTest(path=path):
                 plan = self.run_planner("pr", changed_files=json.dumps([path]))
                 self.assertEqual(plan["test_level"], level)
-                self.assertEqual(len(plan["platforms"]), 8)
+                self.assert_all_platforms(plan)
                 for platform in plan["platforms"]:
                     # The full baseline scope must survive partial PR selection.
                     self.assertEqual(
@@ -361,7 +405,7 @@ class PlannerTests(unittest.TestCase):
                 ["tests/pytorch/test_recipe.py", "tests/pytorch/test_onnx_export.py"]
             ),
         )
-        self.assertEqual(len(plan["platforms"]), 8)
+        self.assert_all_platforms(plan)
         for platform in plan["platforms"]:
             actual = {
                 g["group"] for g in plan["execution_groups"] if g["platform"] == platform["name"]
@@ -374,7 +418,7 @@ class PlannerTests(unittest.TestCase):
             changed_files=json.dumps(["transformer_engine/pytorch/new_shared_component.py"]),
         )
         self.assertEqual(plan["test_level"], "L2")
-        self.assertEqual(len(plan["platforms"]), 8)
+        self.assert_all_platforms(plan)
         for platform in plan["platforms"]:
             actual = {
                 g["group"] for g in plan["execution_groups"] if g["platform"] == platform["name"]
@@ -602,7 +646,7 @@ class PlannerTests(unittest.TestCase):
 
         group_names = {g["group"] for g in plan["execution_groups"]}
 
-        self.assertEqual(len(plan["platforms"]), 8)  # All platforms selected
+        self.assert_all_platforms(plan)  # All platforms selected
         self.assertNotIn("model_validation", group_names)
         self.assertTrue(plan["blocked"])
         self.assertTrue(any(item["required"] for item in plan["blocked"]))

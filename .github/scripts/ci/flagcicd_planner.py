@@ -40,6 +40,11 @@ def load_platforms(configs_dir: Path) -> dict[str, Any]:
             continue
         config_bytes = path.read_bytes()
         config = yaml.safe_load(config_bytes)
+        enabled = config.get("enabled", True)
+        if not isinstance(enabled, bool):
+            raise ValueError(f"{path.name}: enabled must be a boolean")
+        if not enabled:
+            continue
         nproc = config.get("nproc_per_node")
         if isinstance(nproc, bool) or not isinstance(nproc, int) or nproc < 1:
             raise ValueError(f"{path.name}: nproc_per_node must be a positive integer")
@@ -211,8 +216,8 @@ def validate_test_groups(project: dict) -> None:
             return
         visiting.add(name)
         group = catalog[name]
-        if group.get("level") not in LEVEL_ORDER or group.get("status") != "active":
-            raise ValueError(f"Invalid test-group level/status: {name}")
+        if group.get("level") not in LEVEL_ORDER:
+            raise ValueError(f"Invalid test-group level: {name}")
         if group.get("resources", {}).get("class") not in project["resource_classes"]:
             raise ValueError(f"Unknown resource class for test group {name}")
         if not group.get("blocked"):
@@ -723,6 +728,86 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
     return plan
 
 
+def write_summary(path: Path, plan: dict) -> None:
+    """Render routing and test scope together, using the TE plan contract."""
+
+    def escape(value):
+        return (
+            str(value)
+            .replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace("|", "&#124;")
+            .replace("\n", " ")
+        )
+
+    platforms = plan["platforms"]
+    executions = plan["execution_groups"]
+    selection = plan["group_selection"]
+    gaps = [
+        f"{p['name']}/{gap['group']}: {gap['reason']}"
+        for p in platforms
+        for gap in p["unsupported_test_groups"]
+    ]
+    lines = [
+        "### Platform selection",
+        "",
+        "Selected: " + (", ".join(p["name"] for p in platforms) or "none (lint only)"),
+        "",
+    ]
+    lines.extend(f"- {escape(reason)}" for reason in plan["reasons"])
+    lines.extend(
+        [
+            "",
+            "### Unit test plan",
+            "",
+            f"- Stage: `{plan['stage']}`",
+            f"- Selection: `{plan['selection']}`",
+            (
+                "- Scope:"
+                f" `{'full in-level scope' if selection['full_scope'] else 'affected groups plus baseline'}`"
+            ),
+            f"- Level: `{plan['test_level']}`",
+            f"- Required blocked groups: {sum(bool(g.get('required')) for g in plan['blocked'])}",
+            (
+                "- Gate policy: required groups must execute and pass; declared platform gaps are"
+                " recorded separately"
+            ),
+            f"- Selected logical groups: {len(plan['test_groups'])} platform/device entries",
+            f"- Selected execution groups: {len(executions)} jobs",
+            f"- Changed files: {plan['changed_files']['count']}",
+            f"- Excluded entries: {len(plan['excluded'])}; blocked entries: {len(plan['blocked'])}",
+            "- Selected test groups: " + (", ".join(selection["groups"]) or "none"),
+            f"- Plan hash: `{plan['plan_hash']}`",
+            "",
+            "| Platform | Unit jobs | Integration jobs | Other jobs | Declared coverage gaps |",
+            "| --- | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for platform in platforms:
+        groups = [g for g in executions if g["platform"] == platform["name"]]
+        units = sum(g["kind"] == "unit" for g in groups)
+        integrations = sum(g["kind"] == "integration" for g in groups)
+        lines.append(
+            f"| {escape(platform['name'])} | {units} | {integrations} |"
+            f" {len(groups)-units-integrations} | {len(platform['unsupported_test_groups'])} |"
+        )
+    lines.extend(["", "Coverage gaps and excluded targets are not passing-test evidence.", ""])
+    if gaps:
+        lines.extend(["<details><summary>Declared platform coverage gaps</summary>", ""])
+        lines.extend(f"- {escape(gap)}" for gap in gaps)
+        lines.extend(["", "</details>", ""])
+    if plan["blocked"]:
+        lines.extend(["<details><summary>Blocked test groups</summary>", ""])
+        lines.extend(
+            f"- {escape(g['platform'])}/{escape(g['group'])}: {escape(g.get('reason', 'blocked'))}"
+            for g in plan["blocked"]
+        )
+        lines.extend(["", "</details>", ""])
+    with path.open("a") as output:
+        output.write("\n".join(lines) + "\n")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -769,34 +854,9 @@ def main() -> int:
             # Default: write to stdout if no output options specified
             print(json.dumps(plan, indent=2, sort_keys=True))
 
-        # Write step summary
+        # Write the plan only in the real planning job, not self-test subprocesses.
         if summary := os.environ.get("GITHUB_STEP_SUMMARY"):
-            with open(summary, "a") as f:
-                f.write(f"### Plan: {plan['stage']} / {plan['test_level']}\n\n")
-                f.write(
-                    "- Platforms:"
-                    f" {', '.join(p['name'] for p in plan['platforms']) or 'none (lint only)'}\n"
-                )
-                f.write(
-                    f"- Test groups: {len(plan['test_groups'])}; execution jobs:"
-                    f" {len(plan['execution_groups'])}\n"
-                )
-                f.write(f"- Excluded: {len(plan['excluded'])}, blocked: {len(plan['blocked'])}\n")
-                f.write(f"- Plan hash: `{plan['plan_hash'][:12]}...`\n\n")
-                f.write(
-                    "- Selected test groups:"
-                    f" {', '.join(plan['group_selection']['groups']) or 'none'}\n"
-                )
-                for platform in plan["platforms"]:
-                    for gap in platform["unsupported_test_groups"]:
-                        message = f"{platform['name']}/{gap['group']}: {gap['reason']}"
-                        f.write(
-                            f"- Coverage gap: {message.replace('<', '&lt;').replace('>', '&gt;')}\n"
-                        )
-                for reason in plan["reasons"]:
-                    # Keep repository paths from injecting markup into the summary.
-                    f.write(f"- {reason.replace('<', '&lt;').replace('>', '&gt;')}\n")
-                f.write("\n")
+            write_summary(Path(summary), plan)
 
         return 0
 

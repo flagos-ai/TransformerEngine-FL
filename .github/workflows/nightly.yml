@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Daily comprehensive testing at L2 across all platforms (FlagCICD stage
-# "nightly").  Runs every day at 02:17 Asia/Shanghai (18:17 UTC).
+# Nightly comprehensive testing at L2 across all platforms (FlagCICD stage
+# "nightly").  Runs every day at 00:00 Asia/Shanghai (16:00 UTC).
 
-name: Daily
+name: Nightly
 
 on:
   schedule:
-    - cron: '17 18 * * *'  # 02:17 Asia/Shanghai
+    - cron: '0 16 * * *'  # 00:00 Asia/Shanghai
   workflow_dispatch:
 
 permissions:
@@ -27,7 +27,7 @@ permissions:
   actions: read
 
 concurrency:
-  group: daily-${{ github.ref }}
+  group: nightly-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -56,7 +56,7 @@ jobs:
             --from-ref "$(git merge-base "origin/$BASE_REF" HEAD)" --to-ref HEAD
 
   plan:
-    name: Generate daily plan
+    name: Generate nightly plan
     needs: lint
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -76,7 +76,7 @@ jobs:
           stage: nightly
 
   platforms:
-    name: Daily / ${{ matrix.platform }}
+    name: Platform pipeline (${{ matrix.platform }})
     needs: plan
     strategy:
       fail-fast: false
@@ -91,7 +91,7 @@ jobs:
       plan: ${{ needs.plan.outputs.plan }}
 
   complete:
-    name: Daily Complete
+    name: Nightly Complete
     needs: [lint, plan, platforms]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest

@@ -72,6 +72,7 @@ def cmd_slice(args: argparse.Namespace) -> int:
     preflight = []
     parallel = []
     serial = []
+    integration = []
 
     for group in plan["execution_groups"]:
         if group["platform"] != platform:
@@ -107,7 +108,10 @@ def cmd_slice(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 1
-        lanes[group["lane"]].append(entry)
+        if group["kind"] == "integration":
+            integration.append(entry)
+        else:
+            lanes[group["lane"]].append(entry)
 
     # Partial test selection still produces useful coverage, but cannot be
     # compared with or published as a complete platform coverage baseline.
@@ -128,6 +132,8 @@ def cmd_slice(args: argparse.Namespace) -> int:
         "preflight_matrix": json.dumps({"include": preflight}),
         "parallel_matrix": json.dumps({"include": parallel}),
         "serial_matrix": json.dumps({"include": serial}),
+        "integration_matrix": json.dumps({"include": integration}),
+        "has_integration": json.dumps(bool(integration)),
         "has_parallel": json.dumps(len(parallel) > 0),
         "has_serial": json.dumps(len(serial) > 0),
         "preflight_selected": json.dumps(len(preflight) > 0),
@@ -516,6 +522,11 @@ def cmd_platform(args: argparse.Namespace) -> int:
         return 1
 
     platform = args.platform
+    if getattr(args, "unit_only", False):
+        # Keep original plan identity while validating only the pre-integration scope.
+        plan = dict(plan)
+        for key in ("execution_groups", "test_groups"):
+            plan[key] = [group for group in plan[key] if group["kind"] in ("unit", "preflight")]
     reports_dir = Path(args.reports_dir)
 
     # Ensure reports directory exists (may be empty if no groups ran)
@@ -527,6 +538,13 @@ def cmd_platform(args: argparse.Namespace) -> int:
         try:
             report = json.loads(report_file.read_text())
             if report.get("platform") == platform:
+                if getattr(args, "unit_only", False) and report.get("kind") in (
+                    "integration",
+                    "compat",
+                    "benchmark",
+                    "release",
+                ):
+                    continue
                 group_reports.append(report)
         except (OSError, json.JSONDecodeError) as exc:
             print(f"WARNING: Failed to load {report_file}: {exc}", file=sys.stderr)
@@ -817,6 +835,12 @@ def cmd_gate(args: argparse.Namespace) -> int:
             f.write(f"- Stage: {plan['stage']}\n")
             f.write(f"- Level: {plan['test_level']}\n")
             f.write(f"- Platforms: {len(plan['platforms'])}\n\n")
+            f.write("| Platform | Result |\n| --- | --- |\n")
+            for platform in plan["platforms"]:
+                report = platform_reports.get(platform["name"])
+                result = report.get("status", "unknown") if report else "missing report"
+                f.write(f"| {platform['name']} | {result} |\n")
+            f.write("\n")
             if errors:
                 f.write("**Errors:**\n\n")
                 for error in errors:
@@ -852,6 +876,7 @@ def main() -> int:
     platform_parser = subparsers.add_parser("platform", help="Aggregate platform report")
     platform_parser.add_argument("--platform", required=True)
     platform_parser.add_argument("--reports-dir", type=Path, required=True)
+    platform_parser.add_argument("--unit-only", action="store_true")
     platform_parser.add_argument("--coverage-result", default="")
     platform_parser.add_argument(
         "--coverage-required",

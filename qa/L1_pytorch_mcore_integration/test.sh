@@ -121,7 +121,9 @@ fi
 if [ -d "${MCORE_PATH}/.git" ]; then
     git -C "${MCORE_PATH}" remote set-url origin "${MCORE_REPO_URL}"
     retry_command 3 5 git -C "${MCORE_PATH}" fetch --depth 1 origin "${MCORE_REF}"
-    git -C "${MCORE_PATH}" checkout --detach --force "FETCH_HEAD"
+    # Partial-clone checkout may fetch missing blobs from the promisor remote.
+    # Retry this network operation as well as the explicit clone/fetch above.
+    retry_command 3 5 git -C "${MCORE_PATH}" checkout --detach --force "FETCH_HEAD"
 else
     echo "Megatron-LM-FL checkout is not a Git repository: ${MCORE_PATH}" >&2
     exit 1
