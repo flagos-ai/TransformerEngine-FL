@@ -44,6 +44,15 @@ def register_builtins(registry) -> None:
     is_avail = backend.is_available
 
     impls = [
+        OpImpl(
+            op_name="gated_delta_net_forward",
+            impl_id="vendor.npu.gdn_fwd",
+            kind=BackendImplKind.VENDOR,
+            fn=_bind_is_available(backend.gated_delta_net_forward, is_avail),
+            vendor="NPU",
+            priority=100,
+        ),
+
         # FlashAttention class getter
         OpImpl(
             op_name="get_flash_attention_class",
