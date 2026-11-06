@@ -1,0 +1,4 @@
+interface:
+  display_name: "TE CI/CD Auditor"
+  short_description: "Audit workflows and vendor CI coverage"
+  default_prompt: "Use $te-audit-cicd to validate TransformerEngine-FL workflows, QA entrypoints, and vendor test coverage."
