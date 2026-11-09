@@ -61,6 +61,9 @@ run_pytest_step_with_unfused_attention() {
 run_pytest_step "Ascend vendor NPU backend tests" "pytest_ascend_vendor_npu.xml" false \
     "$TE_PATH/tests/plugin/backend/npu/test_backend_npu.py"
 
+run_pytest_step "Ascend MoE permutation grid limits" "pytest_ascend_moe_permutation.xml" false \
+    "$TE_PATH/tests/plugin/backend/npu/test_permutation_core_dim.py"
+
 PLUGIN_TEST_ROOT="$TE_PATH/tests/plugin"
 
 run_pytest_step "plugin policy" "pytest_test_plugin_policy.xml" false \
