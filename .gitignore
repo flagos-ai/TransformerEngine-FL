@@ -57,3 +57,4 @@ qa/L1_pytorch_mcore_integration/output/
 .coverage
 # Claude Code session directory
 .claude/
+.idea
