@@ -9,6 +9,7 @@ import torch
 import torch.distributed as dist
 
 import triton
+from triton.runtime import driver
 
 from transformer_engine.common.triton.cross_entropy import (
     cross_entropy_forward_kernel,
@@ -19,6 +20,12 @@ from transformer_engine.common.triton.cross_entropy import (
 
 # The optimal maximum block size depends on your hardware, your kernel, and your dtype
 MAX_FUSED_SIZE = 65536 // 2
+
+
+def _num_warps() -> int:
+    """MetaX Triton accepts at most 16 warps per kernel launch."""
+    backend = driver.active.get_current_target().backend
+    return 16 if backend in ("maca", "metax") else 32
 
 
 def cross_entropy_forward(
@@ -67,7 +74,7 @@ def cross_entropy_forward(
             COUNT_NON_IGNORE=reduce_loss,
             COPY_INPUT=not overwrite_input,
             BLOCK_SIZE=BLOCK_SIZE,
-            num_warps=32,
+            num_warps=_num_warps(),
         )
     else:
         local_data = torch.empty((n_rows, 4), dtype=torch.float32, device=_input.device)
@@ -88,7 +95,7 @@ def cross_entropy_forward(
             COMPUTE_X_SUM=label_smoothing > 0,
             COPY_INPUT=not overwrite_input,
             BLOCK_SIZE=BLOCK_SIZE,
-            num_warps=32,
+            num_warps=_num_warps(),
         )
         gathered_data = torch.empty(
             (world_size * n_rows, 4), dtype=torch.float32, device=_input.device
@@ -150,6 +157,6 @@ def cross_entropy_backward(
         reduce_loss=reduce_loss,
         label_smoothing=label_smoothing,
         BLOCK_SIZE=BLOCK_SIZE,
-        num_warps=32,
+        num_warps=_num_warps(),
     )
     return saved_input
