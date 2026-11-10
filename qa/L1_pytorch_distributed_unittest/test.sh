@@ -106,6 +106,7 @@ run_test_step() {
 
     if [ "$PLATFORM" = "metax" ]; then
         case "$test_path" in
+            *"test_parallel_cross_entropy.py" | \
             *"test_numerics.py" | \
             *"test_numerics_exact.py" | \
             *"test_torch_fsdp2.py" | \
