@@ -61,11 +61,11 @@ install_python_package() {
     "$PYTHON" -m pip install "$package_spec"
 }
 
-skip_step() {
+ignore_step() {
     local label=$1
     local reason=$2
     echo "-------------------------------------------------------"
-    echo "[SKIP] Hygon/DTK: $label ($reason)"
+    echo "[IGNORE] Hygon/DTK: $label ($reason)"
     echo "-------------------------------------------------------"
 }
 
@@ -161,28 +161,10 @@ run_unittest_suite() {
     run_pytest_step "test_jit.py" "pytest_test_jit.xml" \
         "$PYTHON" -m pytest -s -v --tb=auto "$TE_PATH/tests/pytorch/test_jit.py" -k "not (test_torch_dynamo)"
 
-    local plugin_root="$TE_PATH/tests/plugin"
-    run_pytest_step "plugin/test_policy.py" "pytest_test_plugin_policy.xml" \
-        "$PYTHON" -m pytest -s -v --tb=auto "$plugin_root/plugin/test_policy.py"
-    run_pytest_step "plugin/test_manager.py" "pytest_test_plugin_manager.xml" \
-        "$PYTHON" -m pytest -s -v --tb=auto "$plugin_root/plugin/test_manager.py"
-    run_pytest_step "plugin/test_policy_selection.py" "pytest_test_plugin_policy_selection.xml" \
-        "$PYTHON" -m pytest -s -v --tb=auto "$plugin_root/plugin/test_policy_selection.py"
-    local dispatch_test dispatch_name
-    for dispatch_test in entry hook integration manifest numerics; do
-        dispatch_name="test_triton_dispatch_${dispatch_test}"
-        run_pytest_step "plugin/${dispatch_name}.py" "pytest_${dispatch_name}.xml" \
-            "$PYTHON" -m pytest -s -v --tb=auto "$plugin_root/plugin/${dispatch_name}.py"
-    done
-    run_pytest_step "reference/test_lifecycle.py" "pytest_test_backend_reference.xml" \
-        "$PYTHON" -m pytest -s -v --tb=auto "$plugin_root/backend/reference/test_lifecycle.py"
-    run_pytest_step "reference/test_activation.py" "pytest_test_backend_reference_activation.xml" \
-        "$PYTHON" -m pytest -s -v --tb=auto "$plugin_root/backend/reference/test_activation.py"
-    run_pytest_step "reference/test_dropout.py" "pytest_test_backend_reference_dropout.xml" \
-        "$PYTHON" -m pytest -s -v --tb=auto "$plugin_root/backend/reference/test_dropout.py"
-    run_pytest_step "reference/test_gemm.py" "pytest_test_backend_reference_gemm.xml" \
-        "$PYTHON" -m pytest -s -v --tb=auto "$plugin_root/backend/reference/test_gemm.py"
-
+    if ! "$PYTHON" "$TE_PATH/tests/test_utils/run_ci_test_group.py" --plugin-tests; then
+        FAIL=1
+        FAILED_CASES+=("unittest:plugin_core")
+    fi
     echo "===== END unittest rc=$FAIL $(date '+%F %T') ====="
 }
 
@@ -200,13 +182,13 @@ run_onnx_suite() {
     echo "===== START onnx $(date '+%F %T') ====="
     install_onnx_deps
 
-    local skip_expr
-    skip_expr="$(join_with_or "${HYGON_ONNX_SKIP_GROUPS[@]}")"
-    skip_expr="not ($skip_expr)"
-    echo "[SKIP] Hygon/DTK ONNX groups: $skip_expr"
+    local ignore_expr
+    ignore_expr="$(join_with_or "${HYGON_ONNX_IGNORE_GROUPS[@]}")"
+    ignore_expr="not ($ignore_expr)"
+    echo "[IGNORE] Hygon/DTK ONNX groups: $ignore_expr"
     run_cmd "onnx" "test_onnx_export.py" "test_onnx_export.xml" \
         env NVTE_UnfusedDPA_Emulate_FP8=1 \
-        "$PYTHON" -m pytest --tb=auto "$TE_PATH/tests/pytorch/test_onnx_export.py" -k "$skip_expr"
+        "$PYTHON" -m pytest --tb=auto "$TE_PATH/tests/pytorch/test_onnx_export.py" -k "$ignore_expr"
 
     echo "===== END onnx rc=$FAIL $(date '+%F %T') ====="
 }

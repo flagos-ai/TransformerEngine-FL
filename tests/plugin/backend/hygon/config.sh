@@ -22,7 +22,7 @@ readonly PLATFORM_PYTEST_EXTRA_ARGS="--tb=short --verbose"
 readonly PLATFORM_PYTEST_DESELECT=""
 readonly PLATFORM_COVERAGE_ENABLED=true
 
-readonly -a HYGON_ONNX_SKIP_GROUPS=(
+readonly -a HYGON_ONNX_IGNORE_GROUPS=(
     "test_export_linear"
     "test_export_layernorm_linear"
     "test_export_layernorm_mlp"

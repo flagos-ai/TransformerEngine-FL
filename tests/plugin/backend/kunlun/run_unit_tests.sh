@@ -61,6 +61,9 @@ run_suite() {
             --configs_dir=$NVTE_TEST_NVINSPECT_CONFIGS_DIR"
             ;;
         unittest | pytorch_unittest)
+        if ! python3 "$TE_PATH/tests/test_utils/run_ci_test_group.py" --plugin-tests; then
+            FAIL=1
+        fi
         run_test_step "pytest_kunlun_sanity.xml" \
             "NVTE_FLASH_ATTN=0 NVTE_FUSED_ATTN=0 NVTE_UNFUSED_ATTN=1 \
             python3 -m pytest -s -v --tb=auto \

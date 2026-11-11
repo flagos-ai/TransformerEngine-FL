@@ -312,13 +312,15 @@ def select_test_groups(project: dict, changed: list[str], test_level: str, stage
 
 def platform_test_groups(project: dict, config: dict, selection: dict) -> tuple[list, list]:
     """Record unavailable platform test groups and propagate dependency gaps."""
-    unsupported = config.get("unsupported_test_groups", {})
+    if "unsupported_test_groups" in config:
+        raise ValueError("unsupported_test_groups was renamed to ignored_test_groups")
+    ignored = config.get("ignored_test_groups", {})
     catalog = {group["name"]: group for group in project["test_groups"]}
-    if not isinstance(unsupported, dict) or set(unsupported) - catalog.keys():
-        raise ValueError("Invalid unsupported_test_groups in platform config")
-    if any(not isinstance(reason, str) or not reason.strip() for reason in unsupported.values()):
-        raise ValueError("Every unsupported test group requires a reason")
-    unavailable = dict(unsupported)
+    if not isinstance(ignored, dict) or set(ignored) - catalog.keys():
+        raise ValueError("Invalid ignored_test_groups in platform config")
+    if any(not isinstance(reason, str) or not reason.strip() for reason in ignored.values()):
+        raise ValueError("Every ignored test group requires a reason")
+    unavailable = dict(ignored)
     while True:
         previous = len(unavailable)
         for name in selection["groups"]:
@@ -376,7 +378,7 @@ def build_test_groups(
     test_level: str,
     changed: list[str],
     blocked: list[dict[str, Any]] | None = None,
-    excluded: list[dict[str, Any]] | None = None,
+    ignored: list[dict[str, Any]] | None = None,
     selection: dict | None = None,
 ) -> list[dict]:
     """Resolve selected logical groups, retaining platform exclusions and blockers."""
@@ -419,8 +421,8 @@ def build_test_groups(
                     "required": definition.get("required", False),
                 }
                 if reason:
-                    if excluded is not None:
-                        excluded.append({**ledger, "reason": reason})
+                    if ignored is not None:
+                        ignored.append({**ledger, "reason": reason})
                     continue
                 if blocker:
                     if blocked is not None:
@@ -536,6 +538,23 @@ def build_execution_groups(
                 if full_scope
                 else sorted({target for entries in targets.values() for target in entries})
             )
+    for execution in executions.values():
+        if not execution["exec"]:
+            continue
+        # Full directory discovery must not re-enable a platform's ignored
+        # groups through another group's overlapping test_targets.
+        _, ignored_groups = platform_test_groups(
+            project,
+            platforms[execution["platform"]]["config"],
+            {"groups": list(definitions), "required_groups": []},
+        )
+        execution["exec"]["ignored_test_targets"] = sorted(
+            {
+                target
+                for group in ignored_groups
+                for target in definitions[group["group"]].get("test_targets", [])
+            }
+        )
     return list(executions.values())
 
 
@@ -621,10 +640,10 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             reasons=["documentation-only: no hardware tests"],
         )
     blocked: list[dict[str, Any]] = []
-    excluded: list[dict[str, Any]] = []
+    ignored: list[dict[str, Any]] = []
     test_groups = (
         build_test_groups(
-            project, platforms, selected, test_level, changed, blocked, excluded, group_selection
+            project, platforms, selected, test_level, changed, blocked, ignored, group_selection
         )
         if not lint_only
         else []
@@ -635,7 +654,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
     platform_entries = []
     for pname in selected:
         p = platforms[pname]
-        _, unsupported = platform_test_groups(project, p["config"], group_selection)
+        _, ignored_groups = platform_test_groups(project, p["config"], group_selection)
         # Coverage completeness is measured against the platform's supported
         # catalog, independent of a PR's partial group selection.
         coverage_supported, _ = platform_test_groups(
@@ -659,7 +678,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
                     if group["platform"] == pname
                     and group["device"] == p["config"].get("device_types", [None])[0]
                 ),
-                "unsupported_test_groups": unsupported,
+                "ignored_test_groups": ignored_groups,
                 "coverage_groups": sorted(
                     {
                         group["execution"]["entry"]
@@ -713,7 +732,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         "group_selection": group_selection,
         "test_groups": test_groups,
         "execution_groups": execution_groups,
-        "excluded": excluded,
+        "ignored": ignored,
         "blocked": blocked,
         "reasons": [
             f"{stage_name} stage with {len(selected)} platforms, level {test_level}",
@@ -747,7 +766,7 @@ def write_summary(path: Path, plan: dict) -> None:
     gaps = [
         f"{p['name']}/{gap['group']}: {gap['reason']}"
         for p in platforms
-        for gap in p["unsupported_test_groups"]
+        for gap in p["ignored_test_groups"]
     ]
     lines = [
         "### Platform selection",
@@ -776,7 +795,7 @@ def write_summary(path: Path, plan: dict) -> None:
             f"- Selected logical groups: {len(plan['test_groups'])} platform/device entries",
             f"- Selected execution groups: {len(executions)} jobs",
             f"- Changed files: {plan['changed_files']['count']}",
-            f"- Excluded entries: {len(plan['excluded'])}; blocked entries: {len(plan['blocked'])}",
+            f"- Ignored entries: {len(plan['ignored'])}; blocked entries: {len(plan['blocked'])}",
             "- Selected test groups: " + (", ".join(selection["groups"]) or "none"),
             f"- Plan hash: `{plan['plan_hash']}`",
             "",
@@ -790,9 +809,9 @@ def write_summary(path: Path, plan: dict) -> None:
         integrations = sum(g["kind"] == "integration" for g in groups)
         lines.append(
             f"| {escape(platform['name'])} | {units} | {integrations} |"
-            f" {len(groups)-units-integrations} | {len(platform['unsupported_test_groups'])} |"
+            f" {len(groups)-units-integrations} | {len(platform['ignored_test_groups'])} |"
         )
-    lines.extend(["", "Coverage gaps and excluded targets are not passing-test evidence.", ""])
+    lines.extend(["", "Coverage gaps and ignored targets are not passing-test evidence.", ""])
     if gaps:
         lines.extend(["<details><summary>Declared platform coverage gaps</summary>", ""])
         lines.extend(f"- {escape(gap)}" for gap in gaps)

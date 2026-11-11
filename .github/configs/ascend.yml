@@ -94,6 +94,6 @@ paths_watch:
   - qa/L1_pytorch_onnx_unittest/test_ascend.sh
 
 # Missing test-group coverage is explicit; these entries do not claim hardware incapability.
-unsupported_test_groups:
+ignored_test_groups:
   quantization: Ascend unit QA runs selected non-FP8 portable cases and vendor NPU tests; recipe/quantized-tensor/FP8/NVFP4 target groups are not wired.
   optimizer: Ascend unit QA does not run fused optimizer, multi-tensor or backend optimizer targets.

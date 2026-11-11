@@ -483,8 +483,8 @@ class PlannerTests(unittest.TestCase):
                 {"preflight", "pytorch_unit"},
             )
             modules = group["exec"]["group_test_targets"]
-            unsupported = {g["group"] for g in platform["unsupported_test_groups"]}
-            self.assertEqual("optimizer" in modules, "optimizer" not in unsupported)
+            ignored = {g["group"] for g in platform["ignored_test_groups"]}
+            self.assertEqual("optimizer" in modules, "optimizer" not in ignored)
             self.assertIn("core", modules)
             self.assertNotIn("tests/", group["exec"]["test_targets"])
             self.assertNotIn("tests/pytorch/test_onnx_export.py", group["exec"]["test_targets"])
@@ -504,7 +504,7 @@ class PlannerTests(unittest.TestCase):
             ["core", "debug", "plugin_core", "preflight", "reference_backend"],
         )
         cuda = next(p for p in plan["platforms"] if p["name"] == "cuda")
-        self.assertEqual(cuda["unsupported_test_groups"], [])
+        self.assertEqual(cuda["ignored_test_groups"], [])
         self.assertEqual(
             set(cuda["selected_test_groups"]),
             {"core", "debug", "plugin_core", "preflight", "reference_backend"},
@@ -534,13 +534,13 @@ class PlannerTests(unittest.TestCase):
                     if group["group"] == "pytorch_unit":
                         self.assertEqual(group["exec"]["test_targets"], ["tests/"])
 
-    def test_platform_unsupported_modules_are_not_claimed_as_tested(self):
+    def test_platform_ignored_modules_are_not_claimed_as_tested(self):
         plan = self.run_planner("nightly")
         for platform in plan["platforms"]:
             supported = set(platform["selected_test_groups"])
-            unsupported = platform["unsupported_test_groups"]
-            self.assertTrue(all(entry["reason"] for entry in unsupported))
-            self.assertFalse(supported & {entry["group"] for entry in unsupported})
+            ignored = platform["ignored_test_groups"]
+            self.assertTrue(all(entry["reason"] for entry in ignored))
+            self.assertFalse(supported & {entry["group"] for entry in ignored})
             unit = next(
                 g
                 for g in plan["execution_groups"]
@@ -550,7 +550,7 @@ class PlannerTests(unittest.TestCase):
         hygon = next(p for p in plan["platforms"] if p["name"] == "hygon")
         self.assertIn(
             "optimizer",
-            {entry["group"] for entry in hygon["unsupported_test_groups"]},
+            {entry["group"] for entry in hygon["ignored_test_groups"]},
         )
 
     def test_coverage_gaps_are_explicit_in_full_and_partial_plans(self):
@@ -573,8 +573,7 @@ class PlannerTests(unittest.TestCase):
                 with self.subTest(stage=stage, options=options, platform=name):
                     selected = set(platform["selected_test_groups"])
                     unavailable = {
-                        group["group"]: group["reason"]
-                        for group in platform["unsupported_test_groups"]
+                        group["group"]: group["reason"] for group in platform["ignored_test_groups"]
                     }
                     for gap in gaps.get(name, set()) & set(plan["group_selection"]["groups"]):
                         self.assertNotIn(gap, selected)
@@ -582,7 +581,7 @@ class PlannerTests(unittest.TestCase):
                         self.assertTrue(
                             any(
                                 group["platform"] == name and group["group"] == gap
-                                for group in plan["excluded"]
+                                for group in plan["ignored"]
                             )
                         )
                     if name == "hygon":
@@ -608,7 +607,7 @@ class PlannerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "required.*baseline"):
             planner.platform_test_groups(
                 project,
-                {"unsupported_test_groups": {"core": "not wired"}},
+                {"ignored_test_groups": {"core": "not wired"}},
                 selection,
             )
 
@@ -788,7 +787,7 @@ class PlannerTests(unittest.TestCase):
             any(group["group"] == "pytorch_mcore_integration" for group in plan["execution_groups"])
         )
 
-    def test_routing_reasons_and_excluded_ledger(self):
+    def test_routing_reasons_and_ignored_ledger(self):
         plan = self.run_planner(
             "pr",
             base_ref="main",
@@ -801,14 +800,14 @@ class PlannerTests(unittest.TestCase):
             "common path: tests/pytorch/test_fused_optimizer.py",
             plan["platforms"][0]["reasons"],
         )
-        excluded = {(item["platform"], item["group"], item["reason"]) for item in plan["excluded"]}
+        ignored = {(item["platform"], item["group"], item["reason"]) for item in plan["ignored"]}
         self.assertIn(
             (
                 "cuda",
                 "mcore",
                 "test group not selected",
             ),
-            excluded,
+            ignored,
         )
         self.assertFalse(
             any(group["group"] == "pytorch_mcore_integration" for group in plan["execution_groups"])

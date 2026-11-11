@@ -77,7 +77,7 @@ paths_watch:
   - transformer_engine/plugin/core/backends/vendor/hygon/
 
 # Missing test-group coverage is explicit; these entries do not claim hardware incapability.
-unsupported_test_groups:
+ignored_test_groups:
   debug: The current DTK reference backend lacks quantize and FP8 debug feature support; the full nvinspect debug suite is not adapted to Hygon.
   normalization: Hygon unit QA runs deferred-init/JIT, plugin policy and reference lifecycle/activation/dropout/GEMM only; no normalization target is wired.
   attention: Hygon unit QA does not run attention, RoPE, GQA or HF attention targets; CP utilities belong to the separate distributed group.

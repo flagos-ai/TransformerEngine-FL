@@ -7,6 +7,60 @@ The active entries are `ci.yml` (PR, push to main, manual dispatch),
 platform matrix; test jobs use `test_groups_common.yml`. `CI Complete`, `Nightly Complete`, `CI Requested Complete` and
 `Release Acceptance Complete` gate the results.
 
+## Automatic plugin coverage
+
+The unified PR/main-push CI and Nightly own the entire `tests/plugin/` test tree
+through `plugin_core`, including plugin dispatch/policy contracts, Reference,
+FlagOS and NPU backend tests, and cross-backend accuracy tests. The isolated
+manual `te-plugin-tests.yml` workflow is removed. Automatic changes take effect
+after merging into the target/default branch; a feature-branch push alone does
+not trigger CI.
+
+Platform unit launchers discover all `test_*.py` recursively. Most use
+`tests/test_utils/run_ci_test_group.py --plugin-tests`; PPU retains its per-file timeout and
+summary reporting, and Iluvatar retains directory-scoped audited ignore rules.
+The old per-file backend calls are removed to avoid duplicate execution.
+Distinct relative paths produce distinct JUnit filenames even when test files
+share a basename. Numerics helper files are invoked by their driver rather
+than discovered twice. Core mock contracts clear vendor policy overrides;
+backend/accuracy tests retain real platform policy. CI test selection and
+coverage hooks remain in effect in all child processes.
+
+The common discovery root is `tests/plugin/`; platforms do not maintain lists
+of individual plugin test files. All original platform group ignores, their
+reasons, and existing file/case ignore rules are preserved. Expanding discovery
+does not establish hardware support and does not remove those ignores.
+
+The planner expands ignored groups into `ignored_test_targets`, including
+dependency-derived ignores. The runner passes that list to every pytest child.
+Whole-file/directory ignores apply before import; node selectors apply after
+collection. Ignores take precedence over positive directory selections, even
+when another selected group overlaps the ignored files and even in full Nightly
+runs. Ignored tests produce no passing evidence. Standard capability-based
+runtime skips remain separate.
+
+## Ignore naming and include scopes
+
+Repository-controlled test omissions use `ignore` names: platform group reasons
+are configured in `ignored_test_groups`, whole-file and case filters use
+`*_IGNORE_*`, the plan records an `ignored` ledger, and launcher messages use
+`[IGNORE]`. PPU records whole-file ignores in `ignored-tests.tsv` and reports
+those rows as `ignored`. Reasons, owners and restore conditions are retained.
+The former `unsupported_test_groups` key is rejected with a migration error,
+rather than silently enabling tests from an old ignore list. These entries
+never count as passing evidence. A required baseline still cannot
+be ignored; ignoring a dependency also makes its dependent groups unavailable.
+
+`coverage.include` chooses source files counted in coverage; it does not choose
+which tests run. GitHub Actions matrix `include` enumerates jobs. Neither is an
+ignore list. `test_targets` defines the positive test selection for a group.
+
+Pytest/JUnit `skipped`, pytest `--deselect` and collection hooks, GitHub Actions
+`skipped` results, and coverage.py `include`/`omit` are native interface names.
+They remain unchanged, as do build/dependency setup switches such as
+`TE_FL_SKIP_CUDA` and `HYGON_SKIP_DEP_INSTALL`. Capability-driven runtime skips
+remain distinct from repository-configured ignores.
+
 ## Selection and levels
 
 PR routing uses platform `paths_watch`. Vendor paths select their platforms;
@@ -37,7 +91,7 @@ Dependencies expand selection; they do not impose job execution order.
 
 `routing.shared_paths`, declared impact paths, unavailable diffs and unmapped
 code select the complete in-level scope. Platform routing remains independent.
-Platform `unsupported_test_groups` records group -> reason gaps in the existing
+Platform `ignored_test_groups` records group -> reason gaps in the existing
 QA coverage. They appear in plans, workflow summaries and platform reports, and
 cannot be claimed as tested. A group with an unavailable dependency is also
 unavailable. These documented gaps do not block runs on other supported groups;
@@ -70,7 +124,7 @@ Full plans retain the original QA scope; no unconfigured vendor tests are added.
 The four execution suites retain multi-device serial isolation and their
 platform-specific timeouts. FA compatibility and benchmarks are L3 and remain
 blocked by runner/baseline requirements; L4 acceptance retains explicit gaps.
-Plans record selection, platform support, execution groups, excluded and blocked
+Plans record selection, platform support, execution groups, ignored and blocked
 ledgers. See `.flagcicd/project.yaml`.
 
 Requested runs: a PR comment `/ci run <platforms|all>` or `/test <platforms|all>`
@@ -196,7 +250,7 @@ CI until recovery validation supplies passing evidence. The shared blockwise
 GEMM target remains selected. Whole-file and partial exclusions are currently
 recorded in the Iluvatar shell configuration; a per-target coverage-gap schema
 and report is follow-up work, and passing group results do not imply complete
-coverage of those excluded targets.
+coverage of those ignored targets.
 
 The Megatron checkout retry is shared by all platforms: partial-clone checkout
 may download blobs from the promisor remote, so it now retries up to three times
@@ -204,7 +258,7 @@ with a five-second delay, just like clone and fetch. Exhausted retries still fai
 
 The unit evidence report checks unit/preflight groups only; compatibility,
 benchmark and release groups remain subject to the final platform gate.
-Iluvatar quarantine rules are audited inline before keyword deselection. Each
+Iluvatar ignore rules are audited inline before pytest keyword filtering. Each
 rule must match some but not all collected tests; matched node IDs are logged.
 This detects missing selectors but does not prove historical quarantine membership
 is unchanged. Review the logged node IDs after upstream parameter changes.

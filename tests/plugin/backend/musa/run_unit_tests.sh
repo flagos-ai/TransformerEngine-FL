@@ -36,7 +36,7 @@ run_without_cuda_compat() {
     shift 2
 
     if python3 -c 'import torch; raise SystemExit(0 if torch.cuda.is_available() else 1)'; then
-        echo "[SKIP] MUSA compatibility environment exposes torch.cuda: ${name}"
+        echo "[IGNORE] MUSA compatibility environment exposes torch.cuda: ${name}"
         return 0
     fi
     run_pytest "${name}" "${target}" "$@"
@@ -81,6 +81,9 @@ run_debug() {
 
 run_pytorch() {
     local tests_root="${TE_PATH}/tests/pytorch"
+    if ! python3 "$TE_PATH/tests/test_utils/run_ci_test_group.py" --plugin-tests; then
+        FAILED=1
+    fi
     run_pytest test_sanity "${tests_root}/test_sanity.py" \
         -k "not (test_sanity_gpt or test_sanity_gpt_126m or test_sanity_bert or test_sanity_T5 or test_sanity_layernorm_mlp or test_sanity_amp_and_nvfuser or test_sanity_drop_path or test_sanity_fused_qkv_params or test_sanity_gradient_accumulation_fusion or test_inference_mode or test_sanity_normalization_amp or test_sanity_layernorm_linear or test_sanity_linear_with_zero_tokens or test_sanity_grouped_linear)" \
         --no-header
@@ -96,7 +99,7 @@ run_pytorch() {
         -k "not (test_gpt_accuracy or test_mha_accuracy or test_dpa_accuracy or test_gpt_checkpointing or test_gpt_cuda_graph or test_grouped_linear_accuracy or test_grouped_gemm or test_noncontiguous or test_rmsnorm_accuracy or test_layernorm_accuracy or test_linear_accuracy or test_layernorm_linear_accuracy or test_layernorm_mlp_accuracy or test_transformer_layer_hidden_states_format)" \
         --no-header
 
-    echo "[SKIP] MUSA: test_jit.py requires unsupported TorchDynamo/JIT fusion paths"
+    echo "[IGNORE] MUSA: test_jit.py requires unsupported TorchDynamo/JIT fusion paths"
     run_pytest test_fused_rope "${tests_root}/test_fused_rope.py"
     run_pytest test_nvfp4 "${tests_root}/nvfp4"
     run_pytest test_quantized_tensor "${tests_root}/test_quantized_tensor.py"
@@ -105,7 +108,7 @@ run_pytorch() {
         "${tests_root}/test_float8_blockwise_scaling_exact.py"
     run_pytest test_float8_blockwise_gemm_exact \
         "${tests_root}/test_float8_blockwise_gemm_exact.py"
-    echo "[SKIP] MUSA: test_gqa.py requires unsupported TorchDynamo/Inductor paths"
+    echo "[IGNORE] MUSA: test_gqa.py requires unsupported TorchDynamo/Inductor paths"
 
     run_pytest test_fused_optimizer "${tests_root}/test_fused_optimizer.py" \
         -k "not test_bf16_exp_avg_and_exp_avg_sq"

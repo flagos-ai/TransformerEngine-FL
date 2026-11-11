@@ -47,6 +47,12 @@ def _selection_env(env: dict[str, str], group: dict[str, Any]) -> None:
     ):
         raise SystemExit("test_targets must be a non-empty list of repository-relative paths")
     env["TE_CI_TEST_TARGETS_JSON"] = json.dumps(targets)
+    ignored = group.get("ignored_test_targets", [])
+    if not isinstance(ignored, list) or any(
+        not isinstance(target, str) or not target.strip() for target in ignored
+    ):
+        raise SystemExit("ignored_test_targets must be a list of repository-relative paths")
+    env["TE_CI_IGNORE_TEST_TARGETS_JSON"] = json.dumps(ignored)
     plugin_dir = str(Path(__file__).resolve().parent)
     contract_dir = str(Path(__file__).resolve().parents[2] / ".github/scripts/ci")
     env["PYTHONPATH"] = os.pathsep.join(
@@ -137,6 +143,44 @@ def _run_pytest(group: dict[str, Any]) -> int:
     return 1 if failed else 0
 
 
+def _run_plugin_tests() -> int:
+    """Discover plugin tests by directory, with isolated processes and reports."""
+    root = Path(os.environ.get("TE_PATH", REPO_ROOT)).resolve()
+    test_root = root / "tests/plugin"
+    files = sorted(path for path in test_root.rglob("test_*.py") if path.is_file())
+    if not files:
+        print(f"No plugin test files found under {test_root}", file=sys.stderr)
+        return 1
+    log_dir = Path(os.environ.get("XML_LOG_DIR", root / "logs/plugin"))
+    log_dir.mkdir(parents=True, exist_ok=True)
+    failed = False
+    for path in files:
+        relative = path.relative_to(root).as_posix()
+        report = "pytest_" + relative.removesuffix(".py").replace("/", "_") + ".xml"
+        env = os.environ.copy()
+        if relative.startswith("tests/plugin/plugin/"):
+            # Mock contracts need the default policy; backend/accuracy tests
+            # retain platform policy. CI selection and ignore hooks are inherited.
+            for key in ("TE_FL_ALLOW_VENDORS", "TE_FL_PREFER", "TE_FL_PER_OP", "TE_FL_STRICT"):
+                env.pop(key, None)
+        command = [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-v",
+            "-s",
+            "--tb=short",
+            str(path),
+            f"--junitxml={log_dir / report}",
+        ]
+        print(f"[RUN][plugin] {relative}", flush=True)
+        result = subprocess.run(command, cwd=root, env=env, check=False)
+        if result.returncode < 0 or result.returncode >= 128:
+            return result.returncode
+        failed = failed or result.returncode != 0
+    return int(failed)
+
+
 def main() -> int:
     group = _load_group()
     runner = group.get("runner", "script")
@@ -162,4 +206,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    if sys.argv[1:] == ["--plugin-tests"]:
+        raise SystemExit(_run_plugin_tests())
     raise SystemExit(main())

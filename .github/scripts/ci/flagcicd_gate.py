@@ -713,7 +713,7 @@ def cmd_platform(args: argparse.Namespace) -> int:
         "groups": group_reports,
         "test_groups": logical_reports,
         "selected_test_groups": platform_entry.get("selected_test_groups", []),
-        "unsupported_test_groups": platform_entry.get("unsupported_test_groups", []),
+        "ignored_test_groups": platform_entry.get("ignored_test_groups", []),
         "errors": errors,
         "created_at": utc_now(),
     }

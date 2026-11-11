@@ -24,35 +24,35 @@ readonly PLATFORM_COVERAGE_ENABLED=true
 
 # PPU-only scope. Exclusions are known backend gaps and never count as passes.
 PPU_DEBUG_TARGETS=(tests/pytorch/debug/test_sanity.py tests/pytorch/debug/test_config.py tests/pytorch/debug/test_numerics.py tests/pytorch/debug/test_log.py tests/pytorch/debug/test_api_features.py tests/pytorch/debug/test_perf.py)
-PPU_UNITTEST_TARGETS=(tests/pytorch/test_sanity.py tests/pytorch/test_recipe.py tests/pytorch/test_deferred_init.py tests/pytorch/test_numerics.py tests/pytorch/test_cuda_graphs.py tests/pytorch/test_jit.py tests/pytorch/nvfp4 tests/pytorch/test_quantized_tensor.py tests/pytorch/test_float8blockwisetensor.py tests/pytorch/test_float8_blockwise_scaling_exact.py tests/pytorch/test_float8_blockwise_gemm_exact.py tests/pytorch/test_gqa.py tests/pytorch/test_fused_optimizer.py tests/pytorch/test_multi_tensor.py tests/pytorch/test_fusible_ops.py tests/pytorch/test_permutation.py tests/pytorch/test_parallel_cross_entropy.py tests/pytorch/test_cpu_offloading.py tests/pytorch/test_cpu_offloading_v1.py tests/pytorch/attention/test_attention.py tests/pytorch/attention/test_kv_cache.py tests/pytorch/test_hf_integration.py tests/plugin/plugin/test_policy.py tests/plugin/plugin/test_manager.py tests/plugin/plugin/test_policy_selection.py tests/plugin/backend/flagos/test_lifecycle.py tests/plugin/backend/flagos/test_fused_rope.py tests/plugin/backend/flagos/test_optimizer.py tests/plugin/backend/flagos/test_gemm.py tests/plugin/backend/flagos/test_multi_tensor.py tests/plugin/backend/flagos/test_rmsnorm.py tests/plugin/backend/flagos/test_softmax.py tests/plugin/backend/reference/test_lifecycle.py tests/plugin/backend/reference/test_activation.py tests/plugin/backend/reference/test_dropout.py tests/plugin/backend/reference/test_gemm.py)
+PPU_UNITTEST_TARGETS=(tests/pytorch/test_sanity.py tests/pytorch/test_recipe.py tests/pytorch/test_deferred_init.py tests/pytorch/test_numerics.py tests/pytorch/test_cuda_graphs.py tests/pytorch/test_jit.py tests/pytorch/nvfp4 tests/pytorch/test_quantized_tensor.py tests/pytorch/test_float8blockwisetensor.py tests/pytorch/test_float8_blockwise_scaling_exact.py tests/pytorch/test_float8_blockwise_gemm_exact.py tests/pytorch/test_gqa.py tests/pytorch/test_fused_optimizer.py tests/pytorch/test_multi_tensor.py tests/pytorch/test_fusible_ops.py tests/pytorch/test_permutation.py tests/pytorch/test_parallel_cross_entropy.py tests/pytorch/test_cpu_offloading.py tests/pytorch/test_cpu_offloading_v1.py tests/pytorch/attention/test_attention.py tests/pytorch/attention/test_kv_cache.py tests/pytorch/test_hf_integration.py tests/plugin)
 PPU_DISTRIBUTED_TARGETS=(tests/pytorch/distributed/test_numerics.py tests/pytorch/distributed/test_numerics_exact.py tests/pytorch/distributed/test_torch_fsdp2.py tests/pytorch/distributed/test_cast_master_weights_to_fp8.py tests/pytorch/attention/test_cp_utils.py)
 PPU_ONNX_TARGETS=(tests/pytorch/test_onnx_export.py)
 
 # Entire-file exclusions are recorded separately from pytest results. Restore
 # each target after the PPU backend supports the corresponding operation.
-PPU_EXCLUDED_TARGETS=(
+PPU_IGNORE_TARGETS=(
   tests/pytorch/test_permutation.py
   tests/pytorch/attention/test_attention.py
   tests/pytorch/attention/test_kv_cache.py
 )
-declare -A PPU_EXCLUDED_REASON=(
+declare -A PPU_IGNORE_REASON=(
   [tests/pytorch/test_permutation.py]='Legacy PPU filter deselects the entire file; underlying failures require triage'
   [tests/pytorch/attention/test_attention.py]='Legacy PPU filter deselects the entire file; underlying failures require triage'
   [tests/pytorch/attention/test_kv_cache.py]='Legacy PPU filter deselects the entire file; underlying failures require triage'
 )
-declare -A PPU_EXCLUDED_OWNER=(
+declare -A PPU_IGNORE_OWNER=(
   [tests/pytorch/test_permutation.py]='PPU/plugin team'
   [tests/pytorch/attention/test_attention.py]='PPU/plugin team'
   [tests/pytorch/attention/test_kv_cache.py]='PPU/plugin team'
 )
-declare -A PPU_EXCLUDED_RESTORE=(
+declare -A PPU_IGNORE_RESTORE=(
   [tests/pytorch/test_permutation.py]='Capture failure evidence, assign the defect, and restore after the target passes'
   [tests/pytorch/attention/test_attention.py]='Capture failure evidence, assign the defect, and restore after the target passes'
   [tests/pytorch/attention/test_kv_cache.py]='Capture failure evidence, assign the defect, and restore after the target passes'
 )
 
 # Partial known failures, owned by the PPU/plugin team; restore when fixed upstream.
-declare -A PPU_SKIP_K=(
+declare -A PPU_IGNORE_K=(
   [tests/pytorch/debug/test_sanity.py]='test_sanity_debug and fake_quant and False and (mha_attention or transformer_layer)'
   [tests/pytorch/debug/test_api_features.py]='test_per_tensor_scaling or test_fake_quant or test_statistics_collection or test_statistics_multi_run'
   [tests/pytorch/test_sanity.py]='test_sanity_grouped_linear and (1-dtype or 2-dtype)'

@@ -88,47 +88,26 @@ run_debug_suite() {
 
 run_unittest_suite() {
     echo "===== START unittest ====="
-    local fused_optimizer_skip_expr
-    fused_optimizer_skip_expr="$(join_with_or "${ENFLAME_UNITTEST_SKIP_FUSED_OPTIMIZER[@]}")"
+    local fused_optimizer_ignore_expr
+    fused_optimizer_ignore_expr="$(join_with_or "${ENFLAME_UNITTEST_IGNORE_FUSED_OPTIMIZER[@]}")"
     run_pytest_step unittest test_deferred_init.py \
         -s -v --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_deferred_init.xml" \
         "$TE_PATH/tests/pytorch/test_deferred_init.py"
-    echo "[SKIP] Enflame: test_jit.py requires unsupported Torch JIT/TorchDynamo paths"
+    echo "[IGNORE] Enflame: test_jit.py requires unsupported Torch JIT/TorchDynamo paths"
     run_pytest_step unittest test_fused_optimizer.py \
         -s -v --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_fused_optimizer.xml" \
         "$TE_PATH/tests/pytorch/test_fused_optimizer.py" \
-        -k "not ($fused_optimizer_skip_expr)"
-    local hf_integration_skip_expr
-    hf_integration_skip_expr="$(join_with_or "${ENFLAME_UNITTEST_SKIP_HF_INTEGRATION[@]}")"
+        -k "not ($fused_optimizer_ignore_expr)"
+    local hf_integration_ignore_expr
+    hf_integration_ignore_expr="$(join_with_or "${ENFLAME_UNITTEST_IGNORE_HF_INTEGRATION[@]}")"
     run_pytest_step unittest test_hf_integration.py \
         -s -v --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_hf_integration.xml" \
         "$TE_PATH/tests/pytorch/test_hf_integration.py" \
-        -k "not ($hf_integration_skip_expr)"
-    run_pytest_step unittest plugin_policy.py \
-        -s -v --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_plugin_policy.xml" \
-        "$TE_PATH/tests/plugin/plugin/test_policy.py"
-    run_pytest_step unittest plugin_manager.py \
-        -s -v --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_plugin_manager.xml" \
-        "$TE_PATH/tests/plugin/plugin/test_manager.py"
-    local dispatch_test dispatch_name
-    for dispatch_test in entry hook integration manifest numerics; do
-        dispatch_name="test_triton_dispatch_${dispatch_test}"
-        run_pytest_step unittest "${dispatch_name}.py" \
-            -s -v --tb=auto --junitxml="$XML_LOG_DIR/pytest_${dispatch_name}.xml" \
-            "$TE_PATH/tests/plugin/plugin/${dispatch_name}.py"
-    done
-    run_pytest_step unittest backend_reference_lifecycle.py \
-        -s -v --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_backend_reference.xml" \
-        "$TE_PATH/tests/plugin/backend/reference/test_lifecycle.py"
-    run_pytest_step unittest backend_reference_activation.py \
-        -s -v --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_backend_reference_activation.xml" \
-        "$TE_PATH/tests/plugin/backend/reference/test_activation.py"
-    run_pytest_step unittest backend_reference_dropout.py \
-        -s -v --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_backend_reference_dropout.xml" \
-        "$TE_PATH/tests/plugin/backend/reference/test_dropout.py"
-    run_pytest_step unittest backend_reference_gemm.py \
-        -s -v --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_backend_reference_gemm.xml" \
-        "$TE_PATH/tests/plugin/backend/reference/test_gemm.py"
+        -k "not ($hf_integration_ignore_expr)"
+    if ! "$PYTHON" "$TE_PATH/tests/test_utils/run_ci_test_group.py" --plugin-tests; then
+        FAIL=1
+        FAILED_CASES+=("unittest:plugin_core")
+    fi
     echo "===== END unittest rc=$FAIL ====="
 }
 
@@ -140,8 +119,8 @@ run_distributed_suite() {
     run_pytest_step distributed test_cp_utils.py \
         -v -s --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_cp_utils.xml" \
         "$TE_PATH/tests/pytorch/attention/test_cp_utils.py"
-    if contains_item "tests/pytorch/distributed/test_numerics.py" "${ENFLAME_DISTRIBUTED_SKIP_FILES[@]}"; then
-        echo "[SKIP][distributed] test_numerics.py via ENFLAME_DISTRIBUTED_SKIP_FILES"
+    if contains_item "tests/pytorch/distributed/test_numerics.py" "${ENFLAME_DISTRIBUTED_IGNORE_FILES[@]}"; then
+        echo "[IGNORE][distributed] test_numerics.py via ENFLAME_DISTRIBUTED_IGNORE_FILES"
     else
         run_pytest_step distributed test_numerics.py \
             -v -s --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_numerics.xml" \
@@ -152,13 +131,13 @@ run_distributed_suite() {
 
 run_onnx_suite() {
     echo "===== START onnx ====="
-    local skip_expr
-    skip_expr="$(join_with_or "${ENFLAME_ONNX_SKIP_GROUPS[@]}")"
-    skip_expr="not ($skip_expr)"
+    local ignore_expr
+    ignore_expr="$(join_with_or "${ENFLAME_ONNX_IGNORE_GROUPS[@]}")"
+    ignore_expr="not ($ignore_expr)"
     run_pytest_step onnx test_onnx_export.py \
         --tb=auto --junitxml="$XML_LOG_DIR/test_onnx_export.xml" \
         "$TE_PATH/tests/pytorch/test_onnx_export.py" \
-        -k "$skip_expr"
+        -k "$ignore_expr"
     echo "===== END onnx rc=$FAIL ====="
 }
 

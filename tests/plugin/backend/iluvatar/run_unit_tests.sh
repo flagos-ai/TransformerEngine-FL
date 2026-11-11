@@ -23,25 +23,43 @@ run_pytest() {
     local name=$1
     local target=$2
     shift 2
-    local exclusion
-    for exclusion in "${ILUVATAR_EXCLUDED_TEST_TARGETS[@]}"; do
-        if [ "$target" = "${exclusion%%|*}" ]; then
-            echo "[EXCLUDED][$suite] $target: ${exclusion#*|}"
+    if [ "$target" = tests/plugin ]; then
+        local plugin_file plugin_target plugin_name flagos_done=0
+        while IFS= read -r plugin_file; do
+            plugin_target="${plugin_file#"$TE_PATH/"}"
+            if [[ "$plugin_target" == tests/plugin/backend/flagos/* ]]; then
+                # Keep directory-scoped ignore expressions and their membership
+                # audit together; splitting them across files changes the audit.
+                if [ "$flagos_done" -eq 0 ]; then
+                    run_pytest "${name}_flagos" tests/plugin/backend/flagos "$@"
+                    flagos_done=1
+                fi
+            else
+                plugin_name="${plugin_target//\//_}"
+                run_pytest "${name}_${plugin_name%.py}" "$plugin_target" "$@"
+            fi
+        done < <(find "$TE_PATH/tests/plugin" -type f -name 'test_*.py' | sort)
+        return
+    fi
+    local ignore_rule
+    for ignore_rule in "${ILUVATAR_IGNORE_TEST_TARGETS[@]}"; do
+        if [ "$target" = "${ignore_rule%%|*}" ]; then
+            echo "[IGNORE][$suite] $target: ${ignore_rule#*|}"
             return 0
         fi
     done
     local rule scope details expression reason
     local combined_filter=""
     local expressions=()
-    for rule in "${ILUVATAR_KNOWN_FAILURE_FILTERS[@]}"; do
+    for rule in "${ILUVATAR_IGNORE_TEST_FILTERS[@]}"; do
         scope=${rule%%|*}
         details=${rule#*|}
         if [ "$suite" = "$scope" ] && [ "$target" = "${details%%|*}" ]; then
             details=${details#*|}
             expression=${details%%|*}
             reason=${details#*|}
-            echo "[DESELECT][$suite] $target: $reason"
-            echo "[DESELECT][$suite] -k not ($expression)"
+            echo "[IGNORE][$suite] $target: $reason"
+            echo "[IGNORE][$suite] -k not ($expression)"
             expressions+=("$expression")
             combined_filter="${combined_filter:+$combined_filter and }not ($expression)"
         fi
@@ -51,7 +69,7 @@ run_pytest() {
     fi
     echo "[RUN][$suite] $target"
     local python_command=("$PYTHON_BIN")
-    if [ "$target" = "tests/plugin/plugin" ]; then
+    if [[ "$target" == tests/plugin/plugin/* ]]; then
         # Policy/dispatch contract tests create mock vendors and need the default
         # policy, independent of the device QA's backend preference.
         python_command=(env -u TE_FL_ALLOW_VENDORS -u TE_FL_PREFER -u TE_FL_PER_OP -u TE_FL_STRICT "$PYTHON_BIN")
@@ -67,19 +85,19 @@ from _pytest.mark.expression import Expression
 count = int(sys.argv[1])
 rules = sys.argv[2:2 + count]
 
-class QuarantineAudit:
+class IgnoreAudit:
     @pytest.hookimpl(tryfirst=True)
     def pytest_collection_modifyitems(self, items):
         for rule in rules:
             expression = Expression.compile(rule)
             matched = [item.nodeid for item in items if expression.evaluate(KeywordMatcher.from_item(item))]
-            print(f"[QUARANTINE] {len(matched)}/{len(items)} matched: {rule}")
+            print(f"[IGNORE] {len(matched)}/{len(items)} matched: {rule}")
             for nodeid in matched:
-                print(f"[QUARANTINE-NODE] {nodeid}")
+                print(f"[IGNORE-NODE] {nodeid}")
             if not matched or len(matched) == len(items):
-                raise pytest.UsageError(f"Quarantine selector drift (zero or all tests matched): {rule}")
+                raise pytest.UsageError(f"Ignore selector drift (zero or all tests matched): {rule}")
 
-raise SystemExit(pytest.main(sys.argv[2 + count:], plugins=[QuarantineAudit()]))
+raise SystemExit(pytest.main(sys.argv[2 + count:], plugins=[IgnoreAudit()]))
 CHECK
     then
         FAILED=1
@@ -108,9 +126,9 @@ run_suite() {
                 run_pytest debug_numerics_regular "tests/pytorch/test_numerics.py"
             ;;
         unittest)
-            local exclusion
-            for exclusion in "${ILUVATAR_EXCLUDED_TEST_TARGETS[@]}"; do
-                echo "[EXCLUDED][$suite] ${exclusion%%|*}: ${exclusion#*|}"
+            local ignore_rule
+            for ignore_rule in "${ILUVATAR_IGNORE_TEST_TARGETS[@]}"; do
+                echo "[IGNORE][$suite] ${ignore_rule%%|*}: ${ignore_rule#*|}"
             done
             for target in "${ILUVATAR_UNIT_TEST_TARGETS[@]}"; do
                 index=$((index + 1))
@@ -119,12 +137,12 @@ run_suite() {
             ;;
         distributed)
             # The ordinary numerics target is omitted from the list; the debug
-            # invocation below is guarded by the same whole-file exclusion.
-            local exclusion
-            for exclusion in "${ILUVATAR_EXCLUDED_TEST_TARGETS[@]}"; do
-                case "${exclusion%%|*}" in
+            # invocation below is guarded by the same whole-file ignore_rule.
+            local ignore_rule
+            for ignore_rule in "${ILUVATAR_IGNORE_TEST_TARGETS[@]}"; do
+                case "${ignore_rule%%|*}" in
                     tests/pytorch/distributed/*)
-                        echo "[EXCLUDED][$suite] ${exclusion%%|*}: ${exclusion#*|}"
+                        echo "[IGNORE][$suite] ${ignore_rule%%|*}: ${ignore_rule#*|}"
                         ;;
                 esac
             done

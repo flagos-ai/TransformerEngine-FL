@@ -20,14 +20,15 @@ from flagcicd_contract import split_test_target, test_target_matches
 
 
 class _Selection:
-    def __init__(self, raw: str):
+    def __init__(self, raw: str, *, ignored: bool = False):
+        setting = "TE_CI_IGNORE_TEST_TARGETS_JSON" if ignored else "TE_CI_TEST_TARGETS_JSON"
         try:
             targets = json.loads(raw)
         except (TypeError, ValueError) as error:
-            raise pytest.UsageError("TE_CI_TEST_TARGETS_JSON must contain valid JSON") from error
+            raise pytest.UsageError(f"{setting} must contain valid JSON") from error
         if (
             not isinstance(targets, list)
-            or not targets
+            or (not targets and not ignored)
             or any(not isinstance(target, str) or not target.strip() for target in targets)
         ):
             raise pytest.UsageError("test_targets must be a non-empty list of relative paths")
@@ -39,9 +40,12 @@ class _Selection:
         self.targets = targets
         for target in targets:
             try:
-                target_path, _ = split_test_target(target)
+                target_path, target_node = split_test_target(target)
             except ValueError as error:
                 raise pytest.UsageError(str(error)) from error
+            # A node-level ignore must not hide the entire file before import.
+            if ignored and target_node:
+                continue
             for path in self.root.glob(target_path):
                 resolved = path.resolve()
                 if not resolved.is_relative_to(self.root):
@@ -65,6 +69,9 @@ class _Selection:
 def pytest_configure(config):
     raw = os.environ.get("TE_CI_TEST_TARGETS_JSON")
     config._flagcicd_selection = None if raw is None else _Selection(raw)
+    config._flagcicd_ignored = _Selection(
+        os.environ.get("TE_CI_IGNORE_TEST_TARGETS_JSON", "[]"), ignored=True
+    )
 
 
 @pytest.hookimpl(tryfirst=True)
@@ -77,7 +84,9 @@ def pytest_collection(session):
         path = Path(argument.split("::", 1)[0])
         if not path.is_absolute():
             path = Path(session.config.invocation_params.dir) / path
-        if selection.selected(path, ancestors=path.is_dir()):
+        if session.config._flagcicd_ignored.selected(path):
+            print(f"[IGNORE] {argument}")
+        elif selection.selected(path, ancestors=path.is_dir()):
             selected.append(argument)
     if not selected:
         # Platform launchers invoke pytest once per test file. An unrelated
@@ -88,6 +97,9 @@ def pytest_collection(session):
 
 def pytest_ignore_collect(collection_path: Path, config):
     selection = config._flagcicd_selection
+    if config._flagcicd_ignored.selected(collection_path):
+        print(f"[IGNORE] {collection_path}")
+        return True
     if selection is not None and not selection.selected(
         collection_path, ancestors=collection_path.is_dir()
     ):
@@ -108,6 +120,10 @@ def pytest_collection_modifyitems(session, config, items):
             raise pytest.UsageError(f"Collected test is outside the repository: {path}")
         relative_path = path.relative_to(selection.root).as_posix()
         nodeid = relative_path + "::" + item.nodeid.split("::", 1)[1]
+        if any(test_target_matches(nodeid, target) for target in config._flagcicd_ignored.targets):
+            print(f"[IGNORE] {nodeid}")
+            deselected.append(item)
+            continue
         if not any(test_target_matches(nodeid, target) for target in selection.targets):
             deselected.append(item)
             continue

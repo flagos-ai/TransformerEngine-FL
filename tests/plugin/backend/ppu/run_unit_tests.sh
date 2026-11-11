@@ -10,14 +10,14 @@ PYTHON="${PYTHON_BIN:-python3}"
 ROOT_LOG_DIR="$XML_LOG_DIR"
 mkdir -p "$ROOT_LOG_DIR"
 SUMMARY="$ROOT_LOG_DIR/summary.tsv"
-EXCLUSIONS="$ROOT_LOG_DIR/exclusions.tsv"
+IGNORED_TESTS_FILE="$ROOT_LOG_DIR/ignored-tests.tsv"
 printf 'suite\ttarget\treturncode\tstatus\treason\towner\trestore_condition\n' > "$SUMMARY"
-printf 'suite\ttarget\treason\towner\trestore_condition\n' > "$EXCLUSIONS"
+printf 'suite\ttarget\treason\towner\trestore_condition\n' > "$IGNORED_TESTS_FILE"
 OVERALL_FAIL=0
-is_excluded_target() {
-  local candidate="$1" excluded
-  for excluded in "${PPU_EXCLUDED_TARGETS[@]}"; do
-    [ "$excluded" = "$candidate" ] && return 0
+is_ignored_target() {
+  local candidate="$1" ignored
+  for ignored in "${PPU_IGNORE_TARGETS[@]}"; do
+    [ "$ignored" = "$candidate" ] && return 0
   done
   return 1
 }
@@ -32,7 +32,11 @@ run_target() {
     printf '%s\t%s\t2\tfailed\t\t\t\n' "$suite" "$target" >> "$SUMMARY"
     return
   fi
-  local -a cmd=("$PYTHON" -m pytest "$TE_PATH/$target" -v -s --tb=short -ra -o faulthandler_timeout=120 --junitxml="$xml")
+  local -a python_command=("$PYTHON")
+  if [[ "$target" == tests/plugin/plugin/* ]]; then
+    python_command=(env -u TE_FL_ALLOW_VENDORS -u TE_FL_PREFER -u TE_FL_PER_OP -u TE_FL_STRICT "$PYTHON")
+  fi
+  local -a cmd=("${python_command[@]}" -m pytest "$TE_PATH/$target" -v -s --tb=short -ra -o faulthandler_timeout=120 --junitxml="$xml")
   cmd+=("$@")
   echo "[RUN][$suite] $target"
   rm -f "$xml"
@@ -61,17 +65,30 @@ PY
     status=failed
     OVERALL_FAIL=1
   fi
-  printf '%s\t%s\t%s\t%s\t\t\t\n' "$suite" "$target" "$rc" "$status" >> "$SUMMARY"
+  local reason="" line
+  if [ "$rc" -eq 0 ]; then
+    while IFS= read -r line; do
+      case "$line" in
+        *"No test files in this invocation match the FlagCICD plan"* | \
+        *"No selected FlagCICD test nodes remain"*)
+          status=ignored
+          reason="Not selected or ignored by the FlagCICD plan"
+          break
+          ;;
+      esac
+    done < "$log"
+  fi
+  printf '%s\t%s\t%s\t%s\t%s\t\t\n' "$suite" "$target" "$rc" "$status" "$reason" >> "$SUMMARY"
   echo "[EXIT $rc][$suite] $target (log: $log)"
 }
-record_exclusion() {
+record_ignore() {
   local suite="$1" target="$2"
-  local reason="${PPU_EXCLUDED_REASON[$target]}"
-  local owner="${PPU_EXCLUDED_OWNER[$target]}"
-  local restore="${PPU_EXCLUDED_RESTORE[$target]}"
-  echo "[EXCLUDED][$suite] $target: $reason; owner=$owner; restore=$restore"
-  printf '%s\t%s\t\texcluded\t%s\t%s\t%s\n' "$suite" "$target" "$reason" "$owner" "$restore" >> "$SUMMARY"
-  printf '%s\t%s\t%s\t%s\t%s\n' "$suite" "$target" "$reason" "$owner" "$restore" >> "$EXCLUSIONS"
+  local reason="${PPU_IGNORE_REASON[$target]}"
+  local owner="${PPU_IGNORE_OWNER[$target]}"
+  local restore="${PPU_IGNORE_RESTORE[$target]}"
+  echo "[IGNORE][$suite] $target: $reason; owner=$owner; restore=$restore"
+  printf '%s\t%s\t\tignored\t%s\t%s\t%s\n' "$suite" "$target" "$reason" "$owner" "$restore" >> "$SUMMARY"
+  printf '%s\t%s\t%s\t%s\t%s\n' "$suite" "$target" "$reason" "$owner" "$restore" >> "$IGNORED_TESTS_FILE"
 }
 run_suite() {
   local suite="$1" target
@@ -112,16 +129,27 @@ run_suite() {
   fi
   mkdir -p "$ROOT_LOG_DIR/$suite"
   local old_log="$XML_LOG_DIR"; XML_LOG_DIR="$ROOT_LOG_DIR/$suite"
+  local -a expanded_targets=()
   for target in "${targets[@]}"; do
-    if is_excluded_target "$target"; then
-      record_exclusion "$suite" "$target"
+    if [ "$target" = tests/plugin ]; then
+      local plugin_file
+      while IFS= read -r plugin_file; do
+        expanded_targets+=("${plugin_file#"$TE_PATH/"}")
+      done < <(find "$TE_PATH/tests/plugin" -type f -name 'test_*.py' | sort)
+    else
+      expanded_targets+=("$target")
+    fi
+  done
+  for target in "${expanded_targets[@]}"; do
+    if is_ignored_target "$target"; then
+      record_ignore "$suite" "$target"
       continue
     fi
     local -a extra=()
     [ "$suite" = debug ] && extra+=(--feature_dirs=transformer_engine/debug/features --configs_dir=tests/pytorch/debug/test_configs/)
     [ "$target" = tests/pytorch/test_cpu_offloading_v1.py ] && export NVTE_CPU_OFFLOAD_V1=1
     [ "$target" = tests/pytorch/test_onnx_export.py ] && export NVTE_UnfusedDPA_Emulate_FP8=1
-    [ -n "${PPU_SKIP_K[$target]:-}" ] && extra+=(-k "not (${PPU_SKIP_K[$target]})")
+    [ -n "${PPU_IGNORE_K[$target]:-}" ] && extra+=(-k "not (${PPU_IGNORE_K[$target]})")
     run_target "$suite" "$target" "${extra[@]}"
   done
   XML_LOG_DIR="$old_log"
@@ -155,7 +183,7 @@ with summary.open() as f:
         xml = summary.parent / suite / (target.replace('/', '_').removesuffix('.py') + '.xml')
         log = summary.parent / suite / (target.replace('/', '_').removesuffix('.py') + '.log')
         counts = {'tests': 0, 'failures': 0, 'errors': 0, 'skipped': 0}
-        if status != 'excluded':
+        if status != 'ignored':
             if not xml.is_file():
                 raise FileNotFoundError(f'Missing JUnit report: {xml}')
             root = ET.parse(xml)

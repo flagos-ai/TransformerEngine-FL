@@ -48,7 +48,7 @@ run_pytest_step_with_unfused_attention() {
 
     if [ -z "${TE_TEST_PYTEST_COMMAND:-}" ]; then
         echo "-------------------------------------------------------"
-        echo "[SKIP] $label: Ascend shared PyTorch tests require the NPU pytest runner"
+        echo "[IGNORE] $label: Ascend shared PyTorch tests require the NPU pytest runner"
         return
     fi
 
@@ -58,38 +58,8 @@ run_pytest_step_with_unfused_attention() {
         run_pytest_step "$label" "$junit" true "$@"
 }
 
-run_pytest_step "Ascend vendor NPU backend tests" "pytest_ascend_vendor_npu.xml" false \
-    "$TE_PATH/tests/plugin/backend/npu/test_backend_npu.py"
-
-PLUGIN_TEST_ROOT="$TE_PATH/tests/plugin"
-
-run_pytest_step "plugin policy" "pytest_test_plugin_policy.xml" false \
-    "$PLUGIN_TEST_ROOT/plugin/test_policy.py"
-
-run_pytest_step "plugin manager" "pytest_test_plugin_manager.xml" false \
-    "$PLUGIN_TEST_ROOT/plugin/test_manager.py"
-
-# Use the regular interpreter for plugin tests, matching policy and manager tests.
-for dispatch_test in entry hook integration manifest numerics; do
-    dispatch_name="test_triton_dispatch_${dispatch_test}"
-    run_pytest_step "plugin ${dispatch_name}" "pytest_${dispatch_name}.xml" false \
-        "$PLUGIN_TEST_ROOT/plugin/${dispatch_name}.py"
-done
-
-run_pytest_step "FlagOS backend lifecycle" "pytest_test_backend_flagos.xml" false \
-    "$PLUGIN_TEST_ROOT/backend/flagos/test_lifecycle.py"
-
-run_pytest_step "reference backend lifecycle" "pytest_test_backend_reference.xml" false \
-    "$PLUGIN_TEST_ROOT/backend/reference/test_lifecycle.py"
-
-run_pytest_step "reference activation operations" "pytest_test_backend_reference_activation.xml" false \
-    "$PLUGIN_TEST_ROOT/backend/reference/test_activation.py"
-
-run_pytest_step "reference dropout operations" "pytest_test_backend_reference_dropout.xml" false \
-    "$PLUGIN_TEST_ROOT/backend/reference/test_dropout.py"
-
-run_pytest_step "reference GEMM operations" "pytest_test_backend_reference_gemm.xml" false \
-    "$PLUGIN_TEST_ROOT/backend/reference/test_gemm.py"
+# Include both NPU test files and every shared plugin test in the unit job.
+python3 "$TE_PATH/tests/test_utils/run_ci_test_group.py" --plugin-tests || test_fail "plugin"
 
 run_pytest_step_with_unfused_attention "shared portable sanity tests" "pytest_shared_sanity_portable.xml" \
     "$TE_PATH/tests/pytorch/test_sanity.py::test_sanity_normalization_amp[LayerNorm-False-False-small-dtype0]" \

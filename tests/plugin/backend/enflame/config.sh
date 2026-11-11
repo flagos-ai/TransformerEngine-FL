@@ -22,7 +22,7 @@ readonly PLATFORM_PYTEST_EXTRA_ARGS="--tb=short --verbose"
 readonly PLATFORM_PYTEST_DESELECT=""
 readonly PLATFORM_COVERAGE_ENABLED=true
 
-readonly -a ENFLAME_UNITTEST_SKIP_FUSED_OPTIMIZER=(
+readonly -a ENFLAME_UNITTEST_IGNORE_FUSED_OPTIMIZER=(
     "test_float"
     "test_half"
     "test_grad_scaler_capturable"
@@ -33,17 +33,17 @@ readonly -a ENFLAME_UNITTEST_SKIP_FUSED_OPTIMIZER=(
     "test_multi_params"
 )
 
-readonly -a ENFLAME_UNITTEST_SKIP_HF_INTEGRATION=(
+readonly -a ENFLAME_UNITTEST_IGNORE_HF_INTEGRATION=(
     "test_save_and_load_hf_model"
 )
 
-readonly -a ENFLAME_DISTRIBUTED_SKIP_FILES=(
+readonly -a ENFLAME_DISTRIBUTED_IGNORE_FILES=(
     "tests/pytorch/distributed/test_numerics.py"
     "tests/pytorch/distributed/test_numerics_exact.py"
     "tests/pytorch/distributed/test_torch_fsdp2.py"
 )
 
-readonly -a ENFLAME_ONNX_SKIP_GROUPS=(
+readonly -a ENFLAME_ONNX_IGNORE_GROUPS=(
     "test_export_linear"
     "test_export_layernorm_linear"
     "test_export_layernorm_mlp"

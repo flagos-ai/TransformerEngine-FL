@@ -69,7 +69,7 @@ def make_plan(platforms=(), test_groups=(), blocked=(), stage="pr", execution_gr
         "platforms": list(platforms),
         "test_groups": logical_groups,
         "execution_groups": execution_groups,
-        "excluded": [],
+        "ignored": [],
         "blocked": list(blocked),
         "reasons": [],
         "coverage_policy": {"method": "absolute"},
@@ -719,7 +719,7 @@ Path(xml).write_text('<testsuite tests="1"><testcase name="probe"><properties><p
             ] = ["probe_target"]
             platforms = planner.load_platforms(ROOT / ".github/configs")
             # The probe uses a synthetic catalog containing only preflight/core.
-            platforms["cuda"]["config"]["unsupported_test_groups"] = {}
+            platforms["cuda"]["config"]["ignored_test_groups"] = {}
             pytest_entry = {
                 "name": "pytorch_unit",
                 "runner": "pytest",
@@ -1319,7 +1319,7 @@ class GatePlatformReportTests(unittest.TestCase):
             ],
             "test_groups": [],
             "execution_groups": [],
-            "excluded": [],
+            "ignored": [],
             "blocked": [],
             "reasons": [],
             "coverage_policy": {"method": "absolute"},

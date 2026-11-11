@@ -87,7 +87,7 @@ paths_watch:
   - transformer_engine/plugin/core/backends/vendor/kunlunxin/
 
 # Missing test-group coverage is explicit; these entries do not claim hardware incapability.
-unsupported_test_groups:
+ignored_test_groups:
   quantization: Current Kunlun QA runs recipe targets only and all are skipped by capability checks; no passing quantization evidence is available.
   plugin_core: Kunlun unit QA runs only portable sanity, recipe and deferred-init targets; plugin policy/manager targets are not wired.
   reference_backend: Kunlun unit QA does not run tests/plugin/backend/reference targets.

@@ -24,7 +24,7 @@ readonly PLATFORM_COVERAGE_ENABLED=true
 # Whole-file exclusions for this CI baseline, not passing or capability-skipped
 # tests. Keep the shared sources intact; restore these entries after isolated
 # reproduction confirms the attention/graph/offload issues are fixed.
-readonly ILUVATAR_EXCLUDED_TEST_TARGETS=(
+readonly ILUVATAR_IGNORE_TEST_TARGETS=(
     "tests/pytorch/test_numerics.py|FP16 GPT CUDA Graph case hung with a driver thread remaining after termination."
     "tests/pytorch/test_cuda_graphs.py|FP16 Transformer graph case hung again on a different GPU."
     "tests/pytorch/test_cpu_offloading.py|UnfusedAttention MHA numerics produced no output for 20 minutes and left an unreaped process."
@@ -43,7 +43,7 @@ readonly ILUVATAR_EXCLUDED_TEST_TARGETS=(
 # Entries with no passing evidence are recorded separately in the whole-file
 # exclusions above; neither those gaps nor the partial exclusions count as passes.
 # Format: suite|target|pytest -k exclusion expression|failure classification.
-readonly ILUVATAR_KNOWN_FAILURE_FILTERS=(
+readonly ILUVATAR_IGNORE_TEST_FILTERS=(
     # unittest: retain 780 prior passes; quarantine 1968 failures.
     "unittest|tests/pytorch/test_sanity.py|(test_sanity_grouped_linear and (first-False-True or \
         last-False-True or \
@@ -247,9 +247,7 @@ readonly ILUVATAR_UNIT_TEST_TARGETS=(
     "tests/pytorch/test_permutation.py"
     "tests/pytorch/test_parallel_cross_entropy.py"
     "tests/pytorch/test_hf_integration.py"
-    "tests/plugin/plugin"
-    "tests/plugin/backend/reference"
-    "tests/plugin/backend/flagos"
+    "tests/plugin"
 )
 readonly ILUVATAR_DISTRIBUTED_TEST_TARGETS=(
     "tests/pytorch/distributed/test_numerics_exact.py"

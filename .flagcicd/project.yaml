@@ -173,17 +173,19 @@ test_groups:
       matrix: unit_test_matrix
       entry: pytorch_unit
   - name: plugin_core
-    description: Plugin policy, registration and dispatch tests.
+    description: Complete plugin core, backend contracts and cross-backend accuracy tests.
     level: L1
     depends_on:
     - core
     paths:
     - transformer_engine/plugin/core/*.py
     - transformer_engine/plugin/core/triton_dispatch/
+    - transformer_engine/plugin/core/backends/
+    - transformer_engine/pytorch/triton/
     - transformer_engine/plugin/*.py
-    - tests/plugin/plugin/
+    - tests/plugin/
     test_targets:
-    - tests/plugin/plugin/
+    - tests/plugin/
     kind: unit
     required: true
     evidence: junit

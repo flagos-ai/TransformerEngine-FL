@@ -83,7 +83,7 @@ paths_watch:
   - transformer_engine/plugin/core/backends/vendor/enflame/
 
 # Missing test-group coverage is explicit; these entries do not claim hardware incapability.
-unsupported_test_groups:
+ignored_test_groups:
   normalization: Enflame unit QA has no normalization, sanity or numerics target; existing HF integration is not a dedicated normalization check.
   quantization: Enflame unit QA does not run recipe, quantized-tensor, FP8 or NVFP4 targets.
   vendor_backend: Enflame unit QA has no vendor or FlagOS backend target; reference GEMM coverage is recorded under gemm.
