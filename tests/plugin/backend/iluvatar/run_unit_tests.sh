@@ -24,16 +24,13 @@ run_pytest() {
     local target=$2
     shift 2
     if [ "$target" = tests/plugin ]; then
-        local plugin_file plugin_target plugin_name
-        while IFS= read -r plugin_file; do
-            plugin_target="${plugin_file#"$TE_PATH/"}"
-            if [[ "$plugin_target" == tests/plugin/backend/npu/* ]]; then
-                echo "[IGNORE] $plugin_target: NPU tests require the Ascend platform"
-                continue
-            fi
+        local plugin_target plugin_name plugin_targets
+        plugin_targets=$(TE_TEST_GROUP_PRESET=plugin-unit "$PYTHON_BIN" "$TE_PATH/tests/test_utils/run_ci_test_group.py" --list-targets) || { FAILED=1; return; }
+        while IFS= read -r plugin_target; do
+            [ -n "$plugin_target" ] || continue
             plugin_name="${plugin_target//\//_}"
             run_pytest "${name}_${plugin_name%.py}" "$plugin_target" "$@"
-        done < <(find "$TE_PATH/tests/plugin" -type f -name 'test_*.py' | sort)
+        done <<< "$plugin_targets"
         return
     fi
     local ignore_rule
@@ -63,14 +60,9 @@ run_pytest() {
         set -- "$@" -k "$combined_filter"
     fi
     echo "[RUN][$suite] $target"
-    local python_command=("$PYTHON_BIN")
-    if [[ "$target" == tests/plugin/plugin/* ]]; then
-        # Policy/dispatch contract tests create mock vendors and need the default
-        # policy, independent of the device QA's backend preference.
-        python_command=(env -u TE_FL_ALLOW_VENDORS -u TE_FL_PREFER -u TE_FL_PER_OP -u TE_FL_STRICT "$PYTHON_BIN")
-    fi
     # Use an inline plugin so each rule is checked before pytest applies -k.
-    if ! "${python_command[@]}" - "${#expressions[@]}" "${expressions[@]}" \
+    if ! TE_TEST_GROUP_PRESET=plugin-unit "$PYTHON_BIN" "$TE_PATH/tests/test_utils/run_ci_test_group.py" \
+        --target-env "$target" "$PYTHON_BIN" - "${#expressions[@]}" "${expressions[@]}" \
         -v -s --tb=short "$TE_PATH/$target" "$@" --junitxml="$XML_LOG_DIR/$name.xml" <<'CHECK'
 import sys
 import pytest

@@ -226,7 +226,8 @@ class WorkflowGateTests(unittest.TestCase):
             with self.subTest(workflow=name):
                 workflow = yaml.safe_load((ROOT / f".github/workflows/{name}.yml").read_text())
                 self.assertEqual(
-                    workflow["jobs"][job]["uses"], "./.github/workflows/all_tests_common.yml"
+                    workflow["jobs"][job]["uses"],
+                    "./.github/workflows/all_tests_common.yml",
                 )
 
     def test_no_always_conditions_in_flagcicd_workflows(self):
@@ -473,7 +474,9 @@ sys.exit(2)
                 name,
             )
             self.assertEqual(
-                pipeline["with"]["plan_artifact"], "${{ needs.plan.outputs.plan_artifact }}", name
+                pipeline["with"]["plan_artifact"],
+                "${{ needs.plan.outputs.plan_artifact }}",
+                name,
             )
             plan_step = next(
                 step
@@ -723,7 +726,9 @@ class PytestSelectionTests(unittest.TestCase):
             self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
             self.assertIn("1 failed", result.stdout)
 
-    def test_node_selection_preserves_parameters_class_targets_and_platform_filters(self):
+    def test_node_selection_preserves_parameters_class_targets_and_platform_filters(
+        self,
+    ):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "test_mixed.py").write_text(
@@ -735,7 +740,9 @@ class PytestSelectionTests(unittest.TestCase):
                 "def test_attention(): assert False\n"
             )
             result = self.run_pytest(
-                root, ["test_mixed.py", "--junitxml=selected.xml"], ["test_mixed.py::test_linear"]
+                root,
+                ["test_mixed.py", "--junitxml=selected.xml"],
+                ["test_mixed.py::test_linear"],
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             cases = ET.parse(root / "selected.xml").findall(".//testcase")
@@ -747,7 +754,10 @@ class PytestSelectionTests(unittest.TestCase):
                     for p in case.findall("properties/property")
                     if p.get("name") == "flagcicd_test_nodeid"
                 },
-                {"test_mixed.py::test_linear[small[case]]", "test_mixed.py::test_linear[other]"},
+                {
+                    "test_mixed.py::test_linear[small[case]]",
+                    "test_mixed.py::test_linear[other]",
+                },
             )
             for target, arguments in (
                 ("test_mixed.py::TestNorm*", ["test_mixed.py", "-k", "norm"]),
@@ -772,6 +782,13 @@ class PytestSelectionTests(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertEqual(ET.parse(root / "empty.xml").findall(".//testcase"), [])
+            result = self.run_pytest(
+                root,
+                ["test_mixed.py", "-k", "not (test_linear)", "--junitxml=filtered.xml"],
+                ["test_mixed.py::test_linear"],
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(ET.parse(root / "filtered.xml").findall(".//testcase"), [])
             result = self.run_pytest(
                 root, ["test_mixed.py::missing_node"], ["test_mixed.py::test_norm"]
             )
@@ -803,6 +820,82 @@ class PytestSelectionTests(unittest.TestCase):
                     result = self.run_pytest(root, ["test_selected.py"], raw=raw)
                     self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
                     self.assertNotIn("1 passed", result.stdout)
+
+    def test_shared_plugin_preset_discovery_and_environment(self):
+        runner = ROOT / "tests/test_utils/run_ci_test_group.py"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            targets = [
+                "tests/plugin/plugin/test_policy.py",
+                "tests/plugin/backend/flagos/test_policy.py",
+                "tests/plugin/backend/npu/test_backend.py",
+            ]
+            for target in targets:
+                path = root / target
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("def test_pass(): pass\n")
+            env = dict(
+                os.environ,
+                TE_TEST_GROUP_PRESET="plugin-unit",
+                GITHUB_WORKSPACE=str(root),
+                TE_FL_PREFER="flagos",
+            )
+            for platform, expected in (("cuda", targets[:2]), ("ascend", targets)):
+                env["PLATFORM"] = platform
+                result = subprocess.run(
+                    [sys.executable, str(runner), "--list-targets"],
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(set(result.stdout.splitlines()), set(expected))
+            for target, expected in ((targets[0], "unset"), (targets[1], "flagos")):
+                result = subprocess.run(
+                    [
+                        sys.executable,
+                        str(runner),
+                        "--target-env",
+                        target,
+                        sys.executable,
+                        "-c",
+                        "import os; print(os.environ.get('TE_FL_PREFER', 'unset'))",
+                    ],
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.strip(), expected)
+            # Equal basenames must get distinct reports and independent modules.
+            (root / targets[0]).write_text(
+                "import os, sys\n"
+                "sys.modules['preset_isolation_probe'] = object()\n"
+                "def test_pass(): assert 'TE_FL_PREFER' not in os.environ\n"
+            )
+            (root / targets[1]).write_text(
+                "import os, sys\n"
+                "def test_pass():\n"
+                "    assert 'preset_isolation_probe' not in sys.modules\n"
+                "    assert os.environ['TE_FL_PREFER'] == 'flagos'\n"
+            )
+            env.update(PLATFORM="cuda", PYTEST_DISABLE_PLUGIN_AUTOLOAD="1")
+            env.pop("PYTEST_PLUGINS", None)
+            result = subprocess.run(
+                [sys.executable, str(runner)], env=env, capture_output=True, text=True
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            reports = list((root / "logs").glob("*.xml"))
+            self.assertEqual(len(reports), 2)
+            self.assertEqual(sum(len(ET.parse(p).findall(".//testcase")) for p in reports), 2)
+            env["GITHUB_WORKSPACE"] = str(root / "missing")
+            result = subprocess.run(
+                [sys.executable, str(runner), "--list-targets"],
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(result.returncode, 0)
 
     def test_script_runner_passes_selection_to_child_pytest(self):
         spec = importlib.util.spec_from_file_location(

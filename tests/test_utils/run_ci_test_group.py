@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import argparse
 import importlib
 import json
 import fnmatch
@@ -19,7 +20,11 @@ import time
 from typing import Any
 
 
-REPO_ROOT = Path(os.environ.get("GITHUB_WORKSPACE", Path(__file__).resolve().parents[2]))
+REPO_ROOT = Path(
+    os.environ.get("GITHUB_WORKSPACE")
+    or os.environ.get("TE_PATH")
+    or Path(__file__).resolve().parents[2]
+)
 
 
 def _expand(value: str) -> str:
@@ -27,6 +32,39 @@ def _expand(value: str) -> str:
 
 
 def _load_group() -> dict[str, Any]:
+    preset = os.environ.get("TE_TEST_GROUP_PRESET")
+    if preset:
+        if preset != "plugin-unit":
+            raise SystemExit(f"Unknown test group preset: {preset}")
+        return {
+            "name": "plugin-unit",
+            "runner": "pytest",
+            "max_retries": 0,
+            "pytest_args": ["-v", "-s", "--tb=short"],
+            "steps": [
+                {
+                    "name": "plugin",
+                    "targets": ["tests/plugin/"],
+                    "isolate_files": True,
+                    "use_platform_runner": False,
+                    # CI records the same exclusion in the platform plan. This
+                    # fallback also keeps standalone QA off Ascend-only tests.
+                    "ignore": (
+                        []
+                        if os.environ.get("PLATFORM") in ("ascend", "npu")
+                        else ["tests/plugin/backend/npu/"]
+                    ),
+                    "unset_env_by_path": {
+                        "tests/plugin/plugin/": [
+                            "TE_FL_ALLOW_VENDORS",
+                            "TE_FL_PREFER",
+                            "TE_FL_PER_OP",
+                            "TE_FL_STRICT",
+                        ]
+                    },
+                }
+            ],
+        }
     raw_group = os.environ.get("TE_TEST_GROUP_JSON")
     if not raw_group:
         raise SystemExit("TE_TEST_GROUP_JSON is required")
@@ -90,6 +128,47 @@ def _pytest_command(use_platform_runner: bool) -> list[str]:
     return [sys.executable, "-m", "pytest"]
 
 
+def _isolated_targets(step: dict[str, Any], *, log_ignored: bool = False) -> list[str]:
+    files = set()
+    for target in step["targets"]:
+        path = REPO_ROOT / _expand(target)
+        if path.is_dir():
+            files.update(file for file in path.rglob("test_*.py") if file.is_file())
+        elif path.is_file():
+            files.add(path)
+        else:
+            raise SystemExit(f"Test target does not exist: {target}")
+    if not files:
+        raise SystemExit(f"No test files found for step {step['name']}")
+    selected = []
+    for file in sorted(files):
+        relative = file.relative_to(REPO_ROOT).as_posix()
+        if _ignored_target(relative, step):
+            if log_ignored:
+                print(f"[IGNORE] {relative}", flush=True)
+            continue
+        selected.append(relative)
+    return selected
+
+
+def _ignored_target(relative: str, step: dict[str, Any]) -> bool:
+    return any(
+        (
+            relative.startswith(pattern)
+            if pattern.endswith("/")
+            else fnmatch.fnmatchcase(relative, pattern)
+        )
+        for pattern in step.get("ignore", [])
+    )
+
+
+def _target_env(env: dict[str, str], step: dict[str, Any], relative: str) -> None:
+    for prefix, keys in step.get("unset_env_by_path", {}).items():
+        if relative.startswith(prefix):
+            for key in keys:
+                env.pop(key, None)
+
+
 def _run_pytest(group: dict[str, Any]) -> int:
     steps = group.get("steps")
     if not isinstance(steps, list) or not steps:
@@ -124,18 +203,9 @@ def _run_pytest(group: dict[str, Any]) -> int:
 
         invocations = [targets]
         if step.get("isolate_files"):
-            files = set()
-            for target in targets:
-                path = REPO_ROOT / target
-                if path.is_dir():
-                    files.update(file for file in path.rglob("test_*.py") if file.is_file())
-                elif path.is_file():
-                    files.add(path)
-                else:
-                    raise SystemExit(f"Test target does not exist: {target}")
-            if not files:
-                raise SystemExit(f"No test files found for step {step['name']}")
-            invocations = [[str(file)] for file in sorted(files)]
+            invocations = [
+                [str(REPO_ROOT / target)] for target in _isolated_targets(step, log_ignored=True)
+            ]
 
         for invocation in invocations:
             relative = (
@@ -143,16 +213,6 @@ def _run_pytest(group: dict[str, Any]) -> int:
                 if step.get("isolate_files")
                 else ""
             )
-            if relative and any(
-                (
-                    relative.startswith(pattern)
-                    if pattern.endswith("/")
-                    else fnmatch.fnmatchcase(relative, pattern)
-                )
-                for pattern in step.get("ignore", [])
-            ):
-                print(f"[IGNORE] {relative}", flush=True)
-                continue
             command = _pytest_command(bool(step.get("use_platform_runner", True)))
             command.extend(group_args)
             command.extend(_expand(str(arg)) for arg in step.get("args", []))
@@ -168,10 +228,7 @@ def _run_pytest(group: dict[str, Any]) -> int:
             step_env.update(
                 {str(key): _expand(str(value)) for key, value in step.get("env", {}).items()}
             )
-            for prefix, keys in step.get("unset_env_by_path", {}).items():
-                if relative.startswith(prefix):
-                    for key in keys:
-                        step_env.pop(key, None)
+            _target_env(step_env, step, relative)
             _selection_env(step_env, group)
             print(f"[RUN] {step['name']}: {shlex.join(command)}", flush=True)
             result = subprocess.run(command, cwd=REPO_ROOT, env=step_env, check=False)
@@ -206,5 +263,26 @@ def main() -> int:
     raise AssertionError("Unreachable retry state")
 
 
+def cli() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--list-targets", action="store_true")
+    parser.add_argument("--target-env", metavar="TARGET")
+    parser.add_argument("command", nargs=argparse.REMAINDER)
+    args = parser.parse_args()
+    if args.list_targets or args.target_env:
+        group = _load_group()
+        if args.list_targets:
+            for step in group["steps"]:
+                print("\n".join(_isolated_targets(step)))
+            return 0
+        if not args.command:
+            parser.error("--target-env requires a command")
+        env = os.environ.copy()
+        for step in group["steps"]:
+            _target_env(env, step, args.target_env)
+        os.execvpe(args.command[0], args.command, env)
+    return main()
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(cli())

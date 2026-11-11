@@ -104,18 +104,7 @@ run_unittest_suite() {
         -s -v --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_hf_integration.xml" \
         "$TE_PATH/tests/pytorch/test_hf_integration.py" \
         -k "not ($hf_integration_ignore_expr)"
-    if ! TE_TEST_GROUP_JSON='{
-  "name": "plugin-unit", "runner": "pytest", "max_retries": 0,
-  "pytest_args": ["-v", "-s", "--tb=short"],
-  "steps": [{
-    "name": "plugin", "targets": ["tests/plugin/"],
-    "isolate_files": true, "use_platform_runner": false,
-    "ignore": ["tests/plugin/backend/npu/"],
-    "unset_env_by_path": {"tests/plugin/plugin/": [
-      "TE_FL_ALLOW_VENDORS", "TE_FL_PREFER", "TE_FL_PER_OP", "TE_FL_STRICT"
-    ]}
-  }]
-}' "$PYTHON" "$TE_PATH/tests/test_utils/run_ci_test_group.py"; then
+    if ! TE_TEST_GROUP_PRESET=plugin-unit "$PYTHON" "$TE_PATH/tests/test_utils/run_ci_test_group.py"; then
         FAIL=1
         FAILED_CASES+=("unittest:plugin_core")
     fi

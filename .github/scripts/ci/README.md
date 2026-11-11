@@ -36,14 +36,16 @@ already covered by the CUDA unit job. Manual runs remain available through the
 unified CI entry points. Runner labels come from the platform configuration
 (`nv-8g-cicd-te` for CUDA), avoiding a separate runner definition.
 
-Platform unit launchers discover all `test_*.py` recursively. Most use
-the existing declarative `runner: pytest` with `isolate_files: true`. Each step
-supplies its discovery paths, ignore prefixes and path-scoped environment cleanup;
-the generic runner contains no plugin-specific CLI or platform policy. Inner
+Platform unit launchers that run plugin suites discover all `test_*.py`
+recursively through the shared `TE_TEST_GROUP_PRESET=plugin-unit` preset in
+`tests/test_utils/run_ci_test_group.py`. The preset supplies the discovery
+paths, non-Ascend NPU ignore prefix and path-scoped environment cleanup;
+platform scripts do not duplicate inline JSON or `TE_FL_*` unset lists. Inner
 pytest groups disable retries so the outer platform job owns retry policy.
-PPU retains its per-file timeout/summary. Iluvatar also isolates every plugin
-file; its former FlagOS directory filter is split across the three owning
-files, preserving all seven selectors and the per-file ignore audit.
+PPU retains its per-file timeout/summary and Iluvatar its per-file ignore audit,
+while both query `--list-targets` and `--target-env` from the shared preset.
+MUSA and Kunlun keep their existing unit suites unchanged while `plugin_core`,
+`reference_backend` and `vendor_backend` remain in `ignored_test_groups`.
 The old per-file backend calls are removed to avoid duplicate execution.
 Distinct relative paths produce distinct JUnit filenames even when test files
 share a basename. Numerics helper files are invoked by their driver rather
@@ -51,21 +53,25 @@ than discovered twice. Core mock contracts clear vendor policy overrides;
 backend/accuracy tests retain real platform policy. CI test selection and
 coverage hooks remain in effect in all child processes.
 
-Non-Ascend launchers ignore `tests/plugin/backend/npu/` before starting pytest.
+Non-Ascend plans and the shared preset ignore `tests/plugin/backend/npu/` before
+starting pytest.
 The common discovery root is `tests/plugin/`; platforms do not maintain lists
 of individual plugin test files. All original platform group ignores, their
 reasons, and existing file/case ignore rules are preserved. Expanding discovery
 does not establish hardware support and does not remove those ignores.
 
-The planner expands ignored groups into `ignored_test_targets`, including
-dependency-derived ignores. The runner passes that list to every pytest child.
+The planner expands ignored groups (and non-Ascend NPU exclusions) into
+`ignored_test_targets`, including dependency-derived ignores, and records any
+resulting cross-group target suppressions in `ignored_group_test_targets` and
+the plan summary. The runner passes `ignored_test_targets` to every pytest child.
 Whole-file/directory ignores apply before import; node selectors apply after
 collection. Ignores take precedence over positive directory selections, even
 when another selected group overlaps the ignored files and even in full Nightly
 runs. Ignored tests produce no passing evidence. Standard capability-based
-runtime skips remain separate. Only plan-driven removal of every node is a
-successful empty invocation; `-k`/`-m` filtering every selected test remains a
-failure and cannot be classified as a planned ignore by the PPU summary.
+runtime skips remain separate. When plan deselection and platform `-k`/`-m`
+filters leave an invocation with zero selected nodes, the selection plugin exits
+cleanly without recording passing evidence; group gates still require actual
+passing testcases.
 
 ## Ignore naming and include scopes
 

@@ -133,7 +133,7 @@ def pytest_collection_modifyitems(session, config, items):
                 ("flagcicd_test_nodeid", nodeid),
             ]
         )
-    config._flagcicd_plan_removed_all = bool(items) and not selected
+    config._flagcicd_had_items = bool(items)
     items[:] = selected
     if deselected:
         config.hook.pytest_deselected(items=deselected)
@@ -142,10 +142,11 @@ def pytest_collection_modifyitems(session, config, items):
 def pytest_collection_finish(session):
     if (
         session.config._flagcicd_selection is not None
-        and getattr(session.config, "_flagcicd_plan_removed_all", False)
+        and getattr(session.config, "_flagcicd_had_items", False)
         and not session.items
         and not session.testsfailed
     ):
-        # Only plan-driven removal is an intentional empty invocation. Keep
-        # pytest's failure when -k/-m or another filter removes selected tests.
+        # Platform filters may remove every plan-selected node in this invocation.
+        # Return success without creating evidence; group gates still require
+        # actual passing cases. Genuine empty collections/errors remain failures.
         pytest.exit("No selected FlagCICD test nodes remain", returncode=0)

@@ -32,11 +32,12 @@ run_target() {
     printf '%s\t%s\t2\tfailed\t\t\t\n' "$suite" "$target" >> "$SUMMARY"
     return
   fi
-  local -a python_command=("$PYTHON")
-  if [[ "$target" == tests/plugin/plugin/* ]]; then
-    python_command=(env -u TE_FL_ALLOW_VENDORS -u TE_FL_PREFER -u TE_FL_PER_OP -u TE_FL_STRICT "$PYTHON")
-  fi
-  local -a cmd=("${python_command[@]}" -m pytest "$TE_PATH/$target" -v -s --tb=short -ra -o faulthandler_timeout=120 --junitxml="$xml")
+  local -a cmd=(
+    env TE_TEST_GROUP_PRESET=plugin-unit
+    "$PYTHON" "$TE_PATH/tests/test_utils/run_ci_test_group.py"
+    --target-env "$target"
+    "$PYTHON" -m pytest "$TE_PATH/$target" -v -s --tb=short -ra -o faulthandler_timeout=120 --junitxml="$xml"
+  )
   cmd+=("$@")
   echo "[RUN][$suite] $target"
   rm -f "$xml"
@@ -132,14 +133,11 @@ run_suite() {
   local -a expanded_targets=()
   for target in "${targets[@]}"; do
     if [ "$target" = tests/plugin ]; then
-      local plugin_file
-      while IFS= read -r plugin_file; do
-        if [[ "$plugin_file" == "$TE_PATH/tests/plugin/backend/npu/"* ]]; then
-          echo "[IGNORE] $plugin_file: NPU tests require the Ascend platform"
-          continue
-        fi
-        expanded_targets+=("${plugin_file#"$TE_PATH/"}")
-      done < <(find "$TE_PATH/tests/plugin" -type f -name 'test_*.py' | sort)
+      local plugin_target plugin_targets
+      plugin_targets=$(TE_TEST_GROUP_PRESET=plugin-unit "$PYTHON" "$TE_PATH/tests/test_utils/run_ci_test_group.py" --list-targets) || { OVERALL_FAIL=1; continue; }
+      while IFS= read -r plugin_target; do
+        [ -n "$plugin_target" ] && expanded_targets+=("$plugin_target")
+      done <<< "$plugin_targets"
     else
       expanded_targets+=("$target")
     fi

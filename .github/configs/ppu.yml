@@ -1,7 +1,7 @@
 # PPU local/container QA; runner label must match the deployed PPU runner.
 hardware_name: ppu
 display_name: 'PPU ZW810E'
-ci_image: harbor.baai.ac.cn/flagos-dev/transformerengine-fl:f826afe-ppu-dev
+ci_image: harbor.baai.ac.cn/flagos-dev/transformer-engine-fl:v2.17.0-thead-ci
 container_pull_policy: never
 runner_labels:
   - flagcicd-810e

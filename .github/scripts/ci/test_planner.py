@@ -142,7 +142,12 @@ class PlannerTests(unittest.TestCase):
                     self.assertEqual(
                         sum(
                             len(json.loads(values[lane + "_matrix"])["include"])
-                            for lane in ("preflight", "parallel", "serial", "integration")
+                            for lane in (
+                                "preflight",
+                                "parallel",
+                                "serial",
+                                "integration",
+                            )
                         ),
                         sum(
                             job["platform"] == platform["name"] for job in plan["execution_groups"]
@@ -347,7 +352,8 @@ class PlannerTests(unittest.TestCase):
         # Splitting reports must preserve each platform's supported suite coverage.
         for platform in plan["platforms"]:
             self.assertEqual(
-                set(platform["coverage_groups"]), self.supported_suites(platform["name"])
+                set(platform["coverage_groups"]),
+                self.supported_suites(platform["name"]),
             )
             for device in platform["device_types"]:
                 actual = {
@@ -452,7 +458,8 @@ class PlannerTests(unittest.TestCase):
                 for platform in plan["platforms"]:
                     # The full baseline scope must survive partial PR selection.
                     self.assertEqual(
-                        set(platform["coverage_groups"]), self.supported_suites(platform["name"])
+                        set(platform["coverage_groups"]),
+                        self.supported_suites(platform["name"]),
                     )
                     actual = {
                         g["group"]
@@ -601,6 +608,60 @@ class PlannerTests(unittest.TestCase):
             {entry["group"] for entry in hygon["ignored_test_groups"]},
         )
 
+    def test_cross_group_ignored_target_overlaps_and_npu_ignore_are_recorded(self):
+        plan = self.run_planner("nightly")
+        by_platform = {
+            g["platform"]: g for g in plan["execution_groups"] if g["group"] == "pytorch_unit"
+        }
+        self.assertIn(
+            "tests/plugin/backend/npu/",
+            by_platform["cuda"]["exec"]["ignored_test_targets"],
+        )
+        self.assertNotIn(
+            "tests/plugin/backend/npu/",
+            by_platform["ascend"]["exec"]["ignored_test_targets"],
+        )
+        self.assertIn(
+            "tests/pytorch/test_float8_blockwise_gemm_exact.py",
+            by_platform["cuda"]["exec"]["ignored_group_test_targets"]["gemm"],
+        )
+        self.assertIn(
+            "tests/plugin/backend/reference/test_optimizer.py",
+            by_platform["ascend"]["exec"]["ignored_group_test_targets"]["reference_backend"],
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            summary = Path(directory, "summary.md")
+            planner.write_summary(summary, plan)
+            text = summary.read_text()
+            self.assertIn(
+                "cuda/gemm ignored targets:"
+                " tests/plugin/backend/npu/test_backend_npu.py::TestNPU*GEMMAccuracy,"
+                " tests/pytorch/test_float8_blockwise_gemm_exact.py",
+                text,
+            )
+
+    def test_overlap_expansion_uses_the_requested_source_tree(self):
+        project = planner.load_project(ROOT / ".flagcicd/project.yaml")
+        platforms = planner.load_platforms(ROOT / ".github/configs")
+        selection = planner.select_test_groups(project, [], "L1", "nightly")
+        logical = planner.build_test_groups(
+            project, platforms, ["cuda"], "L1", [], selection=selection
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = "tests/pytorch/test_float8_source_tree_probe.py"
+            (root / target).parent.mkdir(parents=True)
+            (root / target).write_text("def test_probe(): pass\n")
+            # The GEMM target intentionally overlaps the ignored quantization glob.
+            next(g for g in project["test_groups"] if g["name"] == "gemm")["test_targets"] = [
+                target
+            ]
+            jobs = planner.build_execution_groups(
+                project, platforms, logical, True, source_root=root
+            )
+            unit = next(job for job in jobs if job["group"] == "pytorch_unit")
+            self.assertEqual(unit["exec"]["ignored_group_test_targets"]["gemm"], [target])
+
     def test_coverage_gaps_are_explicit_in_full_and_partial_plans(self):
         gaps = {
             "cuda": {"quantization"},
@@ -613,7 +674,10 @@ class PlannerTests(unittest.TestCase):
         for stage, options in (
             ("nightly", {}),
             ("pr", {"changed_files": json.dumps(["tests/pytorch/test_recipe.py"])}),
-            ("pr", {"changed_files": json.dumps(["tests/pytorch/debug/test_config.py"])}),
+            (
+                "pr",
+                {"changed_files": json.dumps(["tests/pytorch/debug/test_config.py"])},
+            ),
         ):
             plan = self.run_planner(stage, **options)
             for platform in plan["platforms"]:

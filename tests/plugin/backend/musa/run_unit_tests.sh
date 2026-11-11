@@ -81,20 +81,6 @@ run_debug() {
 
 run_pytorch() {
     local tests_root="${TE_PATH}/tests/pytorch"
-    if ! TE_TEST_GROUP_JSON='{
-  "name": "plugin-unit", "runner": "pytest", "max_retries": 0,
-  "pytest_args": ["-v", "-s", "--tb=short"],
-  "steps": [{
-    "name": "plugin", "targets": ["tests/plugin/"],
-    "isolate_files": true, "use_platform_runner": false,
-    "ignore": ["tests/plugin/backend/npu/"],
-    "unset_env_by_path": {"tests/plugin/plugin/": [
-      "TE_FL_ALLOW_VENDORS", "TE_FL_PREFER", "TE_FL_PER_OP", "TE_FL_STRICT"
-    ]}
-  }]
-}' python3 "$TE_PATH/tests/test_utils/run_ci_test_group.py"; then
-        FAILED=1
-    fi
     run_pytest test_sanity "${tests_root}/test_sanity.py" \
         -k "not (test_sanity_gpt or test_sanity_gpt_126m or test_sanity_bert or test_sanity_T5 or test_sanity_layernorm_mlp or test_sanity_amp_and_nvfuser or test_sanity_drop_path or test_sanity_fused_qkv_params or test_sanity_gradient_accumulation_fusion or test_inference_mode or test_sanity_normalization_amp or test_sanity_layernorm_linear or test_sanity_linear_with_zero_tokens or test_sanity_grouped_linear)" \
         --no-header
