@@ -89,7 +89,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      plan: ${{ steps.plan.outputs.plan }}
+      plan_artifact: ${{ steps.plan.outputs.plan_artifact }}
       plan_hash: ${{ steps.plan.outputs.plan_hash }}
       platforms: ${{ steps.plan.outputs.platforms }}
       source_sha: ${{ steps.plan.outputs.source_sha }}
@@ -120,7 +120,7 @@ jobs:
     with:
       platform: ${{ matrix.platform }}
       checkout_ref: ${{ needs.plan.outputs.source_sha }}
-      plan: ${{ needs.plan.outputs.plan }}
+      plan_artifact: ${{ needs.plan.outputs.plan_artifact }}
 
   complete:
     name: CI Requested Complete
@@ -134,7 +134,7 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/flagcicd-gate
         with:
-          plan: ${{ needs.plan.outputs.plan }}
+          plan_artifact: ${{ needs.plan.outputs.plan_artifact }}
           needs-json: ${{ toJson(needs) }}
           plan-job: plan
           pipeline-job: platform-pipeline

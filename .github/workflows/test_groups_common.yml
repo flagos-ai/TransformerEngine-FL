@@ -9,10 +9,10 @@ on:
       checkout_ref:
         required: true
         type: string
-      plan:
+      plan_artifact:
         required: true
         type: string
-        description: 'Full plan JSON'
+        description: 'Artifact name containing plan.json'
       matrix:
         required: true
         type: string
@@ -197,11 +197,18 @@ jobs:
           echo "$EXIT_CODE" > "$RUNNER_TEMP/test_exit_code"
           exit $EXIT_CODE
 
+      - name: Download execution plan
+        if: ${{ !cancelled() }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.plan_artifact }}
+          path: .flagcicd-plan
+
       - name: Generate group report
         if: ${{ !cancelled() }}
         shell: bash
         env:
-          FLAGCICD_PLAN: ${{ inputs.plan }}
+          FLAGCICD_PLAN_FILE: ${{ github.workspace }}/.flagcicd-plan/plan.json
           FLAGCICD_STEPS: ${{ toJson(steps) }}
         run: |
           START_TIME="${{ steps.execute.outputs.started_at }}"

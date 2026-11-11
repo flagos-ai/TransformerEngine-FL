@@ -101,6 +101,54 @@ class PlannerTests(unittest.TestCase):
         finally:
             Path(output_path).unlink(missing_ok=True)
 
+    def test_large_nine_platform_plan_slices_from_file(self):
+        import flagcicd_contract as contract
+
+        plan = self.run_planner("pr", changed_files=json.dumps([".github/workflows/ci.yml"]))
+        self.assertEqual(len(plan["platforms"]), 9)
+        # Exercise a plan beyond Linux's per-environment-string limit even if
+        # future catalog changes happen to reduce the real plan's serialized size.
+        plan["transport_test_padding"] = "x" * max(
+            0, 140000 - len(contract.canonical_json(plan).encode())
+        )
+        plan["plan_hash"] = contract.compute_plan_hash(plan)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory, "plan.json")
+            path.write_text(contract.canonical_json(plan))
+            self.assertGreater(path.stat().st_size, 128 * 1024)
+            env = dict(os.environ, FLAGCICD_PLAN_FILE=str(path))
+            env.pop("FLAGCICD_PLAN", None)
+            for platform in plan["platforms"]:
+                with self.subTest(platform=platform["name"]):
+                    output = Path(directory, platform["name"] + ".outputs")
+                    env["GITHUB_OUTPUT"] = str(output)
+                    result = subprocess.run(
+                        [
+                            sys.executable,
+                            str(ROOT / ".github/scripts/ci/flagcicd_gate.py"),
+                            "slice",
+                            "--platform",
+                            platform["name"],
+                            "--github-output",
+                        ],
+                        cwd=ROOT,
+                        env=env,
+                        capture_output=True,
+                        text=True,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    values = dict(line.split("=", 1) for line in output.read_text().splitlines())
+                    self.assertEqual(values["plan_hash"], plan["plan_hash"])
+                    self.assertEqual(
+                        sum(
+                            len(json.loads(values[lane + "_matrix"])["include"])
+                            for lane in ("preflight", "parallel", "serial", "integration")
+                        ),
+                        sum(
+                            job["platform"] == platform["name"] for job in plan["execution_groups"]
+                        ),
+                    )
+
     def test_project_has_one_functional_test_group_catalog(self):
         """Routing, dependencies and execution mapping live in the same catalog."""
         project = planner.load_project(ROOT / ".flagcicd/project.yaml")

@@ -19,10 +19,10 @@ on:
         type: string
         default: ''
         description: Git ref to checkout
-      plan:
+      plan_artifact:
         required: true
         type: string
-        description: Full plan JSON from planner
+        description: Artifact name containing plan.json
 
 jobs:
   checkout_and_config:
@@ -80,11 +80,18 @@ jobs:
           echo "$YQ_SHA256  $RUNNER_TEMP/yq" | sha256sum --check --strict
           sudo install -m 0755 "$RUNNER_TEMP/yq" /usr/local/bin/yq
 
+      - name: Download execution plan
+        if: ${{ !cancelled() }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.plan_artifact }}
+          path: .flagcicd-plan
+
       - name: Load config and slice plan
         id: slice
         shell: bash
         env:
-          FLAGCICD_PLAN: ${{ inputs.plan }}
+          FLAGCICD_PLAN_FILE: ${{ github.workspace }}/.flagcicd-plan/plan.json
           PLATFORM: ${{ inputs.platform }}
         run: |
           set -euo pipefail
@@ -207,11 +214,18 @@ jobs:
 
           echo "✓ Preflight checks passed"
 
+      - name: Download execution plan
+        if: ${{ !cancelled() }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.plan_artifact }}
+          path: .flagcicd-plan
+
       - name: Generate preflight report
         if: ${{ !cancelled() }}
         shell: bash
         env:
-          FLAGCICD_PLAN: ${{ inputs.plan }}
+          FLAGCICD_PLAN_FILE: ${{ github.workspace }}/.flagcicd-plan/plan.json
           FLAGCICD_STEPS: ${{ toJson(steps) }}
         run: |
           START_TIME="${{ steps.execute.outputs.started_at }}"
@@ -334,7 +348,7 @@ jobs:
     with:
       platform: ${{ inputs.platform }}
       checkout_ref: ${{ inputs.checkout_ref }}
-      plan: ${{ inputs.plan }}
+      plan_artifact: ${{ inputs.plan_artifact }}
       matrix: ${{ needs.checkout_and_config.outputs.parallel_matrix }}
       max_parallel: 256
       image: ${{ needs.checkout_and_config.outputs.ci_image }}
@@ -365,7 +379,7 @@ jobs:
     with:
       platform: ${{ inputs.platform }}
       checkout_ref: ${{ inputs.checkout_ref }}
-      plan: ${{ inputs.plan }}
+      plan_artifact: ${{ inputs.plan_artifact }}
       matrix: ${{ needs.checkout_and_config.outputs.serial_matrix }}
       max_parallel: 1
       image: ${{ needs.checkout_and_config.outputs.ci_image }}
@@ -402,9 +416,16 @@ jobs:
           pattern: flagcicd-group-${{ inputs.platform }}-*
           path: group-reports
           merge-multiple: false
+      - name: Download execution plan
+        if: ${{ !cancelled() }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.plan_artifact }}
+          path: .flagcicd-plan
+
       - name: Validate required unit test reports
         env:
-          FLAGCICD_PLAN: ${{ inputs.plan }}
+          FLAGCICD_PLAN_FILE: ${{ github.workspace }}/.flagcicd-plan/plan.json
         run: >-
           python3 .github/scripts/ci/flagcicd_gate.py platform
           --unit-only --platform "${{ inputs.platform }}"
@@ -434,7 +455,7 @@ jobs:
     with:
       platform: ${{ inputs.platform }}
       checkout_ref: ${{ inputs.checkout_ref }}
-      plan: ${{ inputs.plan }}
+      plan_artifact: ${{ inputs.plan_artifact }}
       matrix: ${{ needs.checkout_and_config.outputs.integration_matrix }}
       max_parallel: 1
       image: ${{ needs.checkout_and_config.outputs.ci_image }}
@@ -744,10 +765,17 @@ jobs:
           path: group-reports
           merge-multiple: false
 
+      - name: Download execution plan
+        if: ${{ !cancelled() }}
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.plan_artifact }}
+          path: .flagcicd-plan
+
       - name: Aggregate platform report
         shell: bash
         env:
-          FLAGCICD_PLAN: ${{ inputs.plan }}
+          FLAGCICD_PLAN_FILE: ${{ github.workspace }}/.flagcicd-plan/plan.json
           COVERAGE_RESULT: ${{ needs.coverage.result }}
           COVERAGE_REQUIRED: ${{ needs.checkout_and_config.outputs.coverage_required }}
         run: |

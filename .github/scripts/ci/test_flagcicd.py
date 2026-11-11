@@ -164,6 +164,20 @@ def execution_report(plan, execution, **overrides):
 
 
 class ContractSchemaTests(unittest.TestCase):
+    def test_plan_file_precedence_validation_and_missing_file(self):
+        plan = make_plan()
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory, "plan.json")
+            path.write_text(contract.canonical_json(plan))
+            with patch.dict(os.environ, FLAGCICD_PLAN_FILE=str(path), FLAGCICD_PLAN="bad JSON"):
+                self.assertEqual(contract.load_plan_from_env(), plan)
+                path.write_text(contract.canonical_json({**plan, "source_sha": "b" * 40}))
+                with self.assertRaisesRegex(ValueError, "hash"):
+                    contract.load_plan_from_env()
+                path.unlink()
+                with self.assertRaisesRegex(ValueError, "Cannot read plan file"):
+                    contract.load_plan_from_env()
+
     """Test contract schema constants and validation."""
 
     def test_all_catalog_kinds_are_valid(self):

@@ -23,13 +23,8 @@ def utc_now() -> str:
 
 def cmd_slice(args: argparse.Namespace) -> int:
     """Slice plan for one platform, output matrices."""
-    plan_json = os.environ.get("FLAGCICD_PLAN", "")
-    if not plan_json:
-        print("ERROR: FLAGCICD_PLAN environment variable required", file=sys.stderr)
-        return 1
-
     try:
-        plan = contract.load_plan(plan_json)
+        plan = contract.load_plan_from_env()
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
@@ -177,7 +172,7 @@ def cmd_group_report(args: argparse.Namespace) -> int:
     # Load inputs
     try:
         steps = json.loads(os.environ.get("FLAGCICD_STEPS", "{}"))
-        plan = contract.load_plan(os.environ.get("FLAGCICD_PLAN", ""))
+        plan = contract.load_plan_from_env()
     except (json.JSONDecodeError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
@@ -507,16 +502,8 @@ def validate_test_group_reports(
 def cmd_platform(args: argparse.Namespace) -> int:
     """Aggregate group reports into platform report."""
     # Load plan
-    plan_json = os.environ.get("FLAGCICD_PLAN", "")
-    if not plan_json:
-        print(
-            "ERROR: FLAGCICD_PLAN environment variable is empty or not set",
-            file=sys.stderr,
-        )
-        return 1
-
     try:
-        plan = contract.load_plan(plan_json)
+        plan = contract.load_plan_from_env()
     except ValueError as exc:
         print(f"ERROR: Failed to load plan: {exc}", file=sys.stderr)
         return 1
@@ -729,7 +716,7 @@ def cmd_gate(args: argparse.Namespace) -> int:
     """Global gate: validate all platform reports."""
     # Load plan and needs
     try:
-        plan = contract.load_plan(os.environ.get("FLAGCICD_PLAN", ""))
+        plan = contract.load_plan_from_env()
         needs = json.loads(os.environ.get("FLAGCICD_NEEDS", "{}"))
     except (ValueError, json.JSONDecodeError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)

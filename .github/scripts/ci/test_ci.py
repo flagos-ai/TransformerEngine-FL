@@ -27,6 +27,34 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 class PlatformRoutingTests(unittest.TestCase):
+    def test_workflow_plan_consumers_download_files_before_loading(self):
+        for relative in (
+            ".github/workflows/all_tests_common.yml",
+            ".github/workflows/test_groups_common.yml",
+            ".github/actions/flagcicd-gate/action.yml",
+        ):
+            config = yaml.safe_load((ROOT / relative).read_text())
+            jobs = config.get("jobs", {"composite": config.get("runs", {})})
+            for name, job in jobs.items():
+                downloaded = False
+                for step in job.get("steps", []):
+                    if (
+                        step.get("uses", "").startswith("actions/download-artifact@")
+                        and step.get("with", {}).get("path") == ".flagcicd-plan"
+                    ):
+                        self.assertEqual(step["with"]["name"], "${{ inputs.plan_artifact }}")
+                        downloaded = True
+                    env = step.get("env", {})
+                    self.assertNotIn("FLAGCICD_PLAN", env, (relative, name))
+                    if "FLAGCICD_PLAN_FILE" in env:
+                        self.assertTrue(downloaded, (relative, name))
+        for name in ("ci", "nightly", "ci-requested", "release-acceptance"):
+            workflow = yaml.safe_load((ROOT / f".github/workflows/{name}.yml").read_text())
+            # toJson(needs) also includes these outputs: never export the full
+            # plan, or the final gate would exceed the limit through NEEDS.
+            self.assertNotIn("plan", workflow["jobs"]["plan"]["outputs"])
+            self.assertIn("plan_artifact", workflow["jobs"]["plan"]["outputs"])
+
     @classmethod
     def setUpClass(cls):
         cls.rules = matrix._load_watch_rules(ROOT / ".github/configs")
@@ -444,7 +472,9 @@ sys.exit(2)
                 "${{ needs.plan.outputs.source_sha }}",
                 name,
             )
-            self.assertEqual(pipeline["with"]["plan"], "${{ needs.plan.outputs.plan }}", name)
+            self.assertEqual(
+                pipeline["with"]["plan_artifact"], "${{ needs.plan.outputs.plan_artifact }}", name
+            )
             plan_step = next(
                 step
                 for step in jobs["plan"]["steps"]

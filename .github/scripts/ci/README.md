@@ -7,6 +7,20 @@ The active entries are `ci.yml` (PR, push to main, manual dispatch),
 platform matrix; test jobs use `test_groups_common.yml`. `CI Complete`, `Nightly Complete`, `CI Requested Complete` and
 `Release Acceptance Complete` gate the results.
 
+## Execution plan transport
+
+The planning job uploads the full `plan.json` as `flagcicd-plan-<stage>`.
+Entry workflows export only its artifact name and small routing/identity outputs;
+reusable workflows and the final gate download that artifact and pass its local
+path as `FLAGCICD_PLAN_FILE`. This keeps both plan loading and `toJson(needs)`
+below Linux's per-environment-string limit when all nine platforms are selected.
+Do not export the full plan through job outputs or a `FLAGCICD_PLAN` step env.
+
+Every plan file goes through the existing schema/hash checks; slice still checks
+source SHA and platform configuration identity. A configured missing/corrupt file
+fails rather than falling back to other data. The JSON-env reader remains only
+for compatibility with direct script callers and unit fixtures.
+
 ## Automatic plugin coverage
 
 The unified CI catalog covers the `tests/plugin/` tree with separate owners:
