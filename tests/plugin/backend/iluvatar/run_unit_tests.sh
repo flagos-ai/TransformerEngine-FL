@@ -24,24 +24,15 @@ run_pytest() {
     local target=$2
     shift 2
     if [ "$target" = tests/plugin ]; then
-        local plugin_file plugin_target plugin_name flagos_done=0
+        local plugin_file plugin_target plugin_name
         while IFS= read -r plugin_file; do
             plugin_target="${plugin_file#"$TE_PATH/"}"
             if [[ "$plugin_target" == tests/plugin/backend/npu/* ]]; then
                 echo "[IGNORE] $plugin_target: NPU tests require the Ascend platform"
                 continue
             fi
-            if [[ "$plugin_target" == tests/plugin/backend/flagos/* ]]; then
-                # Keep directory-scoped ignore expressions and their membership
-                # audit together; splitting them across files changes the audit.
-                if [ "$flagos_done" -eq 0 ]; then
-                    run_pytest "${name}_flagos" tests/plugin/backend/flagos "$@"
-                    flagos_done=1
-                fi
-            else
-                plugin_name="${plugin_target//\//_}"
-                run_pytest "${name}_${plugin_name%.py}" "$plugin_target" "$@"
-            fi
+            plugin_name="${plugin_target//\//_}"
+            run_pytest "${name}_${plugin_name%.py}" "$plugin_target" "$@"
         done < <(find "$TE_PATH/tests/plugin" -type f -name 'test_*.py' | sort)
         return
     fi

@@ -191,15 +191,16 @@ readonly ILUVATAR_IGNORE_TEST_FILTERS=(
         (test_permutation_mask_map_topk1_no_probs[False-4096-16-4096-5])|Vendor API or \
         enum mismatch: 56; Numerical or \
         behavioral assertion mismatch: 14; Exact 7-expert topK=2/5 mask-map cases quarantined for intermittent reference FP16 duplicate-index accumulation mismatches; see reproduction and restoration notes above."
-    # unittest: retain 96 prior passes; quarantine 281 failures.
-    "unittest|tests/plugin/backend/flagos|(test_generic_gemm_lifecycle_matrix[) or \
-        (test_grouped_gemm_standard_lifecycle[) or \
-        (test_l2_norm_non_finite_tracking[) or \
+    # Preserve the directory baseline's seven selectors while isolating files.
+    # Historical directory totals: 96 passes, 281 failures (173 CPU mock/device
+    # contract mismatches and 108 shape/epilogue mismatches); not per-file counts.
+    "unittest|tests/plugin/backend/flagos/test_gemm.py|(test_generic_gemm_lifecycle_matrix[) or \
+        (test_grouped_gemm_standard_lifecycle[)|CPU mock/device contract or shape/epilogue mismatch; preserved directory baseline."
+    "unittest|tests/plugin/backend/flagos/test_multi_tensor.py|(test_l2_norm_non_finite_tracking[) or \
         (test_scale_standard_lifecycle) or \
-        (test_scale_non_finite_tracking[) or \
-        (test_multi_tensor_adam_lifecycle[) or \
-        (test_param_remainder_bit_manipulation_lifecycle[)|CPU mock/device contract mismatch: 173; Shape or \
-        epilogue mismatch: 108"
+        (test_scale_non_finite_tracking[)|CPU mock/device contract or shape/epilogue mismatch; preserved directory baseline."
+    "unittest|tests/plugin/backend/flagos/test_optimizer.py|(test_multi_tensor_adam_lifecycle[) or \
+        (test_param_remainder_bit_manipulation_lifecycle[)|CPU mock/device contract or shape/epilogue mismatch; preserved directory baseline."
     # debug: retain 13 prior passes; quarantine 2 failures.
     "debug|tests/pytorch/debug/test_sanity.py|(test_sanity_debug[fake_quant-False-mha_attention] or \
         test_sanity_debug[fake_quant-False-transformer_layer])|Missing compatibility module: 2"

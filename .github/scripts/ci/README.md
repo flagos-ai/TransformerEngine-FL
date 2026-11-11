@@ -27,8 +27,9 @@ the existing declarative `runner: pytest` with `isolate_files: true`. Each step
 supplies its discovery paths, ignore prefixes and path-scoped environment cleanup;
 the generic runner contains no plugin-specific CLI or platform policy. Inner
 pytest groups disable retries so the outer platform job owns retry policy.
-PPU retains its per-file timeout/summary and Iluvatar its directory-scoped
-ignore audit.
+PPU retains its per-file timeout/summary. Iluvatar also isolates every plugin
+file; its former FlagOS directory filter is split across the three owning
+files, preserving all seven selectors and the per-file ignore audit.
 The old per-file backend calls are removed to avoid duplicate execution.
 Distinct relative paths produce distinct JUnit filenames even when test files
 share a basename. Numerics helper files are invoked by their driver rather
