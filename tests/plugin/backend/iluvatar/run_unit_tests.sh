@@ -27,6 +27,10 @@ run_pytest() {
         local plugin_file plugin_target plugin_name flagos_done=0
         while IFS= read -r plugin_file; do
             plugin_target="${plugin_file#"$TE_PATH/"}"
+            if [[ "$plugin_target" == tests/plugin/backend/npu/* ]]; then
+                echo "[IGNORE] $plugin_target: NPU tests require the Ascend platform"
+                continue
+            fi
             if [[ "$plugin_target" == tests/plugin/backend/flagos/* ]]; then
                 # Keep directory-scoped ignore expressions and their membership
                 # audit together; splitting them across files changes the audit.

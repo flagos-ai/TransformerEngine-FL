@@ -134,6 +134,10 @@ run_suite() {
     if [ "$target" = tests/plugin ]; then
       local plugin_file
       while IFS= read -r plugin_file; do
+        if [[ "$plugin_file" == "$TE_PATH/tests/plugin/backend/npu/"* ]]; then
+          echo "[IGNORE] $plugin_file: NPU tests require the Ascend platform"
+          continue
+        fi
         expanded_targets+=("${plugin_file#"$TE_PATH/"}")
       done < <(find "$TE_PATH/tests/plugin" -type f -name 'test_*.py' | sort)
     else

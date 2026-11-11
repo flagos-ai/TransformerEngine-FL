@@ -156,6 +156,11 @@ def _run_plugin_tests() -> int:
     failed = False
     for path in files:
         relative = path.relative_to(root).as_posix()
+        if relative.startswith("tests/plugin/backend/npu/") and os.environ.get(
+            "PLATFORM", ""
+        ).lower() not in ("ascend", "npu"):
+            print(f"[IGNORE] {relative}: NPU tests require the Ascend platform", flush=True)
+            continue
         report = "pytest_" + relative.removesuffix(".py").replace("/", "_") + ".xml"
         env = os.environ.copy()
         if relative.startswith("tests/plugin/plugin/"):

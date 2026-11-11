@@ -9,12 +9,16 @@ platform matrix; test jobs use `test_groups_common.yml`. `CI Complete`, `Nightly
 
 ## Automatic plugin coverage
 
-The unified PR/main-push CI and Nightly own the entire `tests/plugin/` test tree
-through `plugin_core`, including plugin dispatch/policy contracts, Reference,
-FlagOS and NPU backend tests, and cross-backend accuracy tests. The isolated
-manual `te-plugin-tests.yml` workflow is removed. Automatic changes take effect
-after merging into the target/default branch; a feature-branch push alone does
-not trigger CI.
+The unified CI catalog covers the `tests/plugin/` tree with separate owners:
+`plugin_core` selects `tests/plugin/plugin/`, `reference_backend` selects
+`tests/plugin/backend/reference/` and `tests/plugin/accuracy/`, and
+`vendor_backend` selects `tests/plugin/backend/npu/` and
+`tests/plugin/backend/flagos/`. Source routing follows those same boundaries.
+Core dispatch evidence must come from core tests, not a passing backend test.
+
+The independent `te-plugin-tests.yml` workflow is retained. Its original `main`
+branch and plugin-path push/PR triggers are restored alongside manual dispatch;
+its checkout, runner, image and test steps remain unchanged.
 
 Platform unit launchers discover all `test_*.py` recursively. Most use
 `tests/test_utils/run_ci_test_group.py --plugin-tests`; PPU retains its per-file timeout and
@@ -26,6 +30,7 @@ than discovered twice. Core mock contracts clear vendor policy overrides;
 backend/accuracy tests retain real platform policy. CI test selection and
 coverage hooks remain in effect in all child processes.
 
+Non-Ascend launchers ignore `tests/plugin/backend/npu/` before starting pytest.
 The common discovery root is `tests/plugin/`; platforms do not maintain lists
 of individual plugin test files. All original platform group ignores, their
 reasons, and existing file/case ignore rules are preserved. Expanding discovery
