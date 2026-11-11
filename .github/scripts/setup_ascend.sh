@@ -4,18 +4,6 @@ set -euo pipefail
 
 WORKSPACE="${GITHUB_WORKSPACE:-$(pwd)}"
 
-export PLATFORM="${PLATFORM:-ascend}"
-export TE_FL_SKIP_CUDA="${TE_FL_SKIP_CUDA:-1}"
-export NVTE_FRAMEWORK="${NVTE_FRAMEWORK:-pytorch}"
-export NVTE_WITH_CUDA="${NVTE_WITH_CUDA:-0}"
-export NVTE_WITH_MACA="${NVTE_WITH_MACA:-0}"
-export NVTE_WITH_NCCL_EP="${NVTE_WITH_NCCL_EP:-0}"
-export TE_WITH_NCCL="${TE_WITH_NCCL:-0}"
-export TE_FL_REQUIRE_NPU_VENDOR="${TE_FL_REQUIRE_NPU_VENDOR:-1}"
-export ASCEND_VISIBLE_DEVICES="${ASCEND_VISIBLE_DEVICES:-0,1,2,3}"
-export ASCEND_RT_VISIBLE_DEVICES="${ASCEND_RT_VISIBLE_DEVICES:-0,1,2,3}"
-export PYTORCH_NPU_ALLOC_CONF="${PYTORCH_NPU_ALLOC_CONF:-expandable_segments:True}"
-
 echo "===== Activate Python environment ====="
 if [ -f /opt/conda/etc/profile.d/conda.sh ]; then
     source /opt/conda/etc/profile.d/conda.sh
@@ -26,6 +14,8 @@ elif [ -f /opt/miniconda3/etc/profile.d/conda.sh ]; then
 else
     echo "WARNING: No supported conda installation found; using current environment"
 fi
+
+source "$WORKSPACE/tests/plugin/backend/ascend/set_env.sh"
 
 echo "===== Load Ascend runtime environment ====="
 if [ -f /usr/local/Ascend/ascend-toolkit/set_env.sh ]; then

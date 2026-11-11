@@ -1,0 +1,61 @@
+{
+  "schema_version": "flagcicd.baseline/v1",
+  "repository": "TransformerEngine-FL",
+  "description": "Coverage regression thresholds based on historical CI data",
+  "baseline_reference": {
+    "run_id": 35852690681,
+    "date": "2026-09-23",
+    "source": "flagos-ai/TransformerEngine-FL main branch",
+    "cuda_coverage_percent": 39.73
+  },
+  "platforms": {
+    "cuda": {
+      "devices": ["a100"],
+      "absolute_threshold_percent": 2.0,
+      "statistical_sigma": 3.0,
+      "minimum_coverage_percent": 35.0,
+      "baseline_coverage_percent": 39.73,
+      "note": "CUDA is the primary platform with strictest requirements"
+    },
+    "ascend": {
+      "devices": ["ascend"],
+      "absolute_threshold_percent": 3.0,
+      "statistical_sigma": 3.0,
+      "minimum_coverage_percent": 30.0,
+      "note": "Ascend has coverage.required=true in config"
+    },
+    "other": {
+      "devices": ["enflame", "hygon", "kunlun", "metax", "musa", "ppu"],
+      "absolute_threshold_percent": 3.0,
+      "statistical_sigma": 3.0,
+      "minimum_coverage_percent": 25.0,
+      "note": "Other platforms: focus on functionality, coverage requirements relaxed"
+    }
+  },
+  "rules": {
+    "absolute": {
+      "method": "threshold",
+      "enabled": true,
+      "description": "Fail if coverage drops more than platform-specific threshold from baseline"
+    },
+    "statistical": {
+      "method": "sigma",
+      "enabled": true,
+      "window_runs": 14,
+      "minimum_history": 8,
+      "source_workflow": "nightly.yml",
+      "description": "Nightly (nightly stage) uses 3-sigma against a 14-run sliding window (advisory)"
+    }
+  },
+  "storage": {
+    "method": "github_artifacts",
+    "retention_days": 90,
+    "baseline_source": "main_branch_latest_successful_run",
+    "description": "Baseline fetched from most recent successful run on main branch"
+  },
+  "enforcement": {
+    "mode": "advisory",
+    "pr_gate": false,
+    "note": "Currently non-blocking (continue-on-error), will be enforced after calibration period"
+  }
+}

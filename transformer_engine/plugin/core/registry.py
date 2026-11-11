@@ -16,6 +16,7 @@ class OpRegistrySnapshot:
     """Immutable snapshot of operator registry state"""
 
     impls_by_op: Dict[str, List[OpImpl]]
+    generation: int
 
 
 class OpRegistry:
@@ -30,6 +31,7 @@ class OpRegistry:
         self._lock = threading.RLock()
         # Structure: {op_name: {impl_id: OpImpl}}
         self._impls_by_op: Dict[str, Dict[str, OpImpl]] = {}
+        self._generation = 0
 
     def register_impl(self, impl: OpImpl) -> None:
         """
@@ -49,6 +51,7 @@ class OpRegistry:
                     f"Existing: {by_id[impl.impl_id]}, New: {impl}"
                 )
             by_id[impl.impl_id] = impl
+            self._generation += 1
 
     def register_many(self, impls: Sequence[OpImpl]) -> None:
         """
@@ -57,8 +60,43 @@ class OpRegistry:
         Args:
             impls: Sequence of OpImpl instances to register
         """
-        for impl in impls:
-            self.register_impl(impl)
+        with self._lock:
+            seen = set()
+            for impl in impls:
+                key = (impl.op_name, impl.impl_id)
+                if key in seen:
+                    raise ValueError(
+                        f"Duplicate impl_id '{impl.impl_id}' for op='{impl.op_name}' in batch"
+                    )
+                seen.add(key)
+
+                existing = self._impls_by_op.get(impl.op_name, {})
+                if impl.impl_id in existing:
+                    raise ValueError(
+                        f"Duplicate impl_id '{impl.impl_id}' for op='{impl.op_name}'. "
+                        f"Existing: {existing[impl.impl_id]}, New: {impl}"
+                    )
+
+            for impl in impls:
+                self._impls_by_op.setdefault(impl.op_name, {})[impl.impl_id] = impl
+            if impls:
+                self._generation += 1
+
+    @property
+    def generation(self) -> int:
+        """Return the current registry generation.
+
+        Deliberately lock-free: a plain int read is atomic, and callers that
+        need the generation to agree with a candidate list use snapshot(),
+        which reads both under the lock.
+
+        Staying lock-free also keeps this readable by Dynamo, which matters
+        because the Triton dispatch entries read it on every call. Dynamo
+        cannot trace an RLock context manager: under the default
+        torch.compile it splits the graph at each dispatched call (both sides
+        are still captured), and under fullgraph=True it raises outright.
+        """
+        return self._generation
 
     def snapshot(self) -> OpRegistrySnapshot:
         """
@@ -69,7 +107,8 @@ class OpRegistry:
         """
         with self._lock:
             impls_by_op = {op: list(by_id.values()) for op, by_id in self._impls_by_op.items()}
-        return OpRegistrySnapshot(impls_by_op=impls_by_op)
+            generation = self._generation
+        return OpRegistrySnapshot(impls_by_op=impls_by_op, generation=generation)
 
     def get_implementations(self, op_name: str) -> List[OpImpl]:
         """
@@ -114,3 +153,4 @@ class OpRegistry:
         """Clear all registered implementations"""
         with self._lock:
             self._impls_by_op.clear()
+            self._generation += 1

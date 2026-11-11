@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+export TE_PATH="${TE_PATH:-$(cd -- "$SCRIPT_DIR/../../../.." && pwd)}"
+export TE_LIB_PATH="${TE_LIB_PATH:-$(python3 -c 'import site; print(site.getsitepackages()[0])' 2>/dev/null)/transformer_engine}"
+export PYTHONPATH="$TE_PATH${PYTHONPATH:+:$PYTHONPATH}"
+export PLATFORM="${PLATFORM:-ppu}"
+export TE_FL_SKIP_CUDA="${TE_FL_SKIP_CUDA:-1}"
+export NVTE_FRAMEWORK="${NVTE_FRAMEWORK:-pytorch}"
+export TE_FL_PREFER="${TE_FL_PREFER:-flagos}"
+export NVTE_FLASH_ATTN="${NVTE_FLASH_ATTN:-0}"
+export NVTE_FUSED_ATTN="${NVTE_FUSED_ATTN:-0}"
+export NVTE_UNFUSED_ATTN="${NVTE_UNFUSED_ATTN:-1}"
+export NVTE_TORCH_COMPILE="${NVTE_TORCH_COMPILE:-0}"
+export PYTHON_BIN="${PYTHON_BIN:-python3}"
+export PYTHONDONTWRITEBYTECODE="${PYTHONDONTWRITEBYTECODE:-1}"
+export XML_LOG_DIR="${XML_LOG_DIR:-${RUNNER_TEMP:-$TE_PATH/logs}/ppu}"
+mkdir -p "$XML_LOG_DIR"

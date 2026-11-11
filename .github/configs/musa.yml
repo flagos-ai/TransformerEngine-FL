@@ -37,7 +37,6 @@ container_options: >-
 
 # Platform-specific environment setup script
 setup_script: .github/scripts/setup_musa.sh
-unit_test_timeout_minutes: 120
 
 # Device types to run tests on
 device_types:
@@ -58,11 +57,48 @@ coverage:
     - '*/transformer_engine/plugin/core/_build_config.py'
 
 # MUSA launchers keep platform-specific selection outside shared QA scripts.
+# Device budget per multi-device test job, not the host's total card count.
+# Keep aligned with the devices exposed to the container and the test launcher.
+nproc_per_node: 8
+
 unit_test_matrix:
-  - name: pytorch_unittest
+  - name: pytorch_debug
     runner: script
     path: tests/plugin/backend/musa/run_unit_tests.sh
+    args: [debug]
+    timeout_minutes: 120
+  - name: pytorch_unit
+    runner: script
+    path: tests/plugin/backend/musa/run_unit_tests.sh
+    args: [unittest]
+    timeout_minutes: 120
+  - name: pytorch_distributed
+    runner: script
+    path: tests/plugin/backend/musa/run_unit_tests.sh
+    args: [distributed]
+    timeout_minutes: 120
+  - name: pytorch_onnx
+    runner: script
+    path: tests/plugin/backend/musa/run_unit_tests.sh
+    args: [onnx]
+    timeout_minutes: 120
 
 integration_test_matrix:
   - name: pytorch_mcore_integration
     path: tests/plugin/backend/musa/run_integration_tests.sh
+
+# Exact paths or directory prefixes (ending in /) owned by this platform.
+# Shared and unknown code paths conservatively trigger all platforms.
+paths_watch:
+  - .github/configs/musa.yml
+  - .github/scripts/setup_musa.sh
+  - tests/plugin/backend/musa/
+  - transformer_engine/plugin/core/backends/vendor/musa/
+
+# Missing test-group coverage is explicit; these entries do not claim hardware incapability.
+unsupported_test_groups:
+  quantization: Current S5000 CI skips every selected FP8, MXFP8 and NVFP4 target; no passing quantization evidence is available.
+  plugin_core: MUSA unit QA does not run plugin policy/manager targets.
+  reference_backend: MUSA unit QA does not run tests/plugin/backend/reference targets.
+  vendor_backend: MUSA unit QA has no vendor or FlagOS backend target.
+  normalization: MUSA QA excludes normalization sanity/numerics and fusible normalization cases.

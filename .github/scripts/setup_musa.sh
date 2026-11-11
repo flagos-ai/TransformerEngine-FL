@@ -3,22 +3,11 @@
 # Called by unit_tests_common.yml / integration_tests_common.yml for MUSA platforms.
 set -euo pipefail
 
+WORKSPACE="${GITHUB_WORKSPACE:-$(pwd)}"
+source "$WORKSPACE/tests/plugin/backend/musa/set_env.sh"
+
 echo "===== Step 0: Base Environment ====="
 echo "Python: $(which python3) ($(python3 --version 2>&1))"
-export PATH=/usr/local/musa/bin:${PATH}
-export LD_LIBRARY_PATH=/usr/lib:/usr/lib/x86_64-linux-gnu:/usr/local/musa/lib:/usr/local/openmpi/lib:${LD_LIBRARY_PATH:-}
-export MUSA_HOME=${MUSA_HOME:-/usr/local/musa}
-export CUDA_HOME=${CUDA_HOME:-/usr/local/musa}
-export PLATFORM="${PLATFORM:-mthreads}"
-export TE_FL_SKIP_CUDA="${TE_FL_SKIP_CUDA:-1}"
-export SKIP_CUDA_BUILD="${SKIP_CUDA_BUILD:-1}"
-export NVTE_WITH_CUDA="${NVTE_WITH_CUDA:-0}"
-export NVTE_WITH_MACA="${NVTE_WITH_MACA:-0}"
-export NVTE_WITH_NCCL_EP="${NVTE_WITH_NCCL_EP:-0}"
-export NVTE_FRAMEWORK="${NVTE_FRAMEWORK:-pytorch}"
-export TE_FL_ENABLE_MUSA_CUDA_COMPAT="${TE_FL_ENABLE_MUSA_CUDA_COMPAT:-1}"
-export TORCH_DEVICE_BACKEND_AUTOLOAD="${TORCH_DEVICE_BACKEND_AUTOLOAD:-0}"
-export TE_FL_PREFER="${TE_FL_PREFER:-vendor}"
 
 if [ -n "${GITHUB_ENV:-}" ]; then
     {

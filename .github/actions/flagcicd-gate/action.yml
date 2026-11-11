@@ -1,0 +1,58 @@
+name: FlagCICD Gate
+description: Validate platform reports and enforce gate
+
+inputs:
+  plan:
+    description: 'Plan JSON from plan job output'
+    required: true
+  needs-json:
+    description: 'toJson(needs) from caller'
+    required: true
+  plan-job:
+    description: 'Name of plan job to check'
+    required: false
+    default: 'plan'
+  pipeline-job:
+    description: 'Name of pipeline job to check'
+    required: false
+    default: 'platform-pipeline'
+
+outputs:
+  status:
+    description: 'Gate status: passed or failed'
+    value: ${{ steps.gate.outputs.status }}
+
+runs:
+  using: composite
+  steps:
+    - name: Download platform reports
+      uses: actions/download-artifact@v4
+      with:
+        pattern: flagcicd-platform-*
+        path: flagcicd-reports
+        merge-multiple: false
+
+    - name: Run gate check
+      id: gate
+      shell: bash
+      env:
+        FLAGCICD_PLAN: ${{ inputs.plan }}
+        FLAGCICD_NEEDS: ${{ inputs.needs-json }}
+      run: |
+        python3 "${GITHUB_ACTION_PATH}/../../scripts/ci/flagcicd_gate.py" gate \
+          --plan-job "${{ inputs.plan-job }}" \
+          --pipeline-job "${{ inputs.pipeline-job }}" \
+          --reports-dir flagcicd-reports \
+          --output flagcicd-gate-summary.json
+
+        STATUS=$(jq -r '.status' flagcicd-gate-summary.json)
+        echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+
+    - name: Upload gate summary
+      if: ${{ !cancelled() }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: flagcicd-gate-summary
+        path: flagcicd-gate-summary.json
+        retention-days: 90
+        overwrite: true

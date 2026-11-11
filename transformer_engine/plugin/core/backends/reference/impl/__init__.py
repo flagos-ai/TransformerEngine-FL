@@ -51,6 +51,7 @@ from .softmax import (
 )
 
 from .dropout import dropout_fwd_torch, dropout_bwd_torch
+from .context_parallel import thd_get_partitioned_indices_torch
 
 from .optimizer import (
     multi_tensor_scale_torch,
@@ -110,6 +111,7 @@ __all__ = [
     "scaled_aligned_causal_masked_softmax_backward_torch",
     "dropout_fwd_torch",
     "dropout_bwd_torch",
+    "thd_get_partitioned_indices_torch",
     "multi_tensor_scale_torch",
     "multi_tensor_l2norm_torch",
     "multi_tensor_adam_torch",

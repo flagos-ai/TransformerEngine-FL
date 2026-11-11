@@ -1,0 +1,133 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Unified CI entry point for TransformerEngine-FL.
+#
+# Pipeline: lint -> plan -> platform-pipeline (matrix) -> ci-complete
+#
+# The FlagCICD planner (.github/actions/flagcicd-plan) reads
+# .flagcicd/project.yaml and .github/configs/*.yml.  On pull_request it
+# routes changed files through per-platform paths_watch and test-level rules, so
+# only affected platforms and groups run; push and workflow_dispatch run the
+# branch stage on every platform.  ci-complete validates the platform reports
+# against the plan.  Nightly, requested (/ci) and release runs have their own
+# entry workflows.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+      - 'examples/**'
+  pull_request:
+    branches: [main, devops]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Reuse the repository's own .pre-commit-config.yaml, scoped to files changed
+  # against the base branch.  Pre-existing style debt elsewhere in the tree is
+  # not this gate's concern; on push/schedule the diff is empty and it passes.
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install pre-commit
+        run: pip install --quiet pre-commit==4.2.0
+      - name: pre-commit (changed files)
+        env:
+          BASE_REF: ${{ github.base_ref || 'main' }}
+        shell: bash
+        run: |
+          git fetch --no-tags origin "$BASE_REF"
+          pre-commit run --show-diff-on-failure \
+            --from-ref "$(git merge-base "origin/$BASE_REF" HEAD)" --to-ref HEAD
+      - name: CI self-tests
+        # Self-tests exercise simulated gates; keep their output out of Actions summaries.
+        run: |
+          python -m pip install --quiet PyYAML==6.0.3 pytest==8.4.2
+          env -u GITHUB_STEP_SUMMARY python -m unittest discover -s .github/scripts/ci -p 'test_*.py'
+
+  plan:
+    name: Generate execution plan
+    needs: lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      plan: ${{ steps.plan.outputs.plan }}
+      plan_hash: ${{ steps.plan.outputs.plan_hash }}
+      platforms: ${{ steps.plan.outputs.platforms }}
+      source_sha: ${{ steps.plan.outputs.source_sha }}
+      test_level: ${{ steps.plan.outputs.test_level }}
+      stage: ${{ steps.plan.outputs.stage }}
+      lint_only: ${{ steps.plan.outputs.lint_only }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: ./.github/actions/flagcicd-plan
+        id: plan
+        with:
+          stage: ${{ github.event_name == 'pull_request' && 'pr' || 'branch' }}
+          base-ref: ${{ github.base_ref || 'main' }}
+          labels-from-event: ${{ github.event_name == 'pull_request' }}
+
+  platform-pipeline:
+    name: Platform pipeline (${{ matrix.platform }})
+    needs: plan
+    if: needs.plan.outputs.lint_only != 'true' && needs.plan.outputs.platforms != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ${{ fromJson(needs.plan.outputs.platforms) }}
+    uses: ./.github/workflows/all_tests_common.yml
+    secrets:
+      FLAGCICD_API_TOKEN: ${{ secrets.FLAGCICD_API_TOKEN }}
+    with:
+      platform: ${{ matrix.platform }}
+      checkout_ref: ${{ needs.plan.outputs.source_sha }}
+      plan: ${{ needs.plan.outputs.plan }}
+
+  ci-complete:
+    name: CI Complete
+    needs: [lint, plan, platform-pipeline]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/flagcicd-gate
+        with:
+          plan: ${{ needs.plan.outputs.plan }}
+          needs-json: ${{ toJson(needs) }}
+          plan-job: plan
+          pipeline-job: platform-pipeline

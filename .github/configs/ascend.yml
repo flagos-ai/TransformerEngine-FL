@@ -10,7 +10,7 @@ ci_image: harbor.baai.ac.cn/flagos-dev/transformerengine-fl:85c2523-ascend-dev
 
 # Runner labels for the self-hosted Ascend node
 runner_labels:
-  - hw-4g-cicd-te
+  - flagcicd-910c
 
 # Container volumes
 container_volumes:
@@ -50,15 +50,50 @@ coverage:
     - '*/setup.py'
     - '*/transformer_engine/plugin/core/_build_config.py'
 
+# Device budget per multi-device test job, not the host's total card count.
+# Keep aligned with the devices exposed to the container and the test launcher.
+nproc_per_node: 4
+
 unit_test_matrix:
-  - name: pytorch_unittest
+  - name: pytorch_debug
     runner: script
     path: tests/plugin/backend/ascend/run_unit_tests.sh
+    args: [debug]
+  - name: pytorch_unit
+    runner: script
+    path: tests/plugin/backend/ascend/run_unit_tests.sh
+    args: [unittest]
+  - name: pytorch_distributed
+    runner: script
+    path: tests/plugin/backend/ascend/run_unit_tests.sh
+    args: [distributed]
+  - name: pytorch_onnx
+    runner: script
+    path: tests/plugin/backend/ascend/run_unit_tests.sh
+    args: [onnx]
 
 integration_test_matrix:
   - name: pytorch_mcore_integration
-    path: qa/L1_pytorch_mcore_integration/test.sh
+    path: tests/plugin/backend/ascend/run_integration_tests.sh
 
 # Device types to run tests on
 device_types:
   - ascend
+
+# Exact paths or directory prefixes (ending in /) owned by this platform.
+# Shared and unknown code paths conservatively trigger all platforms.
+paths_watch:
+  - .github/configs/ascend.yml
+  - .github/scripts/setup_ascend.sh
+  - tests/plugin/backend/ascend/
+  - transformer_engine/plugin/core/backends/vendor/npu/
+  - tests/plugin/backend/npu/
+  - qa/L0_pytorch_debug_unittest/test_ascend.sh
+  - qa/L0_pytorch_unittest/test_ascend.sh
+  - qa/L1_pytorch_distributed_unittest/test_ascend.sh
+  - qa/L1_pytorch_onnx_unittest/test_ascend.sh
+
+# Missing test-group coverage is explicit; these entries do not claim hardware incapability.
+unsupported_test_groups:
+  quantization: Ascend unit QA runs selected non-FP8 portable cases and vendor NPU tests; recipe/quantized-tensor/FP8/NVFP4 target groups are not wired.
+  optimizer: Ascend unit QA does not run fused optimizer, multi-tensor or backend optimizer targets.

@@ -47,7 +47,7 @@ setup_script: .github/scripts/setup_metax.sh
 
 # Device types to run tests on
 device_types:
-  - c500
+  - c550
 
 coverage:
   enabled: true
@@ -63,23 +63,53 @@ coverage:
     - '*/setup.py'
     - '*/transformer_engine/plugin/core/_build_config.py'
 
+# Device budget per multi-device test job, not the host's total card count.
+# Keep aligned with the devices exposed to the container and the test launcher.
+nproc_per_node: 4
+
 unit_test_matrix:
-  - name: pytorch_unittest
+  - name: pytorch_debug
     runner: script
     path: tests/plugin/backend/metax/run_unit_tests.sh
+    args: [debug]
+  - name: pytorch_unit
+    runner: script
+    path: tests/plugin/backend/metax/run_unit_tests.sh
+    args: [unittest]
+  - name: pytorch_distributed
+    runner: script
+    path: tests/plugin/backend/metax/run_unit_tests.sh
+    args: [distributed]
+  - name: pytorch_onnx
+    runner: script
+    path: tests/plugin/backend/metax/run_unit_tests.sh
+    args: [onnx]
 
 integration_test_matrix:
   - name: pytorch_mcore_integration
-    path: qa/L1_pytorch_mcore_integration/test.sh
+    path: tests/plugin/backend/metax/run_integration_tests.sh
 
 # Test matrix configuration
 test_matrix:
   unit:
     devices:
-      - c500
+      - c550
     # Ignored test files for unit tests
     # These files will be skipped when running pytest
     ignored_tests:
       # example: tests/unit_tests/test_example.py
       # - tests/unit_tests/test_inference.py
       # - tests/unit_tests/test_rl_utils.py
+
+# Exact paths or directory prefixes (ending in /) owned by this platform.
+# Shared and unknown code paths conservatively trigger all platforms.
+paths_watch:
+  - .github/configs/metax.yml
+  - .github/scripts/setup_metax.sh
+  - tests/plugin/backend/metax/
+  - transformer_engine/plugin/core/backends/vendor/metax/
+
+# Current QA coverage gaps, recorded in the plan instead of claimed as passing.
+unsupported_test_groups:
+  attention: MetaX unit QA filters attention, RoPE, GQA, numerics and sanity attention targets; no matching attention testcase executes.
+  quantization: Current C550 CI skips every selected FP8, MXFP8 and NVFP4 target; no passing quantization evidence is available.

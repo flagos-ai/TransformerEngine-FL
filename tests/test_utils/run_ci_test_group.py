@@ -14,6 +14,7 @@ from pathlib import Path
 import shlex
 import subprocess
 import sys
+import time
 from typing import Any
 
 
@@ -34,6 +35,29 @@ def _load_group() -> dict[str, Any]:
     return group
 
 
+def _selection_env(env: dict[str, str], group: dict[str, Any]) -> None:
+    """Carry the plan's file selection into every child pytest invocation."""
+    if "test_targets" not in group:
+        return
+    targets = group["test_targets"]
+    if (
+        not isinstance(targets, list)
+        or not targets
+        or any(not isinstance(target, str) or not target.strip() for target in targets)
+    ):
+        raise SystemExit("test_targets must be a non-empty list of repository-relative paths")
+    env["TE_CI_TEST_TARGETS_JSON"] = json.dumps(targets)
+    plugin_dir = str(Path(__file__).resolve().parent)
+    contract_dir = str(Path(__file__).resolve().parents[2] / ".github/scripts/ci")
+    env["PYTHONPATH"] = os.pathsep.join(
+        part for part in (plugin_dir, contract_dir, env.get("PYTHONPATH", "")) if part
+    )
+    plugins = [name.strip() for name in env.get("PYTEST_PLUGINS", "").split(",") if name.strip()]
+    if "ci_pytest_selection" not in plugins:
+        plugins.append("ci_pytest_selection")
+    env["PYTEST_PLUGINS"] = ",".join(plugins)
+
+
 def _run_script(group: dict[str, Any]) -> int:
     script = group.get("path")
     if not script:
@@ -47,6 +71,7 @@ def _run_script(group: dict[str, Any]) -> int:
     script_env.update(
         {str(key): _expand(str(value)) for key, value in group.get("env", {}).items()}
     )
+    _selection_env(script_env, group)
     print(f"[RUN] {shlex.join(command)}", flush=True)
     return subprocess.run(command, cwd=REPO_ROOT, env=script_env, check=False).returncode
 
@@ -102,8 +127,11 @@ def _run_pytest(group: dict[str, Any]) -> int:
         step_env.update(
             {str(key): _expand(str(value)) for key, value in step.get("env", {}).items()}
         )
+        _selection_env(step_env, group)
         print(f"[RUN] {step['name']}: {shlex.join(command)}", flush=True)
         result = subprocess.run(command, cwd=REPO_ROOT, env=step_env, check=False)
+        if result.returncode < 0 or result.returncode >= 128:
+            return result.returncode
         failed = failed or result.returncode != 0
 
     return 1 if failed else 0
@@ -112,11 +140,25 @@ def _run_pytest(group: dict[str, Any]) -> int:
 def main() -> int:
     group = _load_group()
     runner = group.get("runner", "script")
-    if runner == "script":
-        return _run_script(group)
-    if runner == "pytest":
-        return _run_pytest(group)
-    raise SystemExit(f"Unsupported test runner: {runner}")
+    runners = {"script": _run_script, "pytest": _run_pytest}
+    if runner not in runners:
+        raise SystemExit(f"Unsupported test runner: {runner}")
+    raw_retries = group.get("max_retries", os.environ.get("TE_TEST_MAX_RETRIES", "0"))
+    if isinstance(raw_retries, bool) or str(raw_retries) not in ("0", "1", "2"):
+        raise SystemExit("max_retries / TE_TEST_MAX_RETRIES must be 0, 1, or 2")
+    retries = int(raw_retries)
+    for attempt in range(retries + 1):
+        print(f"[ATTEMPT] {group['name']}: {attempt + 1}/{retries + 1}", flush=True)
+        result = runners[runner](group)
+        # Do not retry interrupted/killed commands, including shell signal exits.
+        if result == 0 or result < 0 or result >= 128 or attempt == retries:
+            return result
+        print(
+            f"[RETRY] Test group failed with exit code {result}; retrying in 5s",
+            flush=True,
+        )
+        time.sleep(5)
+    raise AssertionError("Unreachable retry state")
 
 
 if __name__ == "__main__":

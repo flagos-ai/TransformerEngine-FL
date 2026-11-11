@@ -2,6 +2,8 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/config.sh"
+source "$SCRIPT_DIR/set_env.sh"
 export TE_PATH="${TE_PATH:-$(cd -- "$SCRIPT_DIR/../../../.." && pwd)}"
 XML_LOG_ROOT="${XML_LOG_DIR:-${RUNNER_TEMP:-$TE_PATH/logs}/ascend}"
 

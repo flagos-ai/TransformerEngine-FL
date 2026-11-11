@@ -62,6 +62,7 @@ from .impl import (
     multi_tensor_sgd_torch,
     multi_tensor_compute_scale_and_scale_inv_torch,
     multi_tensor_compute_scale_inv_e8m0_torch,
+    thd_get_partitioned_indices_torch,
 )
 
 
@@ -773,6 +774,15 @@ class ReferenceBackend(TEFLBackendBase):
             output[i, :seq_len] = tensor[start:end]
         return output
 
+    def thd_get_partitioned_indices(
+        self,
+        cu_seqlens: torch.Tensor,
+        total_tokens: int,
+        world_size: int,
+        rank: int,
+    ) -> torch.Tensor:
+        return thd_get_partitioned_indices_torch(cu_seqlens, total_tokens, world_size, rank)
+
     def convert_bshd_to_thd(
         self,
         tensor: torch.Tensor,
@@ -800,27 +810,3 @@ class ReferenceBackend(TEFLBackendBase):
         from .flash_attention import FlashAttentionTorch
 
         return FlashAttentionTorch
-
-
-    # ===================== MoE permutation =====================
-
-    def moe_permute_with_routing_map(self, tokens, routing_map, probs=None,
-                                     num_out_tokens=None, drop_and_pad=False):
-        from .impl.permutation import moe_permute_with_routing_map
-        return moe_permute_with_routing_map(tokens, routing_map, probs, num_out_tokens,
-                                            drop_and_pad)
-
-    def moe_unpermute_with_routing_map(self, permuted_tokens, sorted_indices,
-                                       restore_shape, probs=None, routing_map=None,
-                                       drop_and_pad=False):
-        from .impl.permutation import moe_unpermute_with_routing_map
-        return moe_unpermute_with_routing_map(permuted_tokens, sorted_indices, restore_shape,
-                                              probs, routing_map, drop_and_pad)
-
-    def moe_sort_chunks_fwd(self, input, split_sizes, sorted_idxs, probs=None):
-        from .impl.permutation import moe_sort_chunks_fwd
-        return moe_sort_chunks_fwd(input, split_sizes, sorted_idxs, probs)
-
-    def moe_sort_chunks_bwd(self, grad_output, grad_probs, inverse_row_map):
-        from .impl.permutation import moe_sort_chunks_bwd
-        return moe_sort_chunks_bwd(grad_output, grad_probs, inverse_row_map)

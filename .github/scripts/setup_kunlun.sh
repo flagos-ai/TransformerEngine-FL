@@ -4,19 +4,6 @@ set -euo pipefail
 
 WORKSPACE="${GITHUB_WORKSPACE:-$(pwd)}"
 
-export PLATFORM="${PLATFORM:-kunlunxin}"
-export TE_FL_SKIP_CUDA="${TE_FL_SKIP_CUDA:-1}"
-export SKIP_CUDA_BUILD="${SKIP_CUDA_BUILD:-1}"
-export NVTE_WITH_CUDA="${NVTE_WITH_CUDA:-0}"
-export NVTE_WITH_MACA="${NVTE_WITH_MACA:-0}"
-export TE_WITH_NCCL="${TE_WITH_NCCL:-0}"
-export NVTE_FRAMEWORK="${NVTE_FRAMEWORK:-pytorch}"
-export TE_FL_PREFER="${TE_FL_PREFER:-vendor}"
-export DISTRIBUTED_BACKEND="${DISTRIBUTED_BACKEND:-nccl}"
-export NVTE_FLASH_ATTN="${NVTE_FLASH_ATTN:-0}"
-export NVTE_FUSED_ATTN="${NVTE_FUSED_ATTN:-0}"
-export NVTE_UNFUSED_ATTN="${NVTE_UNFUSED_ATTN:-1}"
-
 echo "===== Activate KunlunXin Python environment ====="
 if [ -f /root/miniconda/etc/profile.d/conda.sh ]; then
     source /root/miniconda/etc/profile.d/conda.sh
@@ -30,6 +17,8 @@ elif [ -f /opt/miniconda3/etc/profile.d/conda.sh ]; then
 else
     echo "WARNING: No supported conda installation found; using current environment"
 fi
+
+source "$WORKSPACE/tests/plugin/backend/kunlun/set_env.sh"
 
 echo "===== Configure KunlunXin runtime ====="
 if [ -n "${XPU_HOME:-}" ] && [ -d "${XPU_HOME}/lib" ]; then

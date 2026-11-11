@@ -52,11 +52,45 @@ coverage:
     - '*/setup.py'
     - '*/transformer_engine/plugin/core/_build_config.py'
 
+# Device budget per multi-device test job, not the host's total card count.
+# Keep aligned with the devices exposed to the container and the test launcher.
+nproc_per_node: 8
+
 unit_test_matrix:
-  - name: pytorch_unittest
+  - name: pytorch_debug
     runner: script
     path: tests/plugin/backend/kunlun/run_unit_tests.sh
+    args: [debug]
+  - name: pytorch_unit
+    runner: script
+    path: tests/plugin/backend/kunlun/run_unit_tests.sh
+    args: [unittest]
+  - name: pytorch_distributed
+    runner: script
+    path: tests/plugin/backend/kunlun/run_unit_tests.sh
+    args: [distributed]
+  - name: pytorch_onnx
+    runner: script
+    path: tests/plugin/backend/kunlun/run_unit_tests.sh
+    args: [onnx]
 
 integration_test_matrix:
   - name: pytorch_mcore_integration
     path: tests/plugin/backend/kunlun/run_integration_tests.sh
+
+# Exact paths or directory prefixes (ending in /) owned by this platform.
+# Shared and unknown code paths conservatively trigger all platforms.
+paths_watch:
+  - .github/configs/kunlun.yml
+  - .github/scripts/setup_kunlun.sh
+  - tests/plugin/backend/kunlun/
+  - transformer_engine/plugin/core/backends/vendor/kunlunxin/
+
+# Missing test-group coverage is explicit; these entries do not claim hardware incapability.
+unsupported_test_groups:
+  quantization: Current Kunlun QA runs recipe targets only and all are skipped by capability checks; no passing quantization evidence is available.
+  plugin_core: Kunlun unit QA runs only portable sanity, recipe and deferred-init targets; plugin policy/manager targets are not wired.
+  reference_backend: Kunlun unit QA does not run tests/plugin/backend/reference targets.
+  optimizer: Kunlun unit QA does not run fused optimizer, multi-tensor or backend optimizer targets.
+  vendor_backend: Kunlun unit QA has no vendor or FlagOS backend target.
+  attention: Kunlun unit QA selects normalization/linear sanity cases only; attention targets are not wired.

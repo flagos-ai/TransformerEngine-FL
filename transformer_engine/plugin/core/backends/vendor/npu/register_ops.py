@@ -53,6 +53,24 @@ def register_builtins(registry) -> None:
             vendor="NPU",
             priority=100,
         ),
+        # LayerNorm forward
+        OpImpl(
+            op_name="layernorm_fwd",
+            impl_id="vendor.npu",
+            kind=BackendImplKind.VENDOR,
+            fn=_bind_is_available(backend.layernorm_fwd, is_avail),
+            vendor="NPU",
+            priority=100,
+        ),
+        # LayerNorm backward
+        OpImpl(
+            op_name="layernorm_bwd",
+            impl_id="vendor.npu",
+            kind=BackendImplKind.VENDOR,
+            fn=_bind_is_available(backend.layernorm_bwd, is_avail),
+            vendor="NPU",
+            priority=100,
+        ),
         # RMSNorm forward
         OpImpl(
             op_name="rmsnorm_fwd",
@@ -86,6 +104,15 @@ def register_builtins(registry) -> None:
             impl_id="vendor.npu",
             kind=BackendImplKind.VENDOR,
             fn=_bind_is_available(backend.multi_tensor_l2norm, is_avail),
+            vendor="NPU",
+            priority=100,
+        ),
+        # Multi-tensor Adam/AdamW
+        OpImpl(
+            op_name="multi_tensor_adam",
+            impl_id="vendor.npu",
+            kind=BackendImplKind.VENDOR,
+            fn=_bind_is_available(backend.multi_tensor_adam, is_avail),
             vendor="NPU",
             priority=100,
         ),
@@ -145,27 +172,42 @@ def register_builtins(registry) -> None:
         ),
     ]
 
-    # MoE routing-map permutation and chunk sort (optimization points 3 and 7).
-    from .permutation import is_permutation_available
-
-    def is_moe_available():
-        return is_avail() and is_permutation_available()
-
-    for name in (
-        "moe_permute_with_routing_map",
-        "moe_unpermute_with_routing_map",
-        "moe_sort_chunks_fwd",
-        "moe_sort_chunks_bwd",
-    ):
-        impls.append(
-            OpImpl(
-                op_name=name,
-                impl_id="vendor.npu",
-                kind=BackendImplKind.VENDOR,
-                fn=_bind_is_available(getattr(backend, name), is_moe_available),
-                vendor="NPU",
-                priority=100,
-            )
-        )
+    impls.extend(_triton_permutation_impls(is_avail))
 
     registry.register_many(impls)
+
+
+# Triton APIs claimed by NPU, named after the TE function each replaces.
+# Dispatch selects per operator, so this list grows one entry at a time;
+# anything left out stays on te.native.
+#
+# Register only APIs implemented by the NPU backend.
+#
+# One caveat when editing: entries are independent only while they stay
+# equivalent to native. An implementation that encodes row_id_map its own way
+# has to cover the APIs on both ends of that map (see triton_permutation.py).
+_TRITON_PERMUTATION_APIS = (
+    "make_row_id_map",
+    "permute_with_mask_map",
+    "unpermute_with_mask_map",
+    # "unpermute_with_mask_map_bwd_with_merging_probs",
+    "make_chunk_sort_map",
+    "sort_chunks_by_map",
+)
+
+
+def _triton_permutation_impls(is_available_fn) -> list:
+    """Build OpImpls for the Triton permutation APIs claimed by NPU."""
+    from . import triton_permutation
+
+    return [
+        OpImpl(
+            op_name=f"triton_{api_name}",
+            impl_id="vendor.npu",
+            kind=BackendImplKind.VENDOR,
+            fn=_bind_is_available(getattr(triton_permutation, api_name), is_available_fn),
+            vendor="NPU",
+            priority=100,
+        )
+        for api_name in _TRITON_PERMUTATION_APIS
+    ]

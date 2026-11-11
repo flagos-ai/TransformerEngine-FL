@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd -- "$SCRIPT_DIR/../../../.." && pwd)"
 
 export TE_PATH="${TE_PATH:-$REPO_ROOT}"
+export TE_LIB_PATH="${TE_LIB_PATH:-$(python3 -c 'import site; print(site.getsitepackages()[0])' 2>/dev/null)/transformer_engine}"
 export XML_LOG_DIR="${XML_LOG_DIR:-${RUNNER_TEMP:-/tmp}/te-fl-enflame-logs}"
 export TE_FL_SKIP_CUDA="${TE_FL_SKIP_CUDA:-1}"
 export TE_FL_PREFER="${TE_FL_PREFER:-reference}"

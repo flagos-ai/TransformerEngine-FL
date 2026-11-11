@@ -1,0 +1,106 @@
+name: FlagCICD Plan
+description: Generate execution plan from project.yaml and platform configs
+
+inputs:
+  stage:
+    description: 'Stage: pr, branch, nightly, manual, release'
+    required: true
+  source-root:
+    description: 'Repository root directory'
+    required: false
+    default: '.'
+  base-ref:
+    description: 'Base ref for PR diffs'
+    required: false
+    default: ''
+  changed-files:
+    description: 'JSON array of changed files'
+    required: false
+    default: ''
+  platforms:
+    description: 'JSON array of requested platforms (manual stage)'
+    required: false
+    default: ''
+  requested-level:
+    description: 'Requested test level'
+    required: false
+    default: 'auto'
+  labels-from-event:
+    description: 'Extract labels from GITHUB_EVENT_PATH'
+    required: false
+    default: 'false'
+
+outputs:
+  plan:
+    description: 'Full plan JSON (compact)'
+    value: ${{ steps.plan.outputs.plan }}
+  plan_hash:
+    description: 'Plan hash'
+    value: ${{ steps.plan.outputs.plan_hash }}
+  platforms:
+    description: 'Selected platforms JSON array'
+    value: ${{ steps.plan.outputs.platforms }}
+  source_sha:
+    description: 'Source SHA'
+    value: ${{ steps.plan.outputs.source_sha }}
+  test_level:
+    description: 'Test level'
+    value: ${{ steps.plan.outputs.test_level }}
+  stage:
+    description: 'Stage'
+    value: ${{ steps.plan.outputs.stage }}
+  lint_only:
+    description: 'Lint-only flag'
+    value: ${{ steps.plan.outputs.lint_only }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install dependencies
+      shell: bash
+      run: python -m pip install --quiet PyYAML==6.0.3
+
+    - name: Generate plan
+      id: plan
+      shell: bash
+      env:
+        STAGE: ${{ inputs.stage }}
+        SOURCE_ROOT: ${{ inputs.source-root }}
+        BASE_REF: ${{ inputs.base-ref }}
+        CHANGED_FILES: ${{ inputs.changed-files }}
+        PLATFORMS: ${{ inputs.platforms }}
+        REQUESTED_LEVEL: ${{ inputs.requested-level }}
+        LABELS_FROM_EVENT: ${{ inputs.labels-from-event }}
+      run: |
+        SCRIPT_DIR="${GITHUB_ACTION_PATH}/../../scripts/ci"
+        SOURCE_ROOT="$(cd "$SOURCE_ROOT" && pwd -P)"
+        echo "plan_path=$SOURCE_ROOT/plan.json" >> "$GITHUB_OUTPUT"
+        cd "$SOURCE_ROOT"
+
+        ARGS=(
+          --stage "$STAGE"
+          --source-root "$SOURCE_ROOT"
+          --requested-level "$REQUESTED_LEVEL"
+          --output plan.json
+          --github-output
+        )
+
+        [ -n "$BASE_REF" ] && ARGS+=(--base-ref "$BASE_REF")
+        [ -n "$CHANGED_FILES" ] && ARGS+=(--changed-files "$CHANGED_FILES")
+        [ -n "$PLATFORMS" ] && ARGS+=(--platforms "$PLATFORMS")
+        [ "$LABELS_FROM_EVENT" = "true" ] && ARGS+=(--labels-from-event)
+
+        python3 "$SCRIPT_DIR/flagcicd_planner.py" "${ARGS[@]}"
+
+    - name: Upload plan artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: flagcicd-plan-${{ steps.plan.outputs.stage }}
+        path: ${{ steps.plan.outputs.plan_path }}
+        if-no-files-found: error
+        retention-days: 14

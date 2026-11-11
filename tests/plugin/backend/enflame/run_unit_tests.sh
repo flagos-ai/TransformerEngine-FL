@@ -2,8 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-source "$SCRIPT_DIR/set_env.sh"
 source "$SCRIPT_DIR/config.sh"
+source "$SCRIPT_DIR/set_env.sh"
 
 PYTHON="${PYTHON_BIN:-python3}"
 XML_LOG_ROOT="$XML_LOG_DIR"

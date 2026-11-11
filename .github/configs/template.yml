@@ -1,3 +1,6 @@
+# Platform registration switch. Omission defaults to true for compatibility.
+# Set false to exclude this platform from plans, including manual requests.
+enabled: true
 # Hardware configuration template for TransformerEngine-FL CI.
 # Copy this file and provide a setup script when adding a platform.
 
@@ -53,15 +56,53 @@ coverage:
     - '*/setup.py'
     - '*/transformer_engine/plugin/core/_build_config.py'
 
+# Device budget per multi-device test job, not the host's total card count.
+# Keep aligned with the devices exposed to the container and the test launcher.
+nproc_per_node: 2
+
+# Each matrix key maps to a test group in .flagcicd/project.yaml (name, level,
+# resource class, required). Entry names must match catalog group names.
+# Optional per-entry keys read by the planner only:
+#   timeout_minutes: overrides the catalog timeout for this platform
+#   blocked: declared hardware reason; the group is reported, not executed
 # Platform-owned launchers live under tests/plugin/backend/<platform>/.
 # A pytest group may instead declare pytest_args, env, log_dir, and steps.
 unit_test_matrix:
-  - name: pytorch_unittest
+  - name: pytorch_debug
     runner: script
     path: tests/plugin/backend/example/run_unit_tests.sh
+    args: [debug]
+    timeout_minutes: 90
+  - name: pytorch_unit
+    runner: script
+    path: tests/plugin/backend/example/run_unit_tests.sh
+    args: [unittest]
+    timeout_minutes: 90
+  - name: pytorch_distributed
+    runner: script
+    path: tests/plugin/backend/example/run_unit_tests.sh
+    args: [distributed]
+    timeout_minutes: 90
+  - name: pytorch_onnx
+    runner: script
+    path: tests/plugin/backend/example/run_unit_tests.sh
+    args: [onnx]
+    timeout_minutes: 90
 
 # Integration groups use the same common workflow. Put test-specific
 # environment defaults in the test script, not in the workflow.
 integration_test_matrix:
   - name: pytorch_mcore_integration
     path: tests/plugin/backend/example/run_integration_tests.sh
+
+# Optional L3 compatibility groups. Omit the key when the platform does not
+# provide the group; a "blocked" entry keeps it visible in plans and reports.
+compat_test_matrix:
+  - name: fa_versions
+    runner: script
+    path: tests/plugin/backend/example/run_fa_versions_tests.sh
+    blocked: example accelerator has no Flash Attention build
+
+# Optional test group -> reason map for targets not wired into this platform QA.
+# A selected unsupported module is reported explicitly, never silently passed.
+unsupported_test_groups: {}

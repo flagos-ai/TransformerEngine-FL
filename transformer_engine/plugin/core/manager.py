@@ -11,7 +11,7 @@ from typing import Callable, Dict, Optional, Tuple, Any
 
 from .discovery import discover_plugin
 from .registry import OpRegistry
-from .policy import SelectionPolicy, get_policy
+from .policy import SelectionPolicy, get_policy, get_policy_epoch
 from .types import OpImpl, BackendImplKind, match_token
 from .logger_manager import get_logger
 
@@ -42,9 +42,9 @@ class OpManager:
         self._lock = threading.RLock()
         self._registry = registry or OpRegistry()
         self._state = _OpManagerState()
-        self._dispatch_cache: Dict[Tuple[str, str, int], Callable] = {}
+        self._dispatch_cache: Dict[Tuple[str, str, int, int, int], Callable] = {}
         self._impl_cache: Dict[str, OpImpl] = {}
-        self._impl_cache_meta: Dict[str, Tuple[str, int]] = {}
+        self._impl_cache_meta: Dict[str, Tuple[str, int, int, int]] = {}
 
         # Register at_fork handler for multi-process safety
         try:
@@ -202,15 +202,25 @@ class OpManager:
         policy = get_policy()
         policy_fp = policy.fingerprint()
         epoch = self._state.policy_epoch
+        policy_epoch = get_policy_epoch()
+        registry_generation = self._registry.generation
 
         # Check cache
-        cache_key = (op_name, policy_fp, epoch)
+        cache_key = (op_name, policy_fp, epoch, policy_epoch, registry_generation)
+        cached = self._dispatch_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        # Snapshot only after a cache miss. Its generation and candidates
+        # describe one atomic registry state.
+        snap = self._registry.snapshot()
+        registry_generation = snap.generation
+        cache_key = (op_name, policy_fp, epoch, policy_epoch, registry_generation)
         cached = self._dispatch_cache.get(cache_key)
         if cached is not None:
             return cached
 
         # Get all implementations for this operator
-        snap = self._registry.snapshot()
         candidates = list(snap.impls_by_op.get(op_name, []))
 
         # Filter by vendor policy
@@ -262,8 +272,13 @@ class OpManager:
                 f"Candidates: {[c.impl_id for c in candidates]}, Order: {order}"
             )
 
-        # Cache the result
-        self._dispatch_cache[cache_key] = chosen.fn
+        # Keep only the current entry for this op. State changes still produce
+        # distinct keys, but obsolete generations do not accumulate forever.
+        with self._lock:
+            for key in list(self._dispatch_cache):
+                if key[0] == op_name and key != cache_key:
+                    del self._dispatch_cache[key]
+            self._dispatch_cache[cache_key] = chosen.fn
         return chosen.fn
 
     def resolve_candidates(self, op_name: str) -> list[OpImpl]:
@@ -342,29 +357,55 @@ class OpManager:
 
         return unique_candidates
 
+    def _get_cached_impl(self, op_name: str) -> Optional[OpImpl]:
+        """Return a cached implementation if it matches the current state."""
+        policy = get_policy()
+        current_meta = (
+            policy.fingerprint(),
+            self._state.policy_epoch,
+            get_policy_epoch(),
+            self._registry.generation,
+        )
+        with self._lock:
+            impl = self._impl_cache.get(op_name)
+            meta = self._impl_cache_meta.get(op_name)
+        return impl if impl is not None and meta == current_meta else None
+
     def _is_cache_valid(self, op_name: str) -> bool:
         """Check if cached impl is still valid for current policy"""
-        meta = self._impl_cache_meta.get(op_name)
-        if meta is None:
-            return False
-        cached_fp, cached_epoch = meta
-        policy = get_policy()
-        return cached_fp == policy.fingerprint() and cached_epoch == self._state.policy_epoch
+        return self._get_cached_impl(op_name) is not None
 
-    def _update_cache(self, op_name: str, impl: OpImpl) -> None:
-        """Update cache with new impl"""
+    def _cache_metadata(self) -> Tuple[str, int, int, int]:
+        """Capture the state that made an implementation eligible."""
         policy = get_policy()
-        self._impl_cache[op_name] = impl
-        self._impl_cache_meta[op_name] = (policy.fingerprint(), self._state.policy_epoch)
+        return (
+            policy.fingerprint(),
+            self._state.policy_epoch,
+            get_policy_epoch(),
+            self._registry.generation,
+        )
+
+    def _update_cache(
+        self,
+        op_name: str,
+        impl: OpImpl,
+        metadata: Optional[Tuple[str, int, int, int]] = None,
+    ) -> None:
+        """Update cache with new impl."""
+        with self._lock:
+            self._impl_cache[op_name] = impl
+            self._impl_cache_meta[op_name] = metadata or self._cache_metadata()
 
     def _invalidate_cache(self, op_name: str) -> None:
         """Invalidate cache for an op"""
-        self._impl_cache.pop(op_name, None)
-        self._impl_cache_meta.pop(op_name, None)
+        with self._lock:
+            self._impl_cache.pop(op_name, None)
+            self._impl_cache_meta.pop(op_name, None)
 
     def _get_last_impl_id(self, op_name: str) -> Optional[str]:
         """Get last used impl_id (even if cache is stale)"""
-        impl = self._impl_cache.get(op_name)
+        with self._lock:
+            impl = self._impl_cache.get(op_name)
         return impl.impl_id if impl else None
 
     def call(self, op_name: str, *args, **kwargs):
@@ -385,10 +426,9 @@ class OpManager:
         """
         enable_fallback = os.getenv("TE_FL_STRICT", "1") != "0"
 
-        cached_impl = self._impl_cache.get(op_name)
-        cache_valid = self._is_cache_valid(op_name)
+        cached_impl = self._get_cached_impl(op_name)
 
-        if cache_valid and cached_impl is not None:
+        if cached_impl is not None:
             try:
                 return cached_impl.fn(*args, **kwargs)
             except Exception as e:
@@ -404,12 +444,13 @@ class OpManager:
         last_impl_id = self._get_last_impl_id(op_name)
 
         if not enable_fallback:
+            selection_metadata = self._cache_metadata()
             fn = self.resolve(op_name)
 
             snap = self._registry.snapshot()
             for candidate in snap.impls_by_op.get(op_name, []):
                 if candidate.fn is fn:
-                    self._update_cache(op_name, candidate)
+                    self._update_cache(op_name, candidate, selection_metadata)
 
                     if last_impl_id is None:
                         logger.info_once(
@@ -426,6 +467,7 @@ class OpManager:
 
             return fn(*args, **kwargs)
 
+        selection_metadata = self._cache_metadata()
         candidates = self.resolve_candidates(op_name)
         last_error = None
 
@@ -433,7 +475,7 @@ class OpManager:
             try:
                 result = impl.fn(*args, **kwargs)
 
-                self._update_cache(op_name, impl)
+                self._update_cache(op_name, impl, selection_metadata)
 
                 if last_impl_id is None:
                     logger.info_once(
@@ -489,10 +531,9 @@ class OpManager:
         """
         enable_fallback = os.getenv("TE_FL_STRICT", "1") != "0"
 
-        cached_impl = self._impl_cache.get(op_name)
-        cache_valid = self._is_cache_valid(op_name)
+        cached_impl = self._get_cached_impl(op_name)
 
-        if cache_valid and cached_impl is not None:
+        if cached_impl is not None:
             try:
                 cached_class = cached_impl.fn()
                 return call_impl_fn(cached_class)
@@ -509,6 +550,7 @@ class OpManager:
         last_impl_id = self._get_last_impl_id(op_name)
 
         if not enable_fallback:
+            selection_metadata = self._cache_metadata()
             snap = self._registry.snapshot()
             for impl in snap.impls_by_op.get(op_name, []):
                 try:
@@ -516,7 +558,7 @@ class OpManager:
                     if impl_class == current_impl_class:
                         result = call_impl_fn(impl_class)
 
-                        self._update_cache(op_name, impl)
+                        self._update_cache(op_name, impl, selection_metadata)
 
                         if last_impl_id is None:
                             logger.info_once(
@@ -534,6 +576,7 @@ class OpManager:
 
             return call_impl_fn(current_impl_class)
 
+        selection_metadata = self._cache_metadata()
         candidates = self.resolve_candidates(op_name)
         last_error = None
         current_impl_id = None
@@ -551,7 +594,7 @@ class OpManager:
                 impl_class = impl.fn()
                 result = call_impl_fn(impl_class)
 
-                self._update_cache(op_name, impl)
+                self._update_cache(op_name, impl, selection_metadata)
 
                 if last_impl_id is None:
                     logger.info_once(
