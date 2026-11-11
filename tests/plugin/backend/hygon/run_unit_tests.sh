@@ -161,7 +161,18 @@ run_unittest_suite() {
     run_pytest_step "test_jit.py" "pytest_test_jit.xml" \
         "$PYTHON" -m pytest -s -v --tb=auto "$TE_PATH/tests/pytorch/test_jit.py" -k "not (test_torch_dynamo)"
 
-    if ! "$PYTHON" "$TE_PATH/tests/test_utils/run_ci_test_group.py" --plugin-tests; then
+    if ! TE_TEST_GROUP_JSON='{
+  "name": "plugin-unit", "runner": "pytest", "max_retries": 0,
+  "pytest_args": ["-v", "-s", "--tb=short"],
+  "steps": [{
+    "name": "plugin", "targets": ["tests/plugin/"],
+    "isolate_files": true, "use_platform_runner": false,
+    "ignore": ["tests/plugin/backend/npu/"],
+    "unset_env_by_path": {"tests/plugin/plugin/": [
+      "TE_FL_ALLOW_VENDORS", "TE_FL_PREFER", "TE_FL_PER_OP", "TE_FL_STRICT"
+    ]}
+  }]
+}' "$PYTHON" "$TE_PATH/tests/test_utils/run_ci_test_group.py"; then
         FAIL=1
         FAILED_CASES+=("unittest:plugin_core")
     fi

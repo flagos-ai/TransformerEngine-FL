@@ -183,7 +183,18 @@ run_test_step "pytest_test_checkpoint.xml" "$TE_PATH/tests/pytorch/test_checkpoi
 # New Step: Plugin Core
 # ==============================================================================
 # The unified unit job owns core, backend and cross-backend accuracy tests.
-python3 "$TE_PATH/tests/test_utils/run_ci_test_group.py" --plugin-tests || test_fail "plugin"
+TE_TEST_GROUP_JSON='{
+  "name": "plugin-unit", "runner": "pytest", "max_retries": 0,
+  "pytest_args": ["-v", "-s", "--tb=short"],
+  "steps": [{
+    "name": "plugin", "targets": ["tests/plugin/"],
+    "isolate_files": true, "use_platform_runner": false,
+    "ignore": ["tests/plugin/backend/npu/"],
+    "unset_env_by_path": {"tests/plugin/plugin/": [
+      "TE_FL_ALLOW_VENDORS", "TE_FL_PREFER", "TE_FL_PER_OP", "TE_FL_STRICT"
+    ]}
+  }]
+}' python3 "$TE_PATH/tests/test_utils/run_ci_test_group.py" || test_fail "plugin"
 
 if [ "$FAIL" -ne 0 ]; then
     echo "Some tests failed."

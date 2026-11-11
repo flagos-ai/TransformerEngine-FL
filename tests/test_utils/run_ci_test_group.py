@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import fnmatch
 import os
 from pathlib import Path
 import shlex
@@ -94,7 +95,7 @@ def _run_pytest(group: dict[str, Any]) -> int:
     if not isinstance(steps, list) or not steps:
         raise SystemExit(f"Pytest group {group['name']} has no steps")
 
-    log_dir = REPO_ROOT / _expand(str(group.get("log_dir", "logs")))
+    log_dir = REPO_ROOT / _expand(str(group.get("log_dir", os.environ.get("XML_LOG_DIR", "logs"))))
     log_dir.mkdir(parents=True, exist_ok=True)
     group_args = [_expand(str(arg)) for arg in group.get("pytest_args", [])]
     group_env = {str(key): _expand(str(value)) for key, value in group.get("env", {}).items()}
@@ -121,69 +122,64 @@ def _run_pytest(group: dict[str, Any]) -> int:
             failed = True
             continue
 
-        command = _pytest_command(bool(step.get("use_platform_runner", True)))
-        command.extend(group_args)
-        command.extend(_expand(str(arg)) for arg in step.get("args", []))
-        if step.get("junit"):
-            command.append(f"--junitxml={log_dir / str(step['junit'])}")
-        command.extend(targets)
+        invocations = [targets]
+        if step.get("isolate_files"):
+            files = set()
+            for target in targets:
+                path = REPO_ROOT / target
+                if path.is_dir():
+                    files.update(file for file in path.rglob("test_*.py") if file.is_file())
+                elif path.is_file():
+                    files.add(path)
+                else:
+                    raise SystemExit(f"Test target does not exist: {target}")
+            if not files:
+                raise SystemExit(f"No test files found for step {step['name']}")
+            invocations = [[str(file)] for file in sorted(files)]
 
-        step_env = os.environ.copy()
-        step_env.update(group_env)
-        step_env.update(
-            {str(key): _expand(str(value)) for key, value in step.get("env", {}).items()}
-        )
-        _selection_env(step_env, group)
-        print(f"[RUN] {step['name']}: {shlex.join(command)}", flush=True)
-        result = subprocess.run(command, cwd=REPO_ROOT, env=step_env, check=False)
-        if result.returncode < 0 or result.returncode >= 128:
-            return result.returncode
-        failed = failed or result.returncode != 0
+        for invocation in invocations:
+            relative = (
+                Path(invocation[0]).relative_to(REPO_ROOT).as_posix()
+                if step.get("isolate_files")
+                else ""
+            )
+            if relative and any(
+                (
+                    relative.startswith(pattern)
+                    if pattern.endswith("/")
+                    else fnmatch.fnmatchcase(relative, pattern)
+                )
+                for pattern in step.get("ignore", [])
+            ):
+                print(f"[IGNORE] {relative}", flush=True)
+                continue
+            command = _pytest_command(bool(step.get("use_platform_runner", True)))
+            command.extend(group_args)
+            command.extend(_expand(str(arg)) for arg in step.get("args", []))
+            if step.get("isolate_files"):
+                report = relative.removesuffix(".py").replace("/", "_") + ".xml"
+                command.append(f"--junitxml={log_dir / report}")
+            elif step.get("junit"):
+                command.append(f"--junitxml={log_dir / str(step['junit'])}")
+            command.extend(invocation)
+
+            step_env = os.environ.copy()
+            step_env.update(group_env)
+            step_env.update(
+                {str(key): _expand(str(value)) for key, value in step.get("env", {}).items()}
+            )
+            for prefix, keys in step.get("unset_env_by_path", {}).items():
+                if relative.startswith(prefix):
+                    for key in keys:
+                        step_env.pop(key, None)
+            _selection_env(step_env, group)
+            print(f"[RUN] {step['name']}: {shlex.join(command)}", flush=True)
+            result = subprocess.run(command, cwd=REPO_ROOT, env=step_env, check=False)
+            if result.returncode < 0 or result.returncode >= 128:
+                return result.returncode
+            failed = failed or result.returncode != 0
 
     return 1 if failed else 0
-
-
-def _run_plugin_tests() -> int:
-    """Discover plugin tests by directory, with isolated processes and reports."""
-    root = Path(os.environ.get("TE_PATH", REPO_ROOT)).resolve()
-    test_root = root / "tests/plugin"
-    files = sorted(path for path in test_root.rglob("test_*.py") if path.is_file())
-    if not files:
-        print(f"No plugin test files found under {test_root}", file=sys.stderr)
-        return 1
-    log_dir = Path(os.environ.get("XML_LOG_DIR", root / "logs/plugin"))
-    log_dir.mkdir(parents=True, exist_ok=True)
-    failed = False
-    for path in files:
-        relative = path.relative_to(root).as_posix()
-        if relative.startswith("tests/plugin/backend/npu/") and os.environ.get(
-            "PLATFORM", ""
-        ).lower() not in ("ascend", "npu"):
-            print(f"[IGNORE] {relative}: NPU tests require the Ascend platform", flush=True)
-            continue
-        report = "pytest_" + relative.removesuffix(".py").replace("/", "_") + ".xml"
-        env = os.environ.copy()
-        if relative.startswith("tests/plugin/plugin/"):
-            # Mock contracts need the default policy; backend/accuracy tests
-            # retain platform policy. CI selection and ignore hooks are inherited.
-            for key in ("TE_FL_ALLOW_VENDORS", "TE_FL_PREFER", "TE_FL_PER_OP", "TE_FL_STRICT"):
-                env.pop(key, None)
-        command = [
-            sys.executable,
-            "-m",
-            "pytest",
-            "-v",
-            "-s",
-            "--tb=short",
-            str(path),
-            f"--junitxml={log_dir / report}",
-        ]
-        print(f"[RUN][plugin] {relative}", flush=True)
-        result = subprocess.run(command, cwd=root, env=env, check=False)
-        if result.returncode < 0 or result.returncode >= 128:
-            return result.returncode
-        failed = failed or result.returncode != 0
-    return int(failed)
 
 
 def main() -> int:
@@ -211,6 +207,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    if sys.argv[1:] == ["--plugin-tests"]:
-        raise SystemExit(_run_plugin_tests())
     raise SystemExit(main())

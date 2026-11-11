@@ -59,7 +59,18 @@ run_pytest_step_with_unfused_attention() {
 }
 
 # Include both NPU test files and every shared plugin test in the unit job.
-python3 "$TE_PATH/tests/test_utils/run_ci_test_group.py" --plugin-tests || test_fail "plugin"
+TE_TEST_GROUP_JSON='{
+  "name": "plugin-unit", "runner": "pytest", "max_retries": 0,
+  "pytest_args": ["-v", "-s", "--tb=short"],
+  "steps": [{
+    "name": "plugin", "targets": ["tests/plugin/"],
+    "isolate_files": true, "use_platform_runner": false,
+    "ignore": [],
+    "unset_env_by_path": {"tests/plugin/plugin/": [
+      "TE_FL_ALLOW_VENDORS", "TE_FL_PREFER", "TE_FL_PER_OP", "TE_FL_STRICT"
+    ]}
+  }]
+}' python3 "$TE_PATH/tests/test_utils/run_ci_test_group.py" || test_fail "plugin"
 
 run_pytest_step_with_unfused_attention "shared portable sanity tests" "pytest_shared_sanity_portable.xml" \
     "$TE_PATH/tests/pytorch/test_sanity.py::test_sanity_normalization_amp[LayerNorm-False-False-small-dtype0]" \

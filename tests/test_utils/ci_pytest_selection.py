@@ -112,7 +112,6 @@ def pytest_collection_modifyitems(session, config, items):
     selection = config._flagcicd_selection
     if selection is None:
         return
-    config._flagcicd_had_items = bool(items)
     selected, deselected = [], []
     for item in items:
         path = Path(item.path).resolve()
@@ -134,6 +133,7 @@ def pytest_collection_modifyitems(session, config, items):
                 ("flagcicd_test_nodeid", nodeid),
             ]
         )
+    config._flagcicd_plan_removed_all = bool(items) and not selected
     items[:] = selected
     if deselected:
         config.hook.pytest_deselected(items=deselected)
@@ -142,10 +142,10 @@ def pytest_collection_modifyitems(session, config, items):
 def pytest_collection_finish(session):
     if (
         session.config._flagcicd_selection is not None
-        and getattr(session.config, "_flagcicd_had_items", False)
+        and getattr(session.config, "_flagcicd_plan_removed_all", False)
         and not session.items
         and not session.testsfailed
     ):
-        # An adapter may invoke one whitelisted node at a time. An invocation
-        # outside this plan's node scope produces no passing evidence.
+        # Only plan-driven removal is an intentional empty invocation. Keep
+        # pytest's failure when -k/-m or another filter removes selected tests.
         pytest.exit("No selected FlagCICD test nodes remain", returncode=0)

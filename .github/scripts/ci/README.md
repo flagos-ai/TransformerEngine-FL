@@ -16,13 +16,19 @@ The unified CI catalog covers the `tests/plugin/` tree with separate owners:
 `tests/plugin/backend/flagos/`. Source routing follows those same boundaries.
 Core dispatch evidence must come from core tests, not a passing backend test.
 
-The independent `te-plugin-tests.yml` workflow is retained. Its original `main`
-branch and plugin-path push/PR triggers are restored alongside manual dispatch;
-its checkout, runner, image and test steps remain unchanged.
+Unified CI owns automatic plugin execution. The independent
+`te-plugin-tests.yml` workflow is removed because its non-NPU test scope is
+already covered by the CUDA unit job. Manual runs remain available through the
+unified CI entry points. Runner labels come from the platform configuration
+(`nv-8g-cicd-te` for CUDA), avoiding a separate runner definition.
 
 Platform unit launchers discover all `test_*.py` recursively. Most use
-`tests/test_utils/run_ci_test_group.py --plugin-tests`; PPU retains its per-file timeout and
-summary reporting, and Iluvatar retains directory-scoped audited ignore rules.
+the existing declarative `runner: pytest` with `isolate_files: true`. Each step
+supplies its discovery paths, ignore prefixes and path-scoped environment cleanup;
+the generic runner contains no plugin-specific CLI or platform policy. Inner
+pytest groups disable retries so the outer platform job owns retry policy.
+PPU retains its per-file timeout/summary and Iluvatar its directory-scoped
+ignore audit.
 The old per-file backend calls are removed to avoid duplicate execution.
 Distinct relative paths produce distinct JUnit filenames even when test files
 share a basename. Numerics helper files are invoked by their driver rather
@@ -42,7 +48,9 @@ Whole-file/directory ignores apply before import; node selectors apply after
 collection. Ignores take precedence over positive directory selections, even
 when another selected group overlaps the ignored files and even in full Nightly
 runs. Ignored tests produce no passing evidence. Standard capability-based
-runtime skips remain separate.
+runtime skips remain separate. Only plan-driven removal of every node is a
+successful empty invocation; `-k`/`-m` filtering every selected test remains a
+failure and cannot be classified as a planned ignore by the PPU summary.
 
 ## Ignore naming and include scopes
 
