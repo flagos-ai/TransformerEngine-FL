@@ -118,11 +118,12 @@ run_debug_suite() {
     echo "===== START debug $(date '+%F %T') ====="
     install_base_deps
 
-    if ! "$PYTHON" -c "import nvdlfw_inspect.api" >/dev/null 2>&1; then
-        skip_step "tests/pytorch/debug/*" "nvdlfw_inspect is unavailable"
-        skip_step "tests/pytorch/test_sanity.py" "debug nvinspect path not required by current DTK plugin workflow"
-        skip_step "tests/pytorch/test_numerics.py" "debug nvinspect path not required by current DTK plugin workflow"
-        echo "===== END debug rc=0 $(date '+%F %T') ====="
+    if ! install_python_package nvdlfw_inspect.api "${NVINSPECT_PACKAGE_SPEC:-nvdlfw-inspect}" ||
+       ! python_has_module nvdlfw_inspect.api; then
+        echo "ERROR: Hygon debug tests require importable nvdlfw_inspect.api" >&2
+        FAIL=1
+        FAILED_CASES+=("debug:nvdlfw_inspect dependency")
+        echo "===== END debug rc=1 $(date '+%F %T') ====="
         return 0
     fi
 

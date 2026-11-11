@@ -1,66 +1,620 @@
 schema_version: flagcicd.project/v1
 repository: TransformerEngine-FL
 
-# This manifest describes the repository-facing contract. The existing
-# platform files remain the source of truth for runners and test matrices.
-entry_workflow: .github/workflows/flagcicd-entry.yml
+# Repository-facing CI contract. Platform files under .github/configs remain
+# the source of truth for images, runners, setup scripts, and per-platform test
+# entries; this file owns stages, levels, resources, and the test-group catalog.
+# .github/scripts/ci/flagcicd_planner.py turns both into a flagcicd.plan/v1.
 platform_config_glob: .github/configs/*.yml
+plan_schema: flagcicd.plan/v1
 
+# Stage semantics. "affected" narrows platforms and groups from the PR diff;
+# "all" runs every platform; "requested" runs the platforms named by the caller.
+# fixed_level stages ignore requested levels and path-based level inference.
+stages:
+  pr:
+    entry_workflow: .github/workflows/ci.yml (pull_request)
+    selection: affected
+    default_level: L1
+  branch:
+    entry_workflow: .github/workflows/ci.yml (push, workflow_dispatch)
+    selection: all
+    default_level: L2
+  nightly:
+    entry_workflow: .github/workflows/nightly.yml (schedule, workflow_dispatch)
+    selection: all
+    default_level: L2
+    fixed_level: true
+  manual:
+    # Requested runs keep the previous unit + integration default; callers
+    # may request any level, and changed_files (if given) can only raise it.
+    entry_workflow: .github/workflows/ci-requested.yml (/ci comment, workflow_dispatch)
+    selection: requested
+    default_level: L2
+  release:
+    entry_workflow: .github/workflows/release-acceptance.yml (workflow_dispatch)
+    selection: all
+    default_level: L4
+    fixed_level: true
+
+# Levels are cumulative eligibility ceilings. Full plans select all configured
+# groups up to N; affected PR plans narrow modules and add their dependencies.
+# Group timeouts live in test_groups[*].resources.
 levels:
   L0:
-    support: supported
-    purpose: preflight-and-smoke
-    timeout_minutes: 15
-    workflows:
-      - .github/workflows/all_tests_common.yml (preflight job only)
+    required_groups: [preflight]
+    purpose: checkout, config, image, device, wheel, dependencies, preflight
   L1:
-    support: supported
-    purpose: pull-request-unit
-    timeout_minutes: 60
-    workflows:
-      - .github/workflows/all_tests_common.yml (unit_tests job)
+    purpose: debug, unit operators, dispatch, numerical smoke
+    required_groups: [core]
+    note: Debug and portable unit modules provide the baseline; levels do not imply device count.
   L2:
-    support: supported
-    purpose: representative-integration
-    timeout_minutes: 360
-    workflows:
-      - .github/workflows/all_tests_common.yml (unit_tests + integration_tests)
+    purpose: L1 + integration, distributed, ONNX, MCore
   L3:
-    support: partial
-    purpose: full-regression-and-compatibility
-    timeout_minutes: 480
-    workflows:
-      - .github/workflows/all_tests_common.yml (unit + integration)
-      - .github/workflows/qa-l3-te-pytorch-fa-versions-test.yml (disabled, requires Hopper+ GPU)
-    test_scope:
-      - Unit tests (all platforms)
-      - Integration tests (all platforms)
-      - Flash Attention version compatibility (requires Hopper+ GPU, currently disabled)
-      - Benchmark regression checks (planned)
-    note: FA tests require Hopper+ GPUs and workflow trigger enablement
+    purpose: L2 + FA versions, benchmark, performance and coverage regression
+    note: >-
+      fa_versions is blocked until an sm90+ runner exists; pytorch_benchmark is
+      blocked until a performance baseline exists. Nightly coverage regression
+      is statistical (see golden_baseline.json) and advisory.
   L4:
-    support: planned
-    purpose: release-and-model-validation
-    timeout_minutes: 2880
-    workflows:
-      - .github/workflows/all_tests_common.yml (full)
-      - Cross-repo integration tests (requires coordination)
-    test_scope:
-      - All L3 tests
-      - End-to-end model training validation
-      - Cross-repository integration (requires manual coordination)
-      - Release artifact validation
-      - Backward compatibility checks
-    note: L4 requires cross-repo coordination and extended runtime (48+ hours)
+    purpose: L3 + cross-repo, model, release wheel, backward compatibility, golden baseline
+    note: >-
+      Release acceptance only (release-acceptance.yml). Every L4 group is
+      blocked with a reason, so a release plan cannot report ready until each
+      contract is implemented.
 
-risk_rules:
-  version: v1
-  default_level: L1
-  unknown_change: escalate
+# Scheduling contract. Groups with exclusive: true or devices > 1 run in the
+# serial lane (max-parallel 1, after the parallel lane) so they never share a
+# platform runner pool with another group of the same run. Exclusive classes
+# cannot be relaxed by a group. devices: nproc_per_node reads the required
+# per-platform device budget; different platforms need not use the same count.
+resource_classes:
+  shared_cpu:
+    devices: 0
+    exclusive: false
+  single_device:
+    devices: 1
+    exclusive: false
+  multi_device:
+    devices: nproc_per_node
+    exclusive: false
+  communication_exclusive:
+    devices: nproc_per_node
+    exclusive: true
+  model_exclusive:
+    devices: nproc_per_node
+    exclusive: true
+  hopper_only:
+    devices: nproc_per_node
+    exclusive: true
+  release_exclusive:
+    devices: nproc_per_node
+    exclusive: true
+
+# One functional test-group catalog. depends_on expands test selection; it does
+# not impose job execution order. execution selects a platform matrix entry.
+# Groups sharing that entry run once, with their selected test files combined.
+# Shared/impact paths and unavailable ownership keep the full in-level scope.
+routing:
+  shared_paths:
+  - .github/**
+  - .flagcicd/**
+  - tests/test_utils/**
+  - tests/pytorch/utils.py
+  - tests/plugin/utils.py
+  - tests/plugin/backend/*/config.sh
+  - tests/plugin/backend/*/set_env.sh
+  - tests/plugin/backend/*/run_unit_tests.sh
+  - tests/plugin/backend/*/run_integration_tests.sh
+  impact_paths:
+  - transformer_engine/__init__.py
+  - transformer_engine/pytorch/__init__.py
+  - transformer_engine/pytorch/constants.py
+  - transformer_engine/pytorch/utils.py
+  - transformer_engine/pytorch/module/base.py
+  - transformer_engine/pytorch/module/_common.py
+  - transformer_engine/pytorch/ops/_common.py
+  - transformer_engine/pytorch/quantization.py
+  - transformer_engine/pytorch/fp8.py
+  - transformer_engine/plugin/core/manager.py
+  - transformer_engine/plugin/core/registry.py
+  - transformer_engine/plugin/core/ops.py
+  - transformer_engine/plugin/core/types.py
+  - transformer_engine/plugin/core/policy.py
+
+# Each group owns its level, paths, dependencies, execution mapping and evidence.
+# test_targets accepts paths/globs and path::class/function selectors; mixed
+# files use node selectors so an unrelated passing test cannot certify a group.
+# Platform files only provide concrete launchers, environment and coverage gaps.
+# blocked groups stay in the plan ledger and are never reported as executed.
+test_groups:
+  - name: preflight
+    kind: preflight
+    level: L0
+    required: true
+    evidence: exit_code
+    resources:
+      class: shared_cpu
+      timeout_minutes: 90
+    description: Repository structure and Python syntax preflight.
+    paths: []
+    depends_on: []
+  - name: core
+    description: Portable initialization, graph/JIT and checkpoint smoke tests.
+    level: L1
+    depends_on: []
+    paths:
+    - transformer_engine/pytorch/cpu_offload*.py
+    - transformer_engine/pytorch/graph.py
+    - transformer_engine/pytorch/jit.py
+    - transformer_engine/pytorch/torch_version.py
+    - tests/pytorch/test_deferred_init.py
+    - tests/pytorch/test_sanity_import.py
+    - tests/pytorch/test_jit.py
+    - tests/pytorch/test_cuda_graphs.py
+    - tests/pytorch/test_checkpoint.py
+    - tests/pytorch/test_cpu_offloading*.py
+    test_targets:
+    - tests/pytorch/test_deferred_init.py
+    - tests/pytorch/test_sanity_import.py
+    - tests/pytorch/test_jit.py
+    - tests/pytorch/test_cuda_graphs.py
+    - tests/pytorch/test_checkpoint.py
+    - tests/pytorch/test_cpu_offloading*.py
+    - tests/plugin/plugin/test_manager.py
+    kind: unit
+    required: true
+    evidence: junit
+    coverage: true
+    resources:
+      class: multi_device
+      timeout_minutes: 90
+    execution:
+      matrix: unit_test_matrix
+      entry: pytorch_unit
+  - name: plugin_core
+    description: Plugin policy, registration and dispatch tests.
+    level: L1
+    depends_on:
+    - core
+    paths:
+    - transformer_engine/plugin/core/*.py
+    - transformer_engine/plugin/*.py
+    - tests/plugin/plugin/
+    test_targets:
+    - tests/plugin/plugin/
+    kind: unit
+    required: true
+    evidence: junit
+    coverage: true
+    resources:
+      class: multi_device
+      timeout_minutes: 90
+    execution:
+      matrix: unit_test_matrix
+      entry: pytorch_unit
+  - name: reference_backend
+    description: Reference backend lifecycle and operator tests.
+    level: L1
+    depends_on:
+    - plugin_core
+    paths:
+    - transformer_engine/plugin/core/backends/reference/
+    - tests/plugin/backend/reference/
+    test_targets:
+    - tests/plugin/backend/reference/
+    kind: unit
+    required: true
+    evidence: junit
+    coverage: true
+    resources:
+      class: multi_device
+      timeout_minutes: 90
+    execution:
+      matrix: unit_test_matrix
+      entry: pytorch_unit
+  - name: vendor_backend
+    description: Vendor and FlagOS backend lifecycle and operator tests.
+    level: L1
+    depends_on:
+    - core
+    paths:
+    - transformer_engine/plugin/core/backends/vendor/
+    - transformer_engine/plugin/core/backends/flagos/
+    - transformer_engine/plugin/core/backends/fa_utils.py
+    - tests/plugin/backend/*/test_backend*.py
+    - tests/plugin/backend/npu/
+    - tests/plugin/backend/flagos/
+    test_targets:
+    - tests/plugin/backend/npu/
+    - tests/plugin/backend/flagos/
+    kind: unit
+    required: true
+    evidence: junit
+    coverage: true
+    resources:
+      class: multi_device
+      timeout_minutes: 90
+    execution:
+      matrix: unit_test_matrix
+      entry: pytorch_unit
+  - name: normalization
+    description: LayerNorm, RMSNorm and fused normalization tests.
+    level: L1
+    depends_on:
+    - core
+    paths:
+    - transformer_engine/pytorch/module/layernorm*.py
+    - transformer_engine/pytorch/module/rmsnorm.py
+    - transformer_engine/pytorch/ops/basic/layer_norm.py
+    - transformer_engine/pytorch/ops/basic/rmsnorm.py
+    - transformer_engine/pytorch/ops/basic/l2normalization.py
+    - transformer_engine/pytorch/ops/fused/backward_add_rmsnorm.py
+    - transformer_engine/pytorch/csrc/extensions/normalization.cpp
+    - transformer_engine/common/normalization/
+    - tests/pytorch/layernorm_mlp/
+    - tests/pytorch/test_qk_norm.py
+    - tests/plugin/backend/*/test_rmsnorm.py
+    - tests/plugin/backend/*/test_layernorm.py
+    test_targets:
+    - tests/pytorch/test_sanity.py::test_sanity_normalization*
+    - tests/pytorch/test_sanity.py::test_sanity_layernorm*
+    - tests/pytorch/test_numerics.py::test_*norm*
+    - tests/pytorch/test_qk_norm.py
+    - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_*norm*
+    - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_backward_add_rmsnorm
+    - tests/pytorch/test_fusible_ops.py::TestSequentialModules::test_layernorm_mlp
+    - tests/pytorch/layernorm_mlp/
+    - tests/plugin/backend/*/test_rmsnorm.py
+    - tests/plugin/backend/*/test_layernorm.py
+    - tests/plugin/backend/npu/test_backend_npu.py::TestNPURMSNormAccuracy
+    kind: unit
+    required: true
+    evidence: junit
+    coverage: true
+    resources:
+      class: multi_device
+      timeout_minutes: 90
+    execution:
+      matrix: unit_test_matrix
+      entry: pytorch_unit
+  - name: gemm
+    description: Linear, grouped GEMM and fused linear operator tests.
+    level: L1
+    depends_on:
+    - core
+    paths:
+    - transformer_engine/pytorch/module/linear.py
+    - transformer_engine/pytorch/module/grouped_linear.py
+    - transformer_engine/pytorch/ops/linear.py
+    - transformer_engine/pytorch/ops/basic/*linear.py
+    - transformer_engine/pytorch/ops/fused/*linear*.py
+    - transformer_engine/pytorch/ops/fused/grouped_mlp.py
+    - transformer_engine/pytorch/cpp_extensions/gemm.py
+    - transformer_engine/pytorch/csrc/extensions/gemm.cpp
+    - transformer_engine/pytorch/csrc/extensions/grouped_mlp_experimental.cpp
+    - transformer_engine/common/gemm/
+    - tests/pytorch/test_grouped_linear.py
+    - tests/pytorch/test_grouped_mlp.py
+    - tests/pytorch/test_float8_blockwise_gemm_exact.py
+    - tests/plugin/backend/*/test_gemm.py
+    test_targets:
+    - tests/pytorch/test_sanity.py::test_sanity_*linear*
+    - tests/pytorch/test_sanity.py::test_sanity_*gemm*
+    - tests/pytorch/test_sanity.py::test_sanity_layernorm_mlp
+    - tests/pytorch/test_numerics.py::test_*linear*
+    - tests/pytorch/test_numerics.py::test_*gemm*
+    - tests/pytorch/test_numerics.py::test_layernorm_mlp*
+    - tests/pytorch/test_grouped_linear.py
+    - tests/pytorch/test_grouped_mlp.py
+    - tests/pytorch/test_float8_blockwise_gemm_exact.py
+    - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_*linear*
+    - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_*linear*
+    - tests/pytorch/test_fusible_ops.py::TestSequentialModules::test_*mlp
+    - tests/pytorch/test_fusible_ops.py::TestCheckpointing::test_linear
+    - tests/pytorch/test_fusible_ops.py::TestTrainingLoops::test_linear*
+    - tests/plugin/backend/*/test_gemm.py
+    - tests/plugin/backend/npu/test_backend_npu.py::TestNPU*GEMMAccuracy
+    kind: unit
+    required: true
+    evidence: junit
+    coverage: true
+    resources:
+      class: multi_device
+      timeout_minutes: 90
+    execution:
+      matrix: unit_test_matrix
+      entry: pytorch_unit
+  - name: attention
+    description: Attention, RoPE, GQA and attention integration tests.
+    level: L1
+    depends_on:
+    - core
+    paths:
+    - transformer_engine/pytorch/attention/
+    - transformer_engine/pytorch/cpp_extensions/fused_attn.py
+    - transformer_engine/pytorch/csrc/extensions/attention.cpp
+    - transformer_engine/pytorch/csrc/extensions/apply_rope.cpp
+    - transformer_engine/common/fused_attn/
+    - transformer_engine/common/fused_rope/
+    - tests/pytorch/attention/
+    - tests/pytorch/test_fused_rope.py
+    - tests/pytorch/test_gqa.py
+    - tests/pytorch/test_hf_integration.py
+    test_targets:
+    - tests/pytorch/attention/
+    - tests/pytorch/test_fused_rope.py
+    - tests/pytorch/test_gqa.py
+    - tests/pytorch/test_hf_integration.py
+    - tests/pytorch/test_sanity.py::test_sanity_fused_qkv_params
+    - tests/pytorch/test_numerics.py::test_mha_accuracy
+    - tests/pytorch/test_numerics.py::test_dpa_accuracy
+    - tests/plugin/backend/npu/test_backend_npu.py::TestNPUFlashAttention*
+    kind: unit
+    required: true
+    evidence: junit
+    coverage: true
+    resources:
+      class: multi_device
+      timeout_minutes: 90
+    execution:
+      matrix: unit_test_matrix
+      entry: pytorch_unit
+  - name: quantization
+    description: Recipes, quantized tensors, FP8 and NVFP4 tests.
+    level: L1
+    depends_on:
+    - core
+    paths:
+    - transformer_engine/pytorch/quantized_tensor.py
+    - transformer_engine/pytorch/float8_tensor.py
+    - transformer_engine/pytorch/tensor/
+    - transformer_engine/pytorch/module/fp8_*.py
+    - transformer_engine/pytorch/ops/basic/quantize.py
+    - transformer_engine/common/recipe/
+    - transformer_engine/common/recipe.py
+    - transformer_engine/common/cast/
+    - tests/pytorch/nvfp4/
+    - tests/pytorch/mxfp8/
+    - tests/pytorch/test_recipe.py
+    - tests/pytorch/test_custom_recipe.py
+    - tests/pytorch/test_quantized_tensor.py
+    - tests/pytorch/test_float8*.py
+    - tests/pytorch/test_grouped_tensor*.py
+    - tests/pytorch/test_partial_cast.py
+    - tests/pytorch/test_backward_override.py
+    test_targets:
+    - tests/pytorch/test_recipe.py
+    - tests/pytorch/test_custom_recipe.py
+    - tests/pytorch/test_quantized_tensor.py
+    - tests/pytorch/test_float8*.py
+    - tests/pytorch/test_grouped_tensor*.py
+    - tests/pytorch/test_partial_cast.py
+    - tests/pytorch/test_backward_override.py
+    - tests/pytorch/nvfp4/
+    - tests/pytorch/mxfp8/
+    kind: unit
+    required: true
+    evidence: junit
+    coverage: true
+    resources:
+      class: multi_device
+      timeout_minutes: 90
+    execution:
+      matrix: unit_test_matrix
+      entry: pytorch_unit
+  - name: optimizer
+    description: Fused optimizer and multi-tensor operator tests.
+    level: L1
+    depends_on:
+    - core
+    paths:
+    - transformer_engine/pytorch/optimizers/
+    - transformer_engine/pytorch/csrc/extensions/multi_tensor/
+    - transformer_engine/common/multi_tensor/
+    - tests/pytorch/test_fused_optimizer.py
+    - tests/pytorch/test_multi_tensor.py
+    - tests/plugin/backend/*/test_optimizer*.py
+    - tests/plugin/backend/*/test_multi_tensor.py
+    test_targets:
+    - tests/pytorch/test_fused_optimizer.py
+    - tests/pytorch/test_multi_tensor.py
+    - tests/plugin/backend/*/test_optimizer*.py
+    - tests/plugin/backend/*/test_multi_tensor.py
+    kind: unit
+    required: true
+    evidence: junit
+    coverage: true
+    resources:
+      class: multi_device
+      timeout_minutes: 90
+    execution:
+      matrix: unit_test_matrix
+      entry: pytorch_unit
+  - name: debug
+    description: Debug configuration and numerical inspection tests.
+    level: L1
+    depends_on:
+    - core
+    paths:
+    - transformer_engine/debug/
+    - transformer_engine/pytorch/numerics_debug.py
+    - tests/pytorch/debug/
+    - qa/L0_pytorch_debug_unittest/
+    kind: unit
+    required: true
+    evidence: junit
+    coverage: true
+    resources:
+      class: multi_device
+      timeout_minutes: 90
+    execution:
+      matrix: unit_test_matrix
+      entry: pytorch_debug
+  - name: distributed
+    description: Distributed, context-parallel and communication tests.
+    level: L2
+    depends_on:
+    - core
+    paths:
+    - transformer_engine/pytorch/distributed.py
+    - transformer_engine/pytorch/ep.py
+    - transformer_engine/pytorch/newton_schulz.py
+    - transformer_engine/pytorch/ops/basic/all_gather.py
+    - transformer_engine/pytorch/ops/basic/all_reduce.py
+    - transformer_engine/pytorch/ops/basic/reduce_scatter.py
+    - transformer_engine/pytorch/ops/fused/userbuffers*
+    - transformer_engine/pytorch/attention/dot_product_attention/context_parallel.py
+    - transformer_engine/pytorch/csrc/extensions/comm_gemm_overlap.cpp
+    - transformer_engine/pytorch/csrc/extensions/nvshmem_comm.cpp
+    - transformer_engine/pytorch/csrc/extensions/ep.cpp
+    - transformer_engine/common/comm_gemm_overlap/
+    - tests/pytorch/distributed/
+    - tests/pytorch/attention/test_cp_utils.py
+    - tests/plugin/backend/reference/test_context_parallel.py
+    - qa/L1_pytorch_distributed_unittest/
+    kind: unit
+    required: true
+    evidence: junit
+    coverage: true
+    resources:
+      class: multi_device
+      timeout_minutes: 90
+    execution:
+      matrix: unit_test_matrix
+      entry: pytorch_distributed
+  - name: onnx
+    description: ONNX export and runtime compatibility tests.
+    level: L2
+    depends_on:
+    - core
+    paths:
+    - transformer_engine/pytorch/export.py
+    - transformer_engine/pytorch/onnx_extensions.py
+    - tests/pytorch/test_onnx_export.py
+    - qa/L1_pytorch_onnx_unittest/
+    kind: unit
+    required: true
+    evidence: junit
+    coverage: true
+    resources:
+      class: multi_device
+      timeout_minutes: 90
+    execution:
+      matrix: unit_test_matrix
+      entry: pytorch_onnx
+  - name: mcore
+    description: Megatron Core integration training smoke test.
+    level: L2
+    depends_on:
+    - core
+    paths:
+    - qa/L1_pytorch_mcore_integration/
+    - tests/plugin/backend/*/integration_test.sh
+    kind: integration
+    required: true
+    evidence: exit_code
+    resources:
+      class: single_device
+      timeout_minutes: 30
+    execution:
+      matrix: integration_test_matrix
+      entry: pytorch_mcore_integration
+  - name: fa_versions
+    kind: compat
+    level: L3
+    required: false
+    evidence: junit
+    resources:
+      class: hopper_only
+      timeout_minutes: 240
+    description: FlashAttention version compatibility tests.
+    depends_on: []
+    paths:
+    - qa/L3_pytorch_FA_versions_test/
+    - transformer_engine/pytorch/attention/
+    execution:
+      matrix: compat_test_matrix
+      entry: fa_versions
+  - name: pytorch_benchmark
+    kind: benchmark
+    level: L3
+    required: false
+    resources:
+      class: model_exclusive
+      timeout_minutes: 240
+    blocked: no performance baseline or benchmark launcher is defined for TransformerEngine-FL
+    description: Performance benchmark acceptance.
+    depends_on: []
+    paths: []
+  - name: cross_repo_integration
+    kind: release
+    level: L4
+    required: true
+    resources:
+      class: release_exclusive
+      timeout_minutes: 720
+    blocked: no pinned Megatron-LM-FL/FlagScale version contract or acceptance runner
+    description: Pinned cross-repository integration acceptance.
+    depends_on: []
+    paths: []
+  - name: model_validation
+    kind: release
+    level: L4
+    required: true
+    resources:
+      class: release_exclusive
+      timeout_minutes: 2880
+    blocked: no end-to-end model training job or accuracy golden is defined
+    description: End-to-end model training and numerical acceptance.
+    depends_on: []
+    paths: []
+  - name: release_wheel_validation
+    kind: release
+    level: L4
+    required: true
+    resources:
+      class: release_exclusive
+      timeout_minutes: 240
+    blocked: no release wheel build or clean-environment install check is defined
+    description: Release wheel build and clean installation acceptance.
+    depends_on: []
+    paths: []
+  - name: backward_compatibility
+    kind: release
+    level: L4
+    required: true
+    resources:
+      class: release_exclusive
+      timeout_minutes: 240
+    blocked: no supported previous-version matrix is defined
+    description: Supported previous-version compatibility acceptance.
+    depends_on: []
+    paths: []
+  - name: golden_baseline_acceptance
+    kind: release
+    level: L4
+    required: true
+    resources:
+      class: release_exclusive
+      timeout_minutes: 240
+    blocked: golden_baseline.json holds coverage thresholds only, not numerical goldens
+    description: Numerical golden baseline acceptance.
+    depends_on: []
+    paths: []
+
+# Changed files raise the requested test level. Each file takes the highest
+# minimum_level among matching rules, or unknown_level when none match.
+# The plan takes the maximum over all files.
+# Documentation (docs/, *.md, *.rst) neither escalates nor selects platforms.
+test_level_rules:
+  version: v2
+  unknown_level: L2
   rules:
     - id: ci-and-build
       paths:
         - .github/**
+        - .flagcicd/**
         - CMakeLists.txt
         - cmake/**
         - setup.py
@@ -72,6 +626,33 @@ risk_rules:
         - transformer_engine/**/cpp/**
         - transformer_engine/**/cuda/**
       minimum_level: L3
+    - id: mcore-integration
+      paths:
+        - qa/L1_pytorch_mcore_integration/**
+        - tests/plugin/backend/*/run_integration_tests.sh
+      minimum_level: L2
+    - id: distributed-and-onnx
+      paths:
+        - transformer_engine/pytorch/distributed.py
+        - transformer_engine/pytorch/ep.py
+        - transformer_engine/pytorch/newton_schulz.py
+        - transformer_engine/pytorch/attention/dot_product_attention/context_parallel.py
+        - transformer_engine/pytorch/export.py
+        - transformer_engine/pytorch/onnx_extensions.py
+        - tests/pytorch/distributed/**
+        - tests/pytorch/attention/test_cp_utils.py
+        - tests/plugin/backend/reference/test_context_parallel.py
+        - qa/L1_pytorch_distributed_unittest/**
+        - tests/pytorch/test_onnx_export.py
+        - qa/L1_pytorch_onnx_unittest/**
+        - tests/plugin/backend/*/run_unit_tests.sh
+        - tests/plugin/backend/*/config.sh
+        - tests/plugin/backend/*/set_env.sh
+      minimum_level: L2
+    - id: shared-pytorch-source
+      paths:
+        - transformer_engine/**
+      minimum_level: L2
     - id: numerical-and-performance
       paths:
         - tests/pytorch/**
@@ -89,25 +670,15 @@ coverage:
     - branch
   preserve_raw_fragments: true
   report_schema: flagcicd.report/v1
-
-images:
-  layers:
-    - base
-    - vendor
-    - runtime
-    - source
-    - test
-  reuse_key:
-    - base_digest
-    - vendor_sdk
-    - toolchain
-    - lockfile_hash
-    - source_sha
-    - test_level
-    - instrumentation
+  # PR: advisory absolute threshold against main. Nightly: advisory 3-sigma
+  # window over earlier nightly reports per platform/device/level.
+  regression_contract: .flagcicd/golden_baseline.json
 
 report:
-  artifact: flagcicd-report.json
+  group_schema: flagcicd.group-report/v1
+  platform_schema: flagcicd.platform-report/v1
+  gate_schema: flagcicd.gate/v1
+  coverage_schema: flagcicd.report/v1
   statuses:
     - passed
     - test_failed
@@ -117,3 +688,9 @@ report:
     - skipped
     - cancelled
     - report_error
+
+# Fixed gate contract (implemented by planner, identity verifier and workflows):
+# plan/source/config identities and required group evidence are mandatory.
+# Optional groups may fail or omit reports; supplied reports must match the plan.
+# coverage.required in each platform config controls collection failures.
+# PR/nightly coverage regression checks are advisory.

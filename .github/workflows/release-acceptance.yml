@@ -1,0 +1,91 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Release acceptance (FlagCICD stage "release"): the fixed L4 level on every
+# platform for one release ref.  Required groups that the catalog marks as
+# blocked fail the gate instead of passing as an absent matrix entry.
+#
+# Pipeline: plan -> platform-pipeline (matrix) -> complete
+
+name: Release Acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      checkout_ref:
+        description: 'Release tag, branch or SHA to accept'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: release-acceptance-${{ inputs.checkout_ref }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Generate release plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      plan: ${{ steps.plan.outputs.plan }}
+      plan_hash: ${{ steps.plan.outputs.plan_hash }}
+      platforms: ${{ steps.plan.outputs.platforms }}
+      source_sha: ${{ steps.plan.outputs.source_sha }}
+      test_level: ${{ steps.plan.outputs.test_level }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.checkout_ref }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/flagcicd-plan
+        id: plan
+        with:
+          stage: release
+
+  platform-pipeline:
+    name: Platform pipeline (${{ matrix.platform }})
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: ${{ fromJson(needs.plan.outputs.platforms) }}
+    uses: ./.github/workflows/all_tests_common.yml
+    secrets:
+      FLAGCICD_API_TOKEN: ${{ secrets.FLAGCICD_API_TOKEN }}
+    with:
+      platform: ${{ matrix.platform }}
+      checkout_ref: ${{ needs.plan.outputs.source_sha }}
+      plan: ${{ needs.plan.outputs.plan }}
+
+  complete:
+    name: Release Acceptance Complete
+    needs: [plan, platform-pipeline]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/flagcicd-gate
+        with:
+          plan: ${{ needs.plan.outputs.plan }}
+          needs-json: ${{ toJson(needs) }}
+          plan-job: plan
+          pipeline-job: platform-pipeline

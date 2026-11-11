@@ -1,122 +1,210 @@
-# Platform selection and CI gate
+# TransformerEngine-FL CI
 
-For pull requests to `main` and `devops`, `ci.yml` runs lint, computes the
-platform matrix, runs the selected platform pipelines, and reports `CI Complete`.
+The active entries are `ci.yml` (PR, push to main, manual dispatch),
+`nightly.yml` (stage `nightly`, 00:00 Asia/Shanghai, or manual dispatch),
+`ci-requested.yml` (stage `manual`) and `release-acceptance.yml` (stage
+`release`). Each generates a plan and directly calls `all_tests_common.yml` for its
+platform matrix; test jobs use `test_groups_common.yml`. `CI Complete`, `Nightly Complete`, `CI Requested Complete` and
+`Release Acceptance Complete` gate the results.
 
-Each platform config defines `paths_watch` using exact repository paths or
-directory prefixes ending in `/`. Paths are case-sensitive; glob patterns are
-not supported. Vendor aliases include `npu` for Ascend and `kunlunxin` for Kunlun.
+## Selection and levels
 
-- A platform-owned change selects that platform. Multiple platforms are combined.
-- Every non-documentation path must match a rule. Shared or unknown paths run all
-  platforms, including in PRs that also contain a platform-owned change.
-- Changes under `docs/`, or to `.md` and `.rst` files, require no hardware tests.
-  Lint and `CI Complete` still run for documentation-only PRs.
-  This is an explicit routing policy, not a guarantee that these files can never
-  affect runtime behavior. If tests or builds start consuming files in this
-  category as inputs, update `_is_documentation` and its regression tests before
-  relying on hardware-test skipping for those paths.
-- Missing diff information or missing watch rules run all platforms. Invalid
-  platform configurations fail matrix generation.
-- Renames are treated as deletion plus addition to include both affected paths.
-- Pushes that trigger CI, schedules, and manual runs select all platforms.
+PR routing uses platform `paths_watch`. Vendor paths select their platforms;
+shared/unknown paths and unavailable diffs select all platforms. Documentation
+only changes skip hardware. `platform:<name>` labels override routing, so a
+narrowed shared-code run requires reviewer judgment. `level:L0` through
+`level:L4` labels can escalate the inferred level. Path-based test level rules also raise it.
 
-### Optional routing and retries
+PR defaults to L1; branch/CI dispatch defaults to L2; Nightly is fixed at L2.
+Each changed file takes the highest level of the test level rules it matches, or
+`unknown_level` when it matches none; the plan takes the maximum over files.
+Levels are cumulative, subject to group path filters and platform support.
+Nightly has no diff filters and runs all currently executable configured L0-L2 groups.
+L1 includes debug and portable unit modules. L2 adds distributed, ONNX and
+MCore integration. Their source/test/launcher paths explicitly escalate to L2;
+shared TE source also has an L2 floor. Level is an eligibility ceiling: affected
+PRs select modules within it, while full plans run every configured suite in it.
 
-- `platform:<config-name>` PR labels override path routing; multiple labels take
-  their union, and `platform:all` selects all platforms. Unknown platform labels
-  fail generation. Adding/removing labels reruns CI; removing all restores path
-  routing. Non-PR runs are unaffected. Narrow shared-code changes only after review.
-- Unit/integration groups retry up to twice, five seconds apart, within the same
-  job timeout. Each attempt is logged; exhaustion fails the job. Signal exits are
-  not retried. A group can set `max_retries: 0`, `1`, or `2`; outside CI the default
-  is zero. Setup, builds and lint are not retried.
-- Writers/maintainers/admins can comment `/ci run ascend`, `/ci run cuda,ascend`,
-  `/ci run all`, or `/test musa` on an open PR. `ci-requested.yml` checks live
-  permissions and passes the current head SHA through all configuration/build/
-  test/coverage checkouts, including fork PRs. Authorization uses trusted base code
-  and a read-only token; requested PR code executes on selected self-hosted hardware.
-  Invalid commands/platforms, issue/edited comments, closed PRs and unauthorized
-  users cannot start tests. `Requested CI Complete` is supplemental to required
-  PR CI. Comment triggering requires this workflow on the default branch and uses
-  the GitHub CLI bundled with ubuntu-latest; existing manual workflows are unchanged.
+`test_groups` in `.flagcicd/project.yaml` is the single test catalog. Each
+entry declares changed paths, level, status, `depends_on`, evidence, resources
+and `execution: {matrix, entry}`. Current functional groups are core, plugin
+core, reference/vendor backend, normalization, GEMM, attention, quantization,
+optimizer, debug, distributed, ONNX and MCore. Preflight and blocked L3/L4
+acceptance entries use the same catalog. There is no separate module catalog.
+The planner adds `levels.*.required_groups` (preflight and core) and recursively
+closes `depends_on`: selecting reference_backend also selects plugin_core and core.
+Dependencies expand selection; they do not impose job execution order.
 
-Keep shared dependencies out of individual platform watch lists: shared code
-must continue to trigger all platforms. A new platform without watch rules
-temporarily disables filtering rather than risking a missed test.
+`routing.shared_paths`, declared impact paths, unavailable diffs and unmapped
+code select the complete in-level scope. Platform routing remains independent.
+Platform `unsupported_test_groups` records group -> reason gaps in the existing
+QA coverage. They appear in plans, workflow summaries and platform reports, and
+cannot be claimed as tested. A group with an unavailable dependency is also
+unavailable. These documented gaps do not block runs on other supported groups;
+an unavailable required core baseline is an error. This is a description of wired tests, not hardware capability detection.
 
-`CI Complete` requires successful lint and matrix generation. A nonempty matrix
-requires successful platform pipelines. An empty matrix requires the platform
-pipeline to be skipped. Failure, cancellation, or an unexpected skip fails the
-gate. Inside each platform, tests may be skipped only when their workflow input
-explicitly disables them; artifact builds may be skipped only when disabled in
-the platform config.
+The plan separates selected test requirements from their runtime jobs:
+`group_selection` records selection and dependency closure, `test_groups`
+contains logical groups per platform/device, and `execution_groups` deduplicates
+runtime jobs. Groups whose `execution` points to `unit_test_matrix/pytorch_unit`
+share the existing unit job and platform QA script without running the launcher
+repeatedly. Shared jobs require
+the same adapter, required/evidence/coverage policy and device resources;
+incompatible declarations fail planning rather than weakening a group's gate.
+The planner passes the union
+of `test_targets` plus `group_test_targets` through that job's execution data;
+`run_ci_test_group.py` enables `ci_pytest_selection.py` for child pytest calls.
+It filters test files before collection and selected nodes after collection,
+while preserving original node IDs, `-k` and platform exclusions. `test_targets`
+accepts files/directories/globs and `file.py::Class::test_*` node selectors.
+Bare function/class selectors include their parameter combinations; an explicit
+parameter ID matches literally. Mixed sanity/numerics/fusible/NPU files use
+node selectors so a linear testcase cannot certify normalization or attention.
+The pytest plugin imports the same stdlib target matcher from flagcicd_contract
+as the planner/gate; the runner adds both helper directories to PYTHONPATH.
+Each selected unit group needs at least one matching passing testcase and no
+matching failure/error, identified by the canonical JUnit `flagcicd_test_nodeid`
+property. The file-only property is diagnostic and cannot prove a node ran.
 
-After verifying a real PR run, configure the protected branch to require the
-`CI Complete` status check instead of individual platform test checks. This is a
-repository setting and is not changed by these files. Existing independent lint
-and other workflow requirements should be reviewed separately.
+Full plans retain the original QA scope; no unconfigured vendor tests are added.
+The four execution suites retain multi-device serial isolation and their
+platform-specific timeouts. FA compatibility and benchmarks are L3 and remain
+blocked by runner/baseline requirements; L4 acceptance retains explicit gaps.
+Plans record selection, platform support, execution groups, excluded and blocked
+ledgers. See `.flagcicd/project.yaml`.
 
-Run the hardware-independent regression checks with:
+Requested runs: a PR comment `/ci run <platforms|all>` or `/test <platforms|all>`
+is accepted from anyone. Users with write/maintain/admin permission run tests
+immediately; other requests remain pending without checking out PR code or
+running device tests. The workflow summary shows `/ci approve <comment-id>`;
+a maintainer posts that command on the same PR to approve. Approval revalidates
+the request and runs the PR head at approval time. Edited comments do not trigger
+runs; create a new approval comment to run again. GitHub runs `issue_comment`
+workflows from the default branch, so this behavior requires merging there.
+`workflow_dispatch` on
+`ci-requested.yml` takes platforms, a test level and a checkout ref.
+`release-acceptance.yml` runs the fixed L4 release plan for one ref; required
+blocked groups fail it. Weekly is not configured.
+
+## Execution and evidence
+
+The plan pins source SHA, platform config hashes, group commands, resources,
+and coverage settings. Each platform slices `execution_groups` into parallel
+and serial lanes.
+Exclusive or multi-device groups run serially after parallel work finishes,
+whatever its result; the platform gate judges both lanes. This only
+orders jobs within a platform invocation; runner deployment must provide
+physical device isolation across PR/Nightly runs.
+
+Optional wheel artifacts carry identity metadata checked before setup: schema,
+platform/source/config identity and the exact wheel names, sizes and SHA256 hashes.
+These checks are mandatory whenever an artifact is used. Group
+reports contain plan/source identity, status, execution and duration. Each runtime
+artifact includes `test_group_reports` for the logical groups it executed. The
+platform and global gates check those logical reports against `plan.test_groups`
+as well as the shared runtime results. Matching node outcomes determine each
+logical group's status and counts: core can pass while optimizer fails in the
+same job. Missing/all-skipped matching evidence fails that group. Common setup,
+identity, cancellation or a command failure without a failing JUnit case still
+apply to all groups.
+The shared job remains failed even if a failed testcase cannot be assigned to a
+selected group. Required groups come from the plan and need execution evidence.
+Missing, duplicate, mismatched or failed required reports fail the platform gate.
+Each group declares `evidence`: `junit` groups need non-empty JUnit results,
+`exit_code` groups (preflight, script integration) pass on exit code 0.
+JUnit checks actual testcase outcomes and validates declared suite counts,
+including nested suites. Missing, corrupt or inconsistent reports cannot pass.
+Pytest execution entries retain steps, arguments, environment, retries and log
+paths through plan slicing; report collection uses the same log directory.
+Optional group failures or missing reports do not block the pipeline; their
+available reports still undergo identity/consistency checks. Required groups
+remain blocking at both the workflow and platform gate.
+Preflight checks
+repository structure/Python syntax; it does not certify device availability.
+The global gate requires successful planning/pipeline results and complete
+platform reports. Required blocked groups fail acceptance.
+
+## Coverage
+
+Coverage measures Python source, not C++ or device kernels. Group jobs collect
+the platform `coverage.sources` with `--cov-append`, upload raw hidden fragments,
+and `all_tests_common.yml` combines them, applying `coverage.include`/`omit`.
+Platforms with `coverage.required: true` fail if collection/aggregation fails
+or the coverage job is skipped. This requirement is separate from regression
+thresholds, which are advisory. Regression checks only compare full configured
+coverage scopes; module- or suite-subset coverage uses a `-partial` artifact name and cannot
+become a full baseline. Optional collection/aggregation failures are
+also non-blocking. These are fixed gate/workflow rules; project.yaml does not
+expose inactive validation toggles or unimplemented image-cache declarations.
+
+PR coverage compares against a main-branch artifact of the same platform/device.
+Nightly uses a 14-run history with at least 8 samples and a lower bound of
+mean minus three standard deviations. Threshold configuration lives in
+`.flagcicd/golden_baseline.json`. Baselines are fetched with the Actions REST
+API from Python, not `gh`; live baseline collection must be validated on
+runners. FlagOps uploads are advisory and need
+`FLAGCICD_API_TOKEN`; fork runs usually have no secret.
+
+## Validation
 
 ```sh
-python -m pip install PyYAML==6.0.3
+python -m pip install PyYAML==6.0.3 pytest==8.4.2
 python -m unittest discover -s .github/scripts/ci -p 'test_*.py'
+python .github/scripts/ci/flagcicd_planner.py --stage nightly --output /tmp/plan.json
 ```
 
-Inspect routing without running hardware tests:
+Local validation does not prove hardware compatibility or GitHub nested matrix
+behavior. Validate docs-only/vendor/shared routing, deliberate test/setup
+failure, absent reports, coverage failure and cancellation on Actions before
+changing required checks. Configure `CI Complete` in branch protection manually.
+Schedules require the workflow on the default branch and may be delayed.
 
-```sh
-python .github/scripts/ci/generate_matrix.py \
-  --event-name pull_request \
-  --changed-files tests/plugin/backend/ascend/run_unit_tests.sh
-```
+## Scope and device counts
 
-## FlagCICD coverage reports
+This pipeline uses static routing: changed paths, stage defaults, test level rules and
+labels select platforms and test groups. Runtime-evidence collection, cached
+result pruning, priority waves and reduced workloads are outside this change.
+JUnit/exit-code execution evidence, artifact identity checks and all three report
+levels remain required by the existing plan and gate contracts.
 
-Coverage-enabled platforms collect Python coverage per unit-test group, combine
-raw data for groups named `pytorch_*`, and upload
-`coverage-<platform>-<device>-pytorch-unittest.json` as a GitHub artifact and
-to FlagCICD via `flagos-ai/FlagOps/actions/post-pytest-report@v2`. This does
-not measure C++ or device-kernel source coverage.
+Keep `nproc_per_node` in each `.github/configs/<platform>.yml`: it is a positive
+integer device budget per multi-device test job, not the total number of cards
+installed on the host. The planner rejects missing or invalid counts rather than
+assuming one device. `multi_device` and exclusive resource classes resolve this
+platform value; `single_device` groups still request one device. Counts may differ
+by platform (currently 2, 4 or 8) and do not require duplicated workflows.
 
-The upload step runs inside the reusable `unit_tests_common.yml`, so the org
-secret `FLAGCICD_API_TOKEN` is forwarded explicitly at every `uses:` level
-(`ci.yml`, `_platform_pipeline.yml`, `ci-requested.yml`, `all_tests_*.yml`,
-`all_tests_common.yml`). Uploads are non-blocking (`continue-on-error`,
-`fail_on_error: 'false'`). Pull requests from forks receive no secrets, so their
-upload step fails with an empty `api_token` and is ignored; reports are sent
-from runs in this repository (push, schedule, dispatch, `/ci run`).
+The budget is a scheduling declaration, not automatic hardware detection or a
+universal torchrun override. Keep it aligned with container-visible devices and
+platform launchers; launchers can use fewer devices in individual phases. Changing
+physical card allocation also requires checking the runner, device mounts and
+visibility settings. Runtime device isolation remains a runner responsibility.
 
-## Validation on GitHub Actions
 
-Local checks validate routing and execute the gate commands, including failure,
-cancellation, and skip combinations. Running these checks on an accelerator
-machine still does not validate how GitHub propagates results through nested
-reusable workflows and matrices. Verify the following scenarios on GitHub before
-changing required checks.
+### Platform enablement and test ordering
 
-Use a test base branch that already contains this CI implementation, such as
-`devops` (which is included in the PR trigger). Create separate scenario branches
-and PRs against that base. The PR introducing the CI files itself selects the
-full matrix, so it cannot demonstrate documentation-only or vendor-only routing.
+Platform YAML files accept `enabled: true|false` (default: true for existing
+configurations). Disabled platforms are excluded from automatic plans and cannot
+be requested manually. Provision runners and preload images before enabling.
 
-| Scenario | Changes or action | Expected result |
-| --- | --- | --- |
-| Documentation only | Change only `README.rst` or a `.md` file | Lint and matrix generation succeed; matrix is `[]`; platform pipeline is skipped; `CI Complete` succeeds. |
-| Vendor only | Change a watched vendor test script, with lint passing | Only the corresponding platform runs; its summary and `CI Complete` succeed. |
-| Mixed vendor and shared code | Change a vendor file and a shared runtime file | All configured platforms are selected. |
-| Test failure | Temporarily add `exit 1` to a watched vendor test script in the scenario branch | The test, its enabled test summary, platform workflow, and `CI Complete` fail. |
-| Lint failure | Introduce a change rejected by an existing pre-commit hook | Lint fails; matrix and platform jobs are skipped; `CI Complete` runs and fails. |
-| Cancellation | Cancel a running selected test job or the workflow run | The cancelled work must not produce a successful `CI Complete`; the gate fails if it runs, or remains cancelled if the whole run is cancelled. |
-| Label routing | Add/remove `platform:ascend`, combine vendor labels, then use `platform:all` | Each label change reruns PR CI with the documented override; removing the labels restores path routing. |
-| Retry recovery/exhaustion | Use a disposable test group that fails once then passes; separately make it always fail | Attempt counts are visible; recovery succeeds, while exhaustion fails summaries and the final gate. |
-| Authorized comment | A writer comments `/ci run ascend` on an open PR | Only Ascend runs; every checkout uses the captured PR SHA; `Requested CI Complete` reports the outcome. |
-| Rejected comment | Use a read-only account, an invalid platform, an issue comment, or a closed PR | No hardware tests start. |
-| Pinned/fork PR request | Update the PR after resolution; separately request a fork PR | Every checkout still tests the captured SHA using base-repository workflows. |
+Integration runs after the unit lanes and their evidence report complete, even
+when unit evidence fails. The final platform gate still rejects required failed
+or missing tests. Unit reports are retained for 14 days.
 
-For each run, inspect the platform-selection summary, matrix jobs, nested test
-summaries, and the final check on the PR's current commit. Keep intentional
-failures in disposable scenario branches; do not merge them into the test base.
-Only switch branch protection to `CI Complete` after these scenarios have been
-observed. No live Actions results are claimed by the local regression suite.
+Iluvatar quantization-only recipe/tensor/NVFP4 targets are omitted from routine
+CI until recovery validation supplies passing evidence. The shared blockwise
+GEMM target remains selected. Whole-file and partial exclusions are currently
+recorded in the Iluvatar shell configuration; a per-target coverage-gap schema
+and report is follow-up work, and passing group results do not imply complete
+coverage of those excluded targets.
+
+The Megatron checkout retry is shared by all platforms: partial-clone checkout
+may download blobs from the promisor remote, so it now retries up to three times
+with a five-second delay, just like clone and fetch. Exhausted retries still fail.
+
+The unit evidence report checks unit/preflight groups only; compatibility,
+benchmark and release groups remain subject to the final platform gate.
+Iluvatar quarantine rules are audited inline before keyword deselection. Each
+rule must match some but not all collected tests; matched node IDs are logged.
+This detects missing selectors but does not prove historical quarantine membership
+is unchanged. Review the logged node IDs after upstream parameter changes.

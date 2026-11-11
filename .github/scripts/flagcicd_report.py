@@ -80,8 +80,6 @@ def build_report(args: argparse.Namespace) -> dict[str, Any]:
         "repository": args.repository,
         "source_sha": args.source_sha,
         "test_level": args.test_level,
-        "risk_level": args.risk_level,
-        "risk_rule_version": args.risk_rule_version,
         "platform": {
             "name": args.platform,
             "device": args.device,
@@ -111,7 +109,6 @@ def validate_report(report: dict[str, Any]) -> list[str]:
         "repository",
         "source_sha",
         "test_level",
-        "risk_level",
         "platform",
         "status",
         "metrics",
@@ -150,8 +147,6 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--source-sha", default=os.environ.get("GITHUB_SHA", ""))
     parser.add_argument("--test-level", default=os.environ.get("FLAGCICD_TEST_LEVEL", "L1"))
-    parser.add_argument("--risk-level", default=os.environ.get("FLAGCICD_RISK_LEVEL", "R1"))
-    parser.add_argument("--risk-rule-version", default="v1")
     parser.add_argument("--platform", default="")
     parser.add_argument("--device", default="")
     parser.add_argument("--image-ref", default=os.environ.get("FLAGCICD_IMAGE_REF", ""))

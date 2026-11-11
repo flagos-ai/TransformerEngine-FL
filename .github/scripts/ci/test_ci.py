@@ -7,14 +7,15 @@ Run without importing TransformerEngine or requiring accelerator hardware:
 from __future__ import annotations
 
 import importlib.util
-import itertools
 import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import Mock, patch
+import xml.etree.ElementTree as ET
 
 import yaml
 
@@ -23,7 +24,6 @@ import generate_matrix as matrix
 
 
 ROOT = Path(__file__).resolve().parents[3]
-STATUSES = ("success", "failure", "cancelled", "skipped")
 
 
 class PlatformRoutingTests(unittest.TestCase):
@@ -67,7 +67,9 @@ class PlatformRoutingTests(unittest.TestCase):
             self.assertEqual(set(rules), {"existing", "new-accelerator"})
             self.assertEqual(
                 matrix.select_platforms(
-                    rules, ["tests/plugin/backend/new-accelerator/test.py"], "pull_request"
+                    rules,
+                    ["tests/plugin/backend/new-accelerator/test.py"],
+                    "pull_request",
                 )[0],
                 ["new-accelerator"],
             )
@@ -114,7 +116,8 @@ class PlatformRoutingTests(unittest.TestCase):
         ):
             with self.subTest(path=path):
                 self.assertEqual(
-                    self.select("tests/plugin/backend/cuda/test.py", path), self.platforms
+                    self.select("tests/plugin/backend/cuda/test.py", path),
+                    self.platforms,
                 )
 
     def test_documentation_only(self):
@@ -167,82 +170,71 @@ class WorkflowGateTests(unittest.TestCase):
 
     def test_top_level_gate_status_combinations(self):
         gate = self.ci["ci-complete"]
-        self.assertEqual(gate["if"], "always()")
-        self.assertEqual(set(gate["needs"]), {"lint", "generate-matrix", "platform-pipeline"})
-        command = gate["steps"][0]["run"]
-        cases = [
-            (lint, generated, pipeline, platforms)
-            for lint, generated, pipeline in itertools.product(STATUSES, repeat=3)
-            for platforms in ('["cuda"]', "[]")
-        ]
-        cases += [("success", "success", "success", value) for value in ("", "null", "{}", "[1]")]
-        for lint, generated, pipeline, platforms in cases:
-            expected = lint == generated == "success" and (
-                (platforms == '["cuda"]' and pipeline == "success")
-                or (platforms == "[]" and pipeline == "skipped")
+        # !cancelled() still runs after failures but lets a cancel stop the gate.
+        self.assertEqual(gate["if"], "${{ !cancelled() }}")
+        self.assertEqual(set(gate["needs"]), {"lint", "plan", "platform-pipeline"})
+        # ci-complete now uses flagcicd-gate composite action in steps
+        # Gate logic tested in flagcicd_gate.py gate subcommand
+        self.assertEqual(len(gate["steps"]), 2)
+        self.assertEqual(gate["steps"][0]["uses"], "actions/checkout@v4")
+        self.assertEqual(gate["steps"][1]["uses"], "./.github/actions/flagcicd-gate")
+
+    def test_ci_self_tests_run_in_lint(self):
+        commands = [step.get("run", "") for step in self.ci["lint"]["steps"]]
+        self.assertTrue(
+            any(
+                "python -m unittest discover -s .github/scripts/ci -p 'test_*.py'" in command
+                for command in commands
             )
-            with self.subTest(
-                lint=lint, generated=generated, pipeline=pipeline, platforms=platforms
-            ):
-                result = subprocess.run(
-                    ["bash", "-e", "-c", command],
-                    env=dict(
-                        os.environ,
-                        LINT_RESULT=lint,
-                        MATRIX_RESULT=generated,
-                        PIPELINE_RESULT=pipeline,
-                        PLATFORMS=platforms,
-                    ),
-                    capture_output=True,
-                    text=True,
+        )
+
+    def test_all_entries_call_the_platform_workflow_directly(self):
+        for name, job in (
+            ("ci", "platform-pipeline"),
+            ("ci-requested", "platform-pipeline"),
+            ("release-acceptance", "platform-pipeline"),
+            ("nightly", "platforms"),
+        ):
+            with self.subTest(workflow=name):
+                workflow = yaml.safe_load((ROOT / f".github/workflows/{name}.yml").read_text())
+                self.assertEqual(
+                    workflow["jobs"][job]["uses"], "./.github/workflows/all_tests_common.yml"
                 )
-                self.assertEqual(result.returncode == 0, expected, result.stderr)
 
-    def run_common_gate(self, job, values):
-        command = self.common[job]["steps"][0]["run"]
-        for expression, value in values.items():
-            command = command.replace("${{ " + expression + " }}", value)
-        self.assertNotIn("${{", command)
-        return subprocess.run(["bash", "-e", "-c", command], capture_output=True).returncode
+    def test_no_always_conditions_in_flagcicd_workflows(self):
+        # always() cannot be cancelled; flagcicd jobs and steps use !cancelled().
+        for name in (
+            "ci",
+            "nightly",
+            "ci-requested",
+            "release-acceptance",
+            "all_tests_common",
+            "test_groups_common",
+        ):
+            text = (ROOT / f".github/workflows/{name}.yml").read_text()
+            self.assertNotIn("always()", text, name)
 
-    def test_enabled_test_summaries_reject_skips_and_cancellations(self):
-        for kind in ("unit", "integration"):
-            for status in STATUSES:
-                with self.subTest(kind=kind, status=status):
-                    code = self.run_common_gate(
-                        f"{kind}_tests_complete", {f"needs.{kind}_tests.result": status}
-                    )
-                    self.assertEqual(code == 0, status == "success")
+    def test_platform_workflow_uses_only_static_execution_lanes(self):
+        """Every planned lane remains executable after removing optional acceleration."""
+        jobs = self.common
+        self.assertIn("parallel_groups", jobs)
+        self.assertIn("serial_groups", jobs)
+        self.assertNotIn("wave0_groups", jobs)
+        self.assertNotIn("wave1_groups", jobs)
+        for lane in ("parallel", "serial"):
+            job = jobs[f"{lane}_groups"]
+            self.assertEqual(job["uses"], "./.github/workflows/test_groups_common.yml")
+            self.assertEqual(
+                job["with"]["matrix"],
+                "${{ needs.checkout_and_config.outputs." + lane + "_matrix }}",
+            )
+        self.assertIn("parallel_groups", jobs["serial_groups"]["needs"])
+        self.assertEqual(jobs["serial_groups"]["with"]["max_parallel"], 1)
+        for name in ("coverage", "platform_gate"):
+            self.assertIn("parallel_groups", jobs[name]["needs"])
+            self.assertIn("serial_groups", jobs[name]["needs"])
 
-    def test_platform_gate_only_accepts_explicitly_disabled_skips(self):
-        for build, unit, integration in itertools.product((False, True), repeat=3):
-            # Build should succeed only if artifact is enabled AND (unit OR integration)
-            build_should_run = build and (unit or integration)
-            values = {
-                "needs.checkout_and_config.result": "success",
-                "needs.checkout_and_config.outputs.test_artifact_enabled": str(build).lower(),
-                "inputs.run_unit_tests": str(unit).lower(),
-                "inputs.run_integration_tests": str(integration).lower(),
-                "needs.build_test_artifact.result": "success" if build_should_run else "skipped",
-                "needs.unit_tests_complete.result": "success" if unit else "skipped",
-                "needs.integration_tests_complete.result": "success" if integration else "skipped",
-            }
-            self.assertEqual(self.run_common_gate("all_tests_complete", values), 0)
-            for key in (
-                "needs.checkout_and_config.result",
-                "needs.build_test_artifact.result",
-                "needs.unit_tests_complete.result",
-                "needs.integration_tests_complete.result",
-            ):
-                bad_values = dict(values, **{key: "cancelled"})
-                self.assertNotEqual(self.run_common_gate("all_tests_complete", bad_values), 0)
-                if values[key] == "success":
-                    bad_values[key] = "skipped"
-                    self.assertNotEqual(self.run_common_gate("all_tests_complete", bad_values), 0)
-
-
-class CIControlsTests(unittest.TestCase):
-    def test_label_routing_and_event_payload(self):
+    def test_label_routing(self):
         rules = matrix._load_watch_rules(ROOT / ".github/configs")
         for labels, expected in (
             (["bug"], sorted(rules)),
@@ -250,7 +242,8 @@ class CIControlsTests(unittest.TestCase):
             (["platform:cuda", "platform:all"], sorted(rules)),
         ):
             self.assertEqual(
-                matrix.select_platforms(rules, ["shared.py"], "pull_request", labels)[0], expected
+                matrix.select_platforms(rules, ["shared.py"], "pull_request", labels)[0],
+                expected,
             )
         for label in ("platform:", "platform:unknown"):
             with self.assertRaises(ValueError):
@@ -261,28 +254,9 @@ class CIControlsTests(unittest.TestCase):
         )
         for event in ("push", "schedule", "workflow_dispatch"):
             self.assertEqual(
-                matrix.select_platforms(rules, [], event, ["platform:cuda"])[0], sorted(rules)
+                matrix.select_platforms(rules, [], event, ["platform:cuda"])[0],
+                sorted(rules),
             )
-        with tempfile.TemporaryDirectory() as directory:
-            event = Path(directory, "event.json")
-            event.write_text(json.dumps({"pull_request": {"labels": [{"name": "platform:musa"}]}}))
-            result = subprocess.run(
-                [
-                    "python3",
-                    str(ROOT / ".github/scripts/ci/generate_matrix.py"),
-                    "--event-name",
-                    "pull_request",
-                    "--configs-dir",
-                    str(ROOT / ".github/configs"),
-                    "--changed-files",
-                    "shared.py",
-                ],
-                env=dict(os.environ, GITHUB_EVENT_PATH=str(event)),
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            self.assertEqual(json.loads(result.stdout.removeprefix("platforms=")), ["musa"])
 
     def test_comment_authorization_and_selection(self):
         for command in (
@@ -308,17 +282,23 @@ class CIControlsTests(unittest.TestCase):
                     )
                     if (
                         command in ("/ci run cuda,ascend", "/test cuda ascend", "/test all")
-                        and permission in ("admin", "maintain", "write")
                         and state == "open"
                     ):
                         self.assertEqual(
                             ci_requests.resolve(event, api, {"ascend", "cuda"}),
-                            (["ascend", "cuda"], "a" * 40),
+                            (
+                                ["ascend", "cuda"],
+                                "a" * 40,
+                                permission in ("admin", "maintain", "write"),
+                            ),
                         )
                     else:
                         with self.assertRaises((ValueError, PermissionError)):
                             ci_requests.resolve(event, api, {"ascend", "cuda"})
-        for event in ({"action": "edited"}, {"action": "created", "issue": {"number": 42}}):
+        for event in (
+            {"action": "edited"},
+            {"action": "created", "issue": {"number": 42}},
+        ):
             api = Mock()
             with self.assertRaises(ValueError):
                 ci_requests.resolve(event, api, {"cuda"})
@@ -340,7 +320,9 @@ class CIControlsTests(unittest.TestCase):
             ([137], 2),
         ):
             with patch.object(
-                runner, "_load_group", return_value={"name": "probe", "max_retries": retries}
+                runner,
+                "_load_group",
+                return_value={"name": "probe", "max_retries": retries},
             ), patch.object(runner, "_run_script", side_effect=codes) as execute, patch.object(
                 runner.time, "sleep"
             ):
@@ -348,7 +330,9 @@ class CIControlsTests(unittest.TestCase):
                 self.assertEqual(execute.call_count, len(codes))
         for retries in (-1, 3, True):
             with patch.object(
-                runner, "_load_group", return_value={"name": "probe", "max_retries": retries}
+                runner,
+                "_load_group",
+                return_value={"name": "probe", "max_retries": retries},
             ), self.assertRaises(SystemExit):
                 runner.main()
         with tempfile.TemporaryDirectory() as directory:
@@ -360,8 +344,83 @@ class CIControlsTests(unittest.TestCase):
             ), patch.dict(os.environ, TE_TEST_GROUP_JSON=json.dumps(group)):
                 self.assertEqual(runner.main(), 0)
 
+    def test_hygon_debug_requires_importable_inspect_dependency(self):
+        # Exercise the real shell launcher without importing accelerator modules
+        # or installing packages. The fake interpreter handles every QA command.
+        fake_source = """import json, os, pathlib, sys
+args = sys.argv[1:]
+root = pathlib.Path(os.environ["HYGON_CHECK_ROOT"])
+mode = os.environ["HYGON_CHECK_MODE"]
+if args and args[0] == "-":
+    sys.stdin.read()
+    if args[1] == "nvdlfw_inspect.api":
+        available = mode == "present" or (mode == "install" and (root / "installed").exists())
+        sys.exit(0 if available else 1)
+    sys.exit(0)
+with (root / "commands").open("a") as stream:
+    stream.write(json.dumps(args) + "\\n")
+if args[:3] == ["-m", "pip", "install"]:
+    if mode == "pip_failure":
+        sys.exit(1)
+    (root / "installed").touch()
+    sys.exit(0)
+if args[:2] == ["-m", "pytest"]:
+    sys.exit(0)
+sys.exit(2)
+"""
+        for mode, disable_install, expected_status, expected_pytest, expected_pip in (
+            ("present", "0", 0, 4, 0),
+            ("install", "0", 0, 4, 1),
+            ("pip_failure", "0", 1, 0, 1),
+            ("import_failure", "0", 1, 0, 1),
+            ("missing", "1", 1, 0, 0),
+        ):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                interpreter = root / "fake-python"
+                interpreter.write_text(f"#!{sys.executable}\n{fake_source}")
+                interpreter.chmod(0o755)
+                result = subprocess.run(
+                    [
+                        "bash",
+                        str(ROOT / "tests/plugin/backend/hygon/run_unit_tests.sh"),
+                        "debug",
+                    ],
+                    env=dict(
+                        os.environ,
+                        HYGON_CHECK_ROOT=str(root),
+                        HYGON_CHECK_MODE=mode,
+                        HYGON_SKIP_DEP_INSTALL=disable_install,
+                        NVINSPECT_PACKAGE_SPEC="nvinspect-test-package",
+                        PYTHON_BIN=str(interpreter),
+                        TE_PATH=str(ROOT),
+                        TE_LIB_PATH=str(root / "lib"),
+                        XML_LOG_DIR=str(root / "logs"),
+                        DTK_ENV_SH=str(root / "no-dtk-env.sh"),
+                    ),
+                    cwd=ROOT,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                self.assertEqual(result.returncode, expected_status, result.stdout + result.stderr)
+                commands = (
+                    [json.loads(line) for line in (root / "commands").read_text().splitlines()]
+                    if (root / "commands").exists()
+                    else []
+                )
+                pytest = [command for command in commands if command[:2] == ["-m", "pytest"]]
+                pip = [command for command in commands if command[:3] == ["-m", "pip", "install"]]
+                self.assertEqual(len(pytest), expected_pytest)
+                self.assertEqual(
+                    pip,
+                    [["-m", "pip", "install", "nvinspect-test-package"]] * expected_pip,
+                )
+                if expected_status:
+                    self.assertIn("Hygon debug tests require importable", result.stderr)
+
     def test_pinned_checkouts_and_requested_gate(self):
-        for name in ("all_tests_common", "unit_tests_common", "integration_tests_common"):
+        for name in ("all_tests_common", "test_groups_common"):
             jobs = yaml.safe_load((ROOT / f".github/workflows/{name}.yml").read_text())["jobs"]
             for job in jobs.values():
                 if job.get("uses", "").startswith("./.github/workflows/"):
@@ -369,18 +428,383 @@ class CIControlsTests(unittest.TestCase):
                 for step in job.get("steps", []):
                     if step.get("uses", "").startswith("actions/checkout@"):
                         self.assertEqual(step["with"]["ref"], "${{ inputs.checkout_ref }}")
-        jobs = yaml.safe_load((ROOT / ".github/workflows/ci-requested.yml").read_text())["jobs"]
-        self.assertIn("always()", jobs["complete"]["if"])
+        # Every entry plans at a fixed ref, runs that plan's SHA and gates on it.
+        for name, stage in (
+            ("ci", None),
+            ("nightly", "nightly"),
+            ("ci-requested", "manual"),
+            ("release-acceptance", "release"),
+        ):
+            workflow = yaml.safe_load((ROOT / f".github/workflows/{name}.yml").read_text())
+            jobs = workflow["jobs"]
+            self.assertEqual(workflow["permissions"]["contents"], "read", name)
+            pipeline = next(job for job in jobs.values() if "uses" in job)
+            self.assertEqual(
+                pipeline["with"]["checkout_ref"],
+                "${{ needs.plan.outputs.source_sha }}",
+                name,
+            )
+            self.assertEqual(pipeline["with"]["plan"], "${{ needs.plan.outputs.plan }}", name)
+            plan_step = next(
+                step
+                for step in jobs["plan"]["steps"]
+                if step.get("uses") == "./.github/actions/flagcicd-plan"
+            )
+            if stage:
+                self.assertEqual(plan_step["with"]["stage"], stage, name)
+            gate = next(
+                job
+                for job in jobs.values()
+                if any(
+                    step.get("uses") == "./.github/actions/flagcicd-gate"
+                    for step in job.get("steps", [])
+                )
+            )
+            self.assertIn("!cancelled()", gate["if"], name)
+        requested = yaml.safe_load((ROOT / ".github/workflows/ci-requested.yml").read_text())
+        on = requested.get("on", requested.get(True))
+        self.assertEqual(set(on), {"issue_comment", "workflow_dispatch"})
         self.assertEqual(
-            jobs["platform-pipeline"]["with"]["checkout_ref"],
+            requested["jobs"]["plan"]["steps"][0]["with"]["ref"],
             "${{ needs.resolve.outputs.checkout_ref }}",
         )
-        for resolve, pipeline in itertools.product(STATUSES, repeat=2):
-            result = subprocess.run(
-                ["bash", "-e", "-c", jobs["complete"]["steps"][0]["run"]],
-                env=dict(os.environ, RESOLVE_RESULT=resolve, PIPELINE_RESULT=pipeline),
+        plan_inputs = requested["jobs"]["plan"]["steps"][1]["with"]
+        self.assertEqual(plan_inputs["platforms"], "${{ needs.resolve.outputs.platforms }}")
+        self.assertEqual(plan_inputs["requested-level"], "${{ needs.resolve.outputs.test_level }}")
+        self.assertIn("needs.resolve.result != 'skipped'", requested["jobs"]["complete"]["if"])
+        self.assertEqual(
+            requested["jobs"]["plan"]["if"], "needs.resolve.outputs.approved == 'true'"
+        )
+        self.assertIn(
+            "needs.resolve.outputs.approved != 'false'",
+            requested["jobs"]["complete"]["if"],
+        )
+        self.assertIn("'/ci approve '", requested["jobs"]["resolve"]["if"])
+        self.assertEqual(
+            requested["jobs"]["resolve"]["outputs"]["approved"],
+            "${{ steps.request.outputs.approved }}",
+        )
+
+    def test_dispatch_request_resolution(self):
+        available = {"ascend", "cuda"}
+        self.assertEqual(
+            ci_requests.resolve_dispatch(
+                {"platforms": "cuda", "test_level": "L3", "checkout_ref": "v2.1"},
+                available,
+                "f" * 40,
+            ),
+            (["cuda"], "v2.1", "L3"),
+        )
+        self.assertEqual(
+            ci_requests.resolve_dispatch({"platforms": "all"}, available, "f" * 40),
+            (["ascend", "cuda"], "f" * 40, "auto"),
+        )
+        for inputs in (
+            {"platforms": "unknown"},
+            {"platforms": ""},
+            {"platforms": "cuda;id"},
+            {"platforms": "cuda", "test_level": "L9"},
+            {"platforms": "cuda", "checkout_ref": "main; rm"},
+        ):
+            with self.assertRaises(ValueError, msg=inputs):
+                ci_requests.resolve_dispatch(inputs, available, "f" * 40)
+
+    def test_only_maintainers_can_approve_same_pr_requests(self):
+        issue_url = "https://api.github.com/repos/flagos-ai/TransformerEngine-FL/issues/42"
+        for permission in ("write", "maintain", "admin", "read", "triage", "none"):
+            for original_body, original_issue in (
+                ("/ci run cuda", issue_url),
+                ("/test all", issue_url),
+                ("/ci run cuda", issue_url + "0"),
+                ("ordinary comment", issue_url),
+                ("/ci approve 12", issue_url),
+                ("/ci run unknown", issue_url),
+            ):
+                with self.subTest(permission=permission, body=original_body, issue=original_issue):
+                    event = {
+                        "action": "created",
+                        "issue": {
+                            "number": 42,
+                            "pull_request": {"url": "unused"},
+                            "url": issue_url,
+                        },
+                        "comment": {
+                            "body": "/ci approve 123",
+                            "user": {"login": "approver"},
+                        },
+                    }
+                    api = Mock(
+                        side_effect=[
+                            {"permission": permission},
+                            {"body": original_body, "issue_url": original_issue},
+                            {"state": "open", "head": {"sha": "b" * 40}},
+                        ]
+                    )
+                    valid = (
+                        permission in {"write", "maintain", "admin"}
+                        and original_issue == issue_url
+                        and original_body in {"/ci run cuda", "/test all"}
+                    )
+                    if valid:
+                        platforms = (
+                            ["cuda"] if original_body.endswith("cuda") else ["ascend", "cuda"]
+                        )
+                        self.assertEqual(
+                            ci_requests.resolve(event, api, {"ascend", "cuda"}),
+                            (platforms, "b" * 40, True),
+                        )
+                        self.assertEqual(api.call_args_list[1].args, ("issues/comments/123",))
+                    else:
+                        with self.assertRaises((ValueError, PermissionError)):
+                            ci_requests.resolve(event, api, {"ascend", "cuda"})
+                    if permission not in {"write", "maintain", "admin"}:
+                        self.assertEqual(api.call_count, 1)
+
+    def test_public_request_writes_pending_outputs_and_approval_instructions(self):
+        for permission in ("none", "write"):
+            with self.subTest(permission=permission), tempfile.TemporaryDirectory() as tmp:
+                folder = Path(tmp)
+                event = folder / "event.json"
+                event.write_text(
+                    json.dumps(
+                        {
+                            "action": "created",
+                            "issue": {"number": 42, "pull_request": {"url": "unused"}},
+                            "comment": {
+                                "id": 123,
+                                "body": "/ci run cuda",
+                                "user": {"login": "requester"},
+                            },
+                        }
+                    )
+                )
+                outputs, summary = folder / "outputs", folder / "summary"
+                env = {
+                    "GITHUB_EVENT_PATH": str(event),
+                    "GITHUB_EVENT_NAME": "issue_comment",
+                    "GITHUB_REPOSITORY": "flagos-ai/TransformerEngine-FL",
+                    "GITHUB_OUTPUT": str(outputs),
+                    "GITHUB_STEP_SUMMARY": str(summary),
+                }
+                responses = [
+                    json.dumps({"permission": permission}),
+                    json.dumps({"state": "open", "head": {"sha": "a" * 40}}),
+                ]
+                with patch.dict(os.environ, env), patch.object(
+                    ci_requests.subprocess, "check_output", side_effect=responses
+                ):
+                    ci_requests.main()
+                result = dict(line.split("=", 1) for line in outputs.read_text().splitlines())
+                self.assertEqual(json.loads(result["platforms"]), ["cuda"])
+                self.assertEqual(result["approved"], "true" if permission == "write" else "false")
+                self.assertEqual(result["test_level"], "auto")
+                if permission == "none":
+                    self.assertIn("/ci approve 123", summary.read_text())
+                else:
+                    self.assertFalse(summary.exists())
+
+
+@unittest.skipUnless(importlib.util.find_spec("pytest"), "pytest is required for collection tests")
+class PytestSelectionTests(unittest.TestCase):
+    """Exercise real pytest processes, without importing accelerator libraries."""
+
+    def run_pytest(self, root, arguments, targets=None, *, raw=None):
+        env = dict(os.environ)
+        env.pop("TE_CI_TEST_TARGETS_JSON", None)
+        env.update(
+            GITHUB_WORKSPACE=str(root),
+            TE_PATH=str(root),
+            PYTEST_PLUGINS="ci_pytest_selection",
+            PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
+            PYTHONPATH=os.pathsep.join(
+                part
+                for part in (
+                    str(ROOT / "tests/test_utils"),
+                    str(ROOT / ".github/scripts/ci"),
+                    env.get("PYTHONPATH", ""),
+                )
+                if part
+            ),
+        )
+        if targets is not None or raw is not None:
+            env["TE_CI_TEST_TARGETS_JSON"] = raw if raw is not None else json.dumps(targets)
+        return subprocess.run(
+            [sys.executable, "-m", "pytest", "-q", *arguments],
+            cwd=root,
+            env=env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+    def test_selection_prevents_excluded_test_import_and_records_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "test_selected.py").write_text("def test_pass(): assert True\n")
+            (root / "test_excluded.py").write_text("raise RuntimeError('must not import')\n")
+            result = self.run_pytest(
+                root,
+                ["test_selected.py", "test_excluded.py", "--junitxml=report.xml"],
+                ["test_selected.py"],
             )
-            self.assertEqual(result.returncode == 0, resolve == pipeline == "success")
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            cases = ET.parse(root / "report.xml").findall(".//testcase")
+            self.assertEqual(len(cases), 1)
+            self.assertEqual(
+                [(p.get("name"), p.get("value")) for p in cases[0].findall("properties/property")],
+                [
+                    ("flagcicd_test_path", "test_selected.py"),
+                    ("flagcicd_test_nodeid", "test_selected.py::test_pass"),
+                ],
+            )
+            result = self.run_pytest(
+                root, ["test_excluded.py", "--junitxml=empty.xml"], ["test_selected.py"]
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertNotIn("must not import", result.stdout + result.stderr)
+            self.assertEqual(ET.parse(root / "empty.xml").findall(".//testcase"), [])
+
+    def test_directory_and_glob_selection_keep_original_nodeids_and_filters(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            nested = root / "suite/subdirectory"
+            nested.mkdir(parents=True)
+            (nested / "test_selected.py").write_text(
+                "def test_pass(): assert True\ndef test_other(): assert False\n"
+            )
+            (nested / "test_excluded.py").write_text("raise RuntimeError('must not import')\n")
+            result = self.run_pytest(
+                root, ["suite", "-k", "test_pass"], ["suite/**/test_selected.py"]
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("1 passed, 1 deselected", result.stdout)
+            result = self.run_pytest(
+                root,
+                ["suite/subdirectory/test_selected.py::test_pass"],
+                ["suite/subdirectory/test_selected.py"],
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("1 passed", result.stdout)
+            result = self.run_pytest(
+                root,
+                ["suite/subdirectory/test_selected.py::test_other"],
+                ["suite/subdirectory/"],
+            )
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn("1 failed", result.stdout)
+
+    def test_node_selection_preserves_parameters_class_targets_and_platform_filters(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "test_mixed.py").write_text(
+                "import pytest\n"
+                "@pytest.mark.parametrize('value', [1, 2], ids=['small[case]', 'other'])\n"
+                "def test_linear(value): assert value > 0\n"
+                "class TestNormalization:\n"
+                "    def test_norm(self): assert True\n"
+                "def test_attention(): assert False\n"
+            )
+            result = self.run_pytest(
+                root, ["test_mixed.py", "--junitxml=selected.xml"], ["test_mixed.py::test_linear"]
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            cases = ET.parse(root / "selected.xml").findall(".//testcase")
+            self.assertEqual(len(cases), 2)
+            self.assertEqual(
+                {
+                    p.get("value")
+                    for case in cases
+                    for p in case.findall("properties/property")
+                    if p.get("name") == "flagcicd_test_nodeid"
+                },
+                {"test_mixed.py::test_linear[small[case]]", "test_mixed.py::test_linear[other]"},
+            )
+            for target, arguments in (
+                ("test_mixed.py::TestNorm*", ["test_mixed.py", "-k", "norm"]),
+                ("test_mixed.py::test_linear[small[case]]", ["test_mixed.py"]),
+                ("test_mixed.py::test_linear", ["test_mixed.py", "-k", "other"]),
+            ):
+                with self.subTest(target=target, arguments=arguments):
+                    result = self.run_pytest(root, arguments, [target])
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertIn("1 passed", result.stdout)
+
+    def test_unselected_node_invocation_has_no_passing_evidence(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "test_mixed.py").write_text(
+                "def test_linear(): assert False\ndef test_norm(): assert True\n"
+            )
+            result = self.run_pytest(
+                root,
+                ["test_mixed.py::test_linear", "--junitxml=empty.xml"],
+                ["test_mixed.py::test_norm"],
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(ET.parse(root / "empty.xml").findall(".//testcase"), [])
+            result = self.run_pytest(
+                root, ["test_mixed.py::missing_node"], ["test_mixed.py::test_norm"]
+            )
+            self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_absent_selection_keeps_normal_pytest_behavior(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "test_failure.py").write_text("def test_fail(): assert False\n")
+            result = self.run_pytest(root, ["test_failure.py"])
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn("1 failed", result.stdout)
+
+    def test_invalid_selection_cannot_disable_filtering(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "test_selected.py").write_text("def test_pass(): assert True\n")
+            for raw in (
+                "",
+                "broken-json",
+                "[]",
+                "{}",
+                '[""]',
+                '["../test.py"]',
+                '["/tmp/test.py"]',
+                '["test.py::"]',
+            ):
+                with self.subTest(raw=raw):
+                    result = self.run_pytest(root, ["test_selected.py"], raw=raw)
+                    self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertNotIn("1 passed", result.stdout)
+
+    def test_script_runner_passes_selection_to_child_pytest(self):
+        spec = importlib.util.spec_from_file_location(
+            "ci_selection_runner", ROOT / "tests/test_utils/run_ci_test_group.py"
+        )
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "test_selected.py").write_text("def test_pass(): assert True\n")
+            (root / "test_excluded.py").write_text("raise RuntimeError('must not import')\n")
+            script = root / "suite.sh"
+            script.write_text(
+                '"$PYTHON_BIN" -m pytest -q test_excluded.py --junitxml=excluded.xml || exit $?\n'
+                '"$PYTHON_BIN" -m pytest -q test_selected.py --junitxml=selected.xml\n'
+            )
+            group = {
+                "name": "selected-script",
+                "path": "suite.sh",
+                "test_targets": ["test_selected.py"],
+                "group_test_targets": {"selected": ["test_selected.py"]},
+                "env": {"PYTHON_BIN": sys.executable},
+            }
+            with patch.object(runner, "REPO_ROOT", root), patch.dict(
+                os.environ,
+                GITHUB_WORKSPACE=str(root),
+                PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
+                PYTEST_PLUGINS="",
+            ):
+                self.assertEqual(runner._run_script(group), 0)
+            self.assertEqual(ET.parse(root / "excluded.xml").findall(".//testcase"), [])
+            self.assertEqual(len(ET.parse(root / "selected.xml").findall(".//testcase")), 1)
 
 
 if __name__ == "__main__":

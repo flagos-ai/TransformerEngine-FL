@@ -11,15 +11,17 @@ from typing import Any
 
 
 def load_report(path: Path) -> dict[str, Any]:
-    """Load and validate a FlagCICD report."""
+    """Load a FlagCICD report or a raw ``coverage json`` report."""
     payload = json.loads(path.read_text(encoding="utf-8"))
-    if payload.get("schema_version") != "flagcicd.report/v1":
+    if payload.get("schema_version") != "flagcicd.report/v1" and "totals" not in payload:
         raise ValueError(f"unsupported schema_version: {payload.get('schema_version')}")
     return payload
 
 
 def coverage_percent(report: dict[str, Any]) -> float | None:
     """Extract coverage percentage from a report."""
+    if "totals" in report:
+        return report["totals"].get("percent_covered")
     coverage = report.get("metrics", {}).get("coverage", {})
     if not coverage.get("available"):
         return None
@@ -86,6 +88,7 @@ def statistical_regression(
         }
     variance = sum((value - mean) ** 2 for value in historical) / (len(historical) - 1)
     std = math.sqrt(variance)
+    # Zero variance collapses both bounds onto the mean: any drop is an outlier.
     lower_bound = mean - sigma_multiplier * std
     upper_bound = mean + sigma_multiplier * std
     if current < lower_bound:
@@ -93,6 +96,7 @@ def statistical_regression(
             "status": "outlier_below",
             "message": (
                 f"Coverage {current:.2f}% is below {sigma_multiplier}σ bound ({lower_bound:.2f}%)"
+                + (" (history has zero variance)" if std == 0 else "")
             ),
             "current_percent": current,
             "baseline_mean": mean,
