@@ -197,6 +197,14 @@ run_test_step "pytest_test_plugin_policy_selection.xml" "$PLUGIN_TEST_ROOT/plugi
 "python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_plugin_policy_selection.xml $PLUGIN_TEST_ROOT/plugin/test_policy_selection.py" "test_policy_selection.py"
 
 
+# Keep each dispatch module in its own pytest process, as with the plugin tests above.
+for dispatch_test in entry hook integration manifest numerics; do
+    dispatch_name="test_triton_dispatch_${dispatch_test}"
+    run_test_step "pytest_${dispatch_name}.xml" "$PLUGIN_TEST_ROOT/plugin/${dispatch_name}.py" \
+        "python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_${dispatch_name}.xml $PLUGIN_TEST_ROOT/plugin/${dispatch_name}.py" "${dispatch_name}.py"
+done
+
+
 # ==============================================================================
 # New Step: Plugin Core backend
 # ==============================================================================

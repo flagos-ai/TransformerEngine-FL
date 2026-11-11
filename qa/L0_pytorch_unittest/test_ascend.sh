@@ -69,6 +69,13 @@ run_pytest_step "plugin policy" "pytest_test_plugin_policy.xml" false \
 run_pytest_step "plugin manager" "pytest_test_plugin_manager.xml" false \
     "$PLUGIN_TEST_ROOT/plugin/test_manager.py"
 
+# Use the regular interpreter for plugin tests, matching policy and manager tests.
+for dispatch_test in entry hook integration manifest numerics; do
+    dispatch_name="test_triton_dispatch_${dispatch_test}"
+    run_pytest_step "plugin ${dispatch_name}" "pytest_${dispatch_name}.xml" false \
+        "$PLUGIN_TEST_ROOT/plugin/${dispatch_name}.py"
+done
+
 run_pytest_step "FlagOS backend lifecycle" "pytest_test_backend_flagos.xml" false \
     "$PLUGIN_TEST_ROOT/backend/flagos/test_lifecycle.py"
 

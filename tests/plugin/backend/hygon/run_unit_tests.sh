@@ -168,6 +168,12 @@ run_unittest_suite() {
         "$PYTHON" -m pytest -s -v --tb=auto "$plugin_root/plugin/test_manager.py"
     run_pytest_step "plugin/test_policy_selection.py" "pytest_test_plugin_policy_selection.xml" \
         "$PYTHON" -m pytest -s -v --tb=auto "$plugin_root/plugin/test_policy_selection.py"
+    local dispatch_test dispatch_name
+    for dispatch_test in entry hook integration manifest numerics; do
+        dispatch_name="test_triton_dispatch_${dispatch_test}"
+        run_pytest_step "plugin/${dispatch_name}.py" "pytest_${dispatch_name}.xml" \
+            "$PYTHON" -m pytest -s -v --tb=auto "$plugin_root/plugin/${dispatch_name}.py"
+    done
     run_pytest_step "reference/test_lifecycle.py" "pytest_test_backend_reference.xml" \
         "$PYTHON" -m pytest -s -v --tb=auto "$plugin_root/backend/reference/test_lifecycle.py"
     run_pytest_step "reference/test_activation.py" "pytest_test_backend_reference_activation.xml" \

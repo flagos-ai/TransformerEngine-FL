@@ -132,6 +132,25 @@ class PlannerTests(unittest.TestCase):
         )
         self.assertEqual(project["levels"]["L1"]["required_groups"], ["core"])
 
+    def test_triton_dispatch_changes_select_plugin_core(self):
+        paths = sorted(
+            path.relative_to(ROOT).as_posix()
+            for pattern in (
+                "transformer_engine/plugin/core/triton_dispatch/*.py",
+                "tests/plugin/plugin/test_triton_dispatch_*.py",
+                "tests/plugin/plugin/triton_dispatch_numerics_cases.py",
+            )
+            for path in ROOT.glob(pattern)
+        )
+        self.assertTrue(paths)
+        for path in paths:
+            with self.subTest(path=path):
+                plan = self.run_planner("pr", changed_files=json.dumps([path]))
+                self.assertEqual(
+                    set(plan["group_selection"]["groups"]),
+                    {"preflight", "core", "plugin_core"},
+                )
+
     def test_logical_groups_share_an_execution_job_without_losing_evidence(self):
         plan = self.run_planner(
             "pr",

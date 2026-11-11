@@ -110,6 +110,13 @@ run_unittest_suite() {
     run_pytest_step unittest plugin_manager.py \
         -s -v --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_plugin_manager.xml" \
         "$TE_PATH/tests/plugin/plugin/test_manager.py"
+    local dispatch_test dispatch_name
+    for dispatch_test in entry hook integration manifest numerics; do
+        dispatch_name="test_triton_dispatch_${dispatch_test}"
+        run_pytest_step unittest "${dispatch_name}.py" \
+            -s -v --tb=auto --junitxml="$XML_LOG_DIR/pytest_${dispatch_name}.xml" \
+            "$TE_PATH/tests/plugin/plugin/${dispatch_name}.py"
+    done
     run_pytest_step unittest backend_reference_lifecycle.py \
         -s -v --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_backend_reference.xml" \
         "$TE_PATH/tests/plugin/backend/reference/test_lifecycle.py"
