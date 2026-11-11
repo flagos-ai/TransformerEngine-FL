@@ -296,3 +296,31 @@ Iluvatar ignore rules are audited inline before pytest keyword filtering. Each
 rule must match some but not all collected tests; matched node IDs are logged.
 This detects missing selectors but does not prove historical quarantine membership
 is unchanged. Review the logged node IDs after upstream parameter changes.
+
+### Plugin discovery compatibility
+
+The plugin-unit preset forces `TE_FL_PREFER=vendor` for NPU backend files before
+imports. Ascend excludes `tests/plugin/accuracy/test_compute_scale.py` until NPU
+CUDA-semantic scale parity is wired; the execution plan records the same exact
+file exclusion. Other platforms retain this accuracy test.
+
+Isolated pytest exit code 5 is accepted only when the newly generated JUnit
+report contains skipped cases exclusively, with no failures or errors. Empty
+collections remain failures; skipped cases do not provide passing gate evidence.
+Each invocation logs its exit code and elapsed time. Unit jobs default to no
+whole-suite retries; integration/compat jobs retain their existing retry policy.
+FlagOps upload is advisory and explicitly skips when its API token is absent;
+coverage collection, artifacts and required coverage checks remain enabled.
+
+Exact plugin collection quarantines live in each platform
+`tests/plugin/backend/<platform>/config.sh` under `PLUGIN_IGNORE_TEST_NODES`.
+Use one literal quoted `node|reason` per line, with paths relative to
+`tests/plugin/`. The shared `conftest.py` only reads and applies these rules
+by `PLATFORM`; it contains no platform-specific exclusion list. Hygon excludes the cross-entropy dispatch case;
+MetaX excludes cross-entropy and mHC; Iluvatar excludes mHC; PPU excludes the
+compiled-graph guard and only Adam parameter `[False-0.0-0-0]`. These rules also
+apply inside the dispatch driver's fresh pytest subprocess. Other cases remain
+selected, including CUDA's complete dispatch suite. Every deselection logs its
+reason and restoration condition, contributes no passing evidence, and leaves
+operator implementations unchanged. The shared workflow passes its platform
+identity explicitly; the MetaX standalone environment sets the same identity.

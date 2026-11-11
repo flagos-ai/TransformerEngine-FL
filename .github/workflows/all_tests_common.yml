@@ -734,8 +734,21 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-      - name: Post coverage to FlagOps
+      - name: Check FlagOps upload credentials
+        id: flagops_credentials
         if: steps.aggregate.outputs.aggregated == 'true'
+        env:
+          FLAGCICD_API_TOKEN: ${{ secrets.FLAGCICD_API_TOKEN }}
+        run: |
+          if [ -n "$FLAGCICD_API_TOKEN" ]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping advisory FlagOps upload: FLAGCICD_API_TOKEN is unavailable."
+          fi
+
+      - name: Post coverage to FlagOps
+        if: steps.aggregate.outputs.aggregated == 'true' && steps.flagops_credentials.outputs.available == 'true'
         uses: flagos-ai/FlagOps/actions/post-pytest-report@v2
         continue-on-error: true
         with:

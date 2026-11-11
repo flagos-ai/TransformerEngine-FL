@@ -131,8 +131,10 @@ jobs:
         id: execute
         shell: bash
         env:
+          PLATFORM: ${{ inputs.platform }}
           TE_TEST_GROUP_JSON: ${{ toJson(matrix) }}
-          TE_TEST_MAX_RETRIES: '2'
+          # Unit scripts rerun the entire suite, including successful files.
+          TE_TEST_MAX_RETRIES: ${{ matrix.kind == 'unit' && '0' || '2' }}
           COVERAGE_REQUIRED: ${{ inputs.coverage_required }}
           COVERAGE_SOURCES: ${{ inputs.coverage_sources }}
         run: |

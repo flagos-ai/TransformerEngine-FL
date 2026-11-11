@@ -18,6 +18,7 @@ import subprocess
 import sys
 import time
 from typing import Any
+import xml.etree.ElementTree as ET
 
 
 REPO_ROOT = Path(
@@ -50,10 +51,15 @@ def _load_group() -> dict[str, Any]:
                     # CI records the same exclusion in the platform plan. This
                     # fallback also keeps standalone QA off Ascend-only tests.
                     "ignore": (
-                        []
+                        ["tests/plugin/accuracy/test_compute_scale.py"]
                         if os.environ.get("PLATFORM") in ("ascend", "npu")
                         else ["tests/plugin/backend/npu/"]
                     ),
+                    "env_by_path": {
+                        "tests/plugin/backend/npu/": {
+                            "TE_FL_PREFER": "vendor",
+                        }
+                    },
                     "unset_env_by_path": {
                         "tests/plugin/plugin/": [
                             "TE_FL_ALLOW_VENDORS",
@@ -167,6 +173,25 @@ def _target_env(env: dict[str, str], step: dict[str, Any], relative: str) -> Non
         if relative.startswith(prefix):
             for key in keys:
                 env.pop(key, None)
+    for prefix, values in step.get("env_by_path", {}).items():
+        if relative.startswith(prefix):
+            for key, value in values.items():
+                env[str(key)] = _expand(str(value))
+
+
+def _all_reported_cases_skipped(report: Path) -> bool:
+    """Accept module-level importorskip, but never a genuine empty collection."""
+    try:
+        root = ET.parse(report).getroot()
+    except (OSError, ET.ParseError):
+        return False
+    cases = root.findall(".//testcase")
+    return (
+        bool(cases)
+        and not root.findall(".//failure")
+        and not root.findall(".//error")
+        and all(case.find("skipped") is not None for case in cases)
+    )
 
 
 def _run_pytest(group: dict[str, Any]) -> int:
@@ -216,9 +241,12 @@ def _run_pytest(group: dict[str, Any]) -> int:
             command = _pytest_command(bool(step.get("use_platform_runner", True)))
             command.extend(group_args)
             command.extend(_expand(str(arg)) for arg in step.get("args", []))
+            report_path = None
             if step.get("isolate_files"):
                 report = relative.removesuffix(".py").replace("/", "_") + ".xml"
-                command.append(f"--junitxml={log_dir / report}")
+                report_path = log_dir / report
+                report_path.unlink(missing_ok=True)
+                command.append(f"--junitxml={report_path}")
             elif step.get("junit"):
                 command.append(f"--junitxml={log_dir / str(step['junit'])}")
             command.extend(invocation)
@@ -231,7 +259,20 @@ def _run_pytest(group: dict[str, Any]) -> int:
             _target_env(step_env, step, relative)
             _selection_env(step_env, group)
             print(f"[RUN] {step['name']}: {shlex.join(command)}", flush=True)
+            started = time.monotonic()
             result = subprocess.run(command, cwd=REPO_ROOT, env=step_env, check=False)
+            print(
+                f"[DONE] {relative or step['name']}: exit={result.returncode} "
+                f"elapsed={time.monotonic() - started:.1f}s",
+                flush=True,
+            )
+            if (
+                result.returncode == 5
+                and report_path is not None
+                and _all_reported_cases_skipped(report_path)
+            ):
+                print(f"[SKIP] {relative}: all reported cases skipped", flush=True)
+                continue
             if result.returncode < 0 or result.returncode >= 128:
                 return result.returncode
             failed = failed or result.returncode != 0

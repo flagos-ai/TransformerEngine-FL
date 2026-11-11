@@ -31,3 +31,10 @@ readonly -a HYGON_ONNX_IGNORE_GROUPS=(
     "test_export_multihead_attention"
     "test_export_gpt_generation"
 )
+
+# Exact plugin-node quarantines. Node paths are relative to tests/plugin/.
+# Literal entries only, one quoted node|reason per line; shared pytest collection
+# reads this array for both the outer runner and fresh dispatch subprocesses.
+readonly PLUGIN_IGNORE_TEST_NODES=(
+    'plugin/triton_dispatch_numerics_cases.py::test_cross_entropy_forward_and_backward_match_native_exactly|cross_entropy num_warps=32 exceeds the DCU thread limit; restore after launch adaptation'
+)

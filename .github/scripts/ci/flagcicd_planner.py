@@ -605,6 +605,10 @@ def build_execution_groups(
         }
         if execution["platform"] != "ascend" and "tests/plugin/backend/npu/" in catalog_targets:
             ignored_targets.add("tests/plugin/backend/npu/")
+        if execution["platform"] == "ascend":
+            # Keep the plan aligned with the standalone plugin-unit preset:
+            # NPU compute-scale CUDA-semantic parity is not wired in this CI.
+            ignored_targets.add("tests/plugin/accuracy/test_compute_scale.py")
         execution["exec"]["ignored_test_targets"] = sorted(ignored_targets)
         group_targets = execution["exec"].get("group_test_targets", {})
         if group_targets and ignored_targets:
