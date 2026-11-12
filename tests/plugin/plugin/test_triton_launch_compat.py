@@ -89,3 +89,23 @@ def test_permutation_dims_are_passed_as_varargs(repository_root):
             ):
                 offenders.append(f"{path.name}:{node.lineno}")
     assert not offenders, f"tuple-form tl.trans/tl.permute dims: {offenders}"
+
+
+def test_kernels_call_assume_through_the_compat_alias(repository_root):
+    """``tl.assume`` is missing from older Triton builds (MACA Triton 3.0).
+
+    It only feeds optimisation hints, so kernels call a module-level alias
+    that is ``tl.assume`` when available and a no-op otherwise.
+    """
+    offenders = []
+    for path in sorted((repository_root / KERNEL_DIR).glob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text())):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr == "assume"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "tl"
+            ):
+                offenders.append(f"{path.name}:{node.lineno}")
+    assert not offenders, f"direct tl.assume calls: {offenders}"
