@@ -18,8 +18,10 @@ import inspect
 import pytest
 import torch
 
+from plugin.utils import triton_device_unavailable_reason
 
-pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
+_UNAVAILABLE = triton_device_unavailable_reason()
+pytestmark = pytest.mark.skipif(_UNAVAILABLE is not None, reason=str(_UNAVAILABLE))
 
 
 def _entry_and_native(module_name, api_name):
