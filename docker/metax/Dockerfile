@@ -1,7 +1,11 @@
+# syntax=docker/dockerfile:1
 # Build from the repository root:
 # docker build -f docker/metax/Dockerfile -t harbor.baai.ac.cn/flagos-dev/transformer-engine-fl:v2.17.0-metax-ci .
 ARG METAX_BASE_IMAGE=harbor.baai.ac.cn/flagos-base/flagos-base-metax-maca3.8.1.3:2.3.0@sha256:5951295dd62343881e123d8e13766a4686fbc275cf510de713bdd8b78b681e6f
-FROM ${METAX_BASE_IMAGE}
+# Optional: reuse a previously validated dependency image by digest.
+# The default still builds every dependency from the MACA base above.
+ARG METAX_RUNTIME_IMAGE=dependencies
+FROM ${METAX_BASE_IMAGE} AS dependencies
 ARG METAX_BASE_IMAGE
 ARG VCS_REF=unknown
 ARG BUILD_DATE=unknown
@@ -94,6 +98,91 @@ RUN python -m pip install --no-cache-dir --no-deps --target "${TE_METAX_TE_HOME}
     && python -m pip check \
     && python -m pip freeze --all > /opt/te-image/requirements.lock \
     && python -c 'import importlib.metadata as m; from pathlib import Path; assert m.version("torch") == "2.10.0+metax3.8.1.0"; assert m.version("transformer_engine") == "2.17.0+fl.0.3.0"; assert list(Path("/opt/metax-te/transformer_engine").glob("transformer_engine_torch*.so"))'
+
+FROM ${METAX_RUNTIME_IMAGE} AS runtime
+ARG VCS_REF=unknown
+ARG BUILD_DATE=unknown
+LABEL org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.created="${BUILD_DATE}"
+
+# TE-FL attention imports the legacy transformer_engine_metax namespace,
+# while MetaX TE >= 2.13 ships transformer_engine/. Provide the actual vendor
+# Python modules under the legacy namespace without overwriting TE-FL.
+# This fixes package discovery; it does not change the torch 2.8 native ABI.
+RUN python - <<'PY'
+from pathlib import Path
+import re
+import shutil
+import sysconfig
+home=Path('/opt/metax-te')
+site=Path(sysconfig.get_paths()['purelib'])
+dest=site/'transformer_engine_metax'
+if dest.exists():
+    shutil.rmtree(dest)
+shutil.copytree(home/'transformer_engine',dest,dirs_exist_ok=True,ignore=shutil.ignore_patterns('*.so','__pycache__','csrc','include'))
+for p in dest.rglob('*.py'):
+ s=p.read_text()
+ s=re.sub(r'\btransformer_engine\b','transformer_engine_metax',s)
+ s=s.replace('transformer_engine_torch','transformer_engine_torch_metax')
+ p.write_text(s)
+# Keep the vendor root lazy so backend discovery does not import PyTorch
+# attention while TE-FL itself is still initializing.
+(dest/'__init__.py').write_text('__version__ = "2.13.0"\n')
+p=dest/'pytorch/__init__.py'
+p.write_text(p.read_text().replace('load_framework_extension("torch")', ''))
+p=dest/'common/__init__.py'
+s=p.read_text()
+marker = 'if "NVTE_PROJECT_BUILDING" not in os.environ'
+assert marker in s, 'Unexpected vendor core initialization layout'
+s=s.split(marker)[0]
+p.write_text(s)
+# The wheel is isolated rather than registered as transformer_engine_metax
+# in pip. Skip its normal distribution checks and automatic framework load;
+# the extension bridge below owns loading, without replacing TE-FL dispatch.
+with (dest/'common/__init__.py').open('a') as f:
+ f.write('\n@functools.lru_cache(maxsize=None)\ndef get_te_path():\n    return Path("/opt/metax-te")\n')
+(site/'transformer_engine_torch_metax.py').write_text('''import ctypes
+import importlib.util
+import os
+from pathlib import Path
+import sys
+import torch
+pkg = Path("/opt/metax-te/transformer_engine")
+ctypes.CDLL(str(pkg / "libtransformer_engine.so"), mode=ctypes.RTLD_GLOBAL)
+owner = sys.modules.pop("transformer_engine_torch", None)
+flags = sys.getdlopenflags()
+try:
+    sys.setdlopenflags(os.RTLD_LAZY | os.RTLD_GLOBAL)
+    spec = importlib.util.spec_from_file_location("transformer_engine_torch", str(next(pkg.glob("transformer_engine_torch*.so"))))
+    native = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(native)
+finally:
+    sys.setdlopenflags(flags)
+    if owner is not None:
+        sys.modules["transformer_engine_torch"] = owner
+    else:
+        sys.modules.pop("transformer_engine_torch", None)
+sys.modules[__name__] = native
+''')
+# The original shared library lives in the original package directory.
+(dest/'libtransformer_engine.so').symlink_to(home/'transformer_engine/libtransformer_engine.so')
+# v2.17 adds padding controls absent from this vendor forward signature.
+# Only default (unpadded) semantics can be forwarded to the older API.
+with (dest/'pytorch/attention/dot_product_attention/backends.py').open('a') as f:
+ f.write('''
+class _LegacyFlashAttention(FlashAttention):
+    def forward(self, *args, pad_between_seqs=False, cu_seqlens_q_padded=None,
+                cu_seqlens_kv_padded=None, **kwargs):
+        if pad_between_seqs or cu_seqlens_q_padded is not None or cu_seqlens_kv_padded is not None:
+            raise NotImplementedError("MetaX TE 2.13 does not support padded sequence controls")
+        return super().forward(*args, **kwargs)
+
+FlashAttention = _LegacyFlashAttention
+''')
+
+assert (dest/'pytorch/attention/dot_product_attention/backends.py').is_file()
+print('Installed vendor attention namespace:', dest)
+PY
 
 WORKDIR /workspace
 CMD ["bash"]

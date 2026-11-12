@@ -33,7 +33,7 @@ from importlib import metadata
 
 for package in (
     "torch", "triton", "pytest", "coverage", "pytest-cov", "expecttest",
-    "nvdlfw-inspect", "onnxruntime", "onnxruntime-extensions",
+    "nvdlfw-inspect", "onnxruntime", "onnxruntime-extensions", "flash-attn", "apex",
 ):
     print(f"{package}=={metadata.version(package)}")
 CHECK
@@ -49,13 +49,18 @@ TE_FL_SKIP_CUDA=1 NVTE_SKIP_SUBMODULE_CHECKS_DURING_BUILD=1 \
 echo "===== Verify MetaX runtime ====="
 python3 - <<'CHECK'
 import torch
+import sys
 from transformer_engine.plugin.core.backends.vendor.metax.metax import MetaxBackend
+import transformer_engine_torch
 
 print("torch:", torch.__version__)
 if not torch.cuda.is_available():
     raise RuntimeError("MetaX GPU runtime is not available")
 if not MetaxBackend().is_available():
     raise RuntimeError("TransformerEngine MetaX native backend is not available")
+from transformer_engine_metax.pytorch.attention.dot_product_attention.backends import FlashAttention
+assert sys.modules["transformer_engine_torch"] is transformer_engine_torch
+print("MetaX attention:", FlashAttention.__module__)
 print("MetaX device:", torch.cuda.get_device_name())
 CHECK
 python3 tests/pytorch/test_sanity_import.py
