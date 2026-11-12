@@ -13,6 +13,8 @@ RUN mkdir -p /opt/te-image && printf '%s\n' \
     'flagtree==0.7.0+ascend3.5' 'flagcx==0.14.0+cann9.0.0.910c' \
     > /opt/te-image/constraints.txt
 ENV PIP_CONSTRAINT=/opt/te-image/constraints.txt PIP_PROGRESS_BAR=off
+RUN python -c 'import pathlib, sys; target = pathlib.Path(sys.base_prefix) / "bin/python3-config"; assert target.is_file(), target; pathlib.Path("/flagos/bin/python3-config").symlink_to(target)' \
+    && command -v python3-config
 WORKDIR /workspace
 CMD ["bash"]
 
