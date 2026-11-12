@@ -31,6 +31,16 @@ except (ImportError, AttributeError):
 
 
 _DTYPES = (torch.float32, torch.float16, torch.bfloat16)
+# torch.testing.assert_close's default tolerances for each input dtype. NPU's
+# native LayerNorm returns FP32 statistics whose internal precision follows the
+# input dtype (it varies with shape: sometimes equal to TENPU's half-precision
+# statistics, sometimes to an FP32 evaluation), so they are held to the input
+# dtype's precision against an FP32 reference.
+_STATS_TOLERANCE = {
+    torch.float32: {"rtol": 1.3e-6, "atol": 1e-5},
+    torch.float16: {"rtol": 1e-3, "atol": 1e-5},
+    torch.bfloat16: {"rtol": 1.6e-2, "atol": 1e-5},
+}
 _SHAPES = ((4, 16), (2, 3, 16))
 
 
@@ -74,7 +84,8 @@ class TestLayerNormTENPUParity(unittest.TestCase):
     The normalized output and the gradients must equal TENPU's computation
     exactly. Statistics follow TE's ABI instead of TENPU's internals: they are
     always FP32 (pytorch/csrc/extensions/normalization.cpp allocates mu and
-    rsigma as at::kFloat), while TENPU keeps them in the input dtype.
+    rsigma as at::kFloat), while TENPU keeps them in the input dtype; their
+    values must be accurate to the input dtype's precision.
     """
 
     @classmethod
@@ -144,8 +155,8 @@ class TestLayerNormTENPUParity(unittest.TestCase):
                 )
                 tenpu = _tenpu_forward(x, weight, bias, eps, zero_centered_gamma)
                 torch.testing.assert_close(tefl[0], tenpu[0], rtol=0, atol=0)
-                # FP32 statistics per TE's ABI; the reference recomputes them
-                # in FP32, so default FP32 tolerances cover reduction order.
+                # FP32 statistics per TE's ABI, accurate to the input dtype's
+                # precision against TENPU's formula evaluated in FP32.
                 _, ref_mean, ref_rsigma = _tenpu_forward(
                     x.float(),
                     weight.float(),
@@ -155,7 +166,7 @@ class TestLayerNormTENPUParity(unittest.TestCase):
                 )
                 for actual, expected in ((tefl[1], ref_mean), (tefl[2], ref_rsigma)):
                     self.assertEqual(actual.dtype, torch.float32)
-                    torch.testing.assert_close(actual, expected)
+                    torch.testing.assert_close(actual, expected, **_STATS_TOLERANCE[dtype])
 
                 grad = torch.randn(
                     tuple(tefl[0].shape), generator=generator, dtype=torch.float32
