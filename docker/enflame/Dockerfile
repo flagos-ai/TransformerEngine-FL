@@ -156,11 +156,6 @@ RUN mkdir -p /opt/te-image \
         yarl==1.25.1 \
         zipp==4.1.2 > /opt/te-image/constraints.txt
 ENV PIP_CONSTRAINT=/opt/te-image/constraints.txt
-# The vendor extension is built for Python 3.12. TE-FL 2.17 calls an older
-# compute-scale ABI, so the local bridge uses TE-FL's reference implementation
-# for that operation; the vendor binary remains available for other operations.
-COPY --from=harbor.baai.ac.cn/flagos-dev/transformerengine-fl@sha256:ad490441769e33b64ba579f97dd56c11fcf1f4e7393825743c1308063a06954d /usr/local/lib/python3.12/dist-packages/migration/patches/transformer_engine/ /flagos/lib/python3.12/site-packages/torch_gcu/migration/patches/transformer_engine/
-COPY docker/enflame/migration/patches/transformer_engine/ /flagos/lib/python3.12/site-packages/torch_gcu/migration/patches/transformer_engine/
 # Direct Python processes need FlagTree on sys.path too.
 # Metadata-only checks: never initialize accelerator drivers during build.
 RUN python -c 'import sys,importlib.metadata as m; sys.path.insert(0,"/opt/flagtree"); assert sys.version_info[:2]==(3,12); expected={"torch":"2.11.0+cpu","torch_gcu":"2.11.0+3.8.20260713","flagtree":"0.7.0+enflame3.6","flag_gems":"5.4.0","flagcx":"0.14.0+tops1.10.6","black":"26.3.1"}; actual={k:m.version(k) for k in expected}; assert actual==expected,actual' \
