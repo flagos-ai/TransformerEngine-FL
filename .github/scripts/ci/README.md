@@ -312,15 +312,7 @@ whole-suite retries; integration/compat jobs retain their existing retry policy.
 FlagOps upload is advisory and explicitly skips when its API token is absent;
 coverage collection, artifacts and required coverage checks remain enabled.
 
-Exact plugin collection quarantines live in each platform
-`tests/plugin/backend/<platform>/config.sh` under `PLUGIN_IGNORE_TEST_NODES`.
-Use one literal quoted `node|reason` per line, with paths relative to
-`tests/plugin/`. The shared `conftest.py` only reads and applies these rules
-by `PLATFORM`; it contains no platform-specific exclusion list. Hygon excludes the cross-entropy dispatch case;
-MetaX excludes cross-entropy and mHC; Iluvatar excludes mHC; PPU excludes the
-compiled-graph guard and only Adam parameter `[False-0.0-0-0]`. These rules also
-apply inside the dispatch driver's fresh pytest subprocess. Other cases remain
-selected, including CUDA's complete dispatch suite. Every deselection logs its
-reason and restoration condition, contributes no passing evidence, and leaves
-operator implementations unchanged. The shared workflow passes its platform
-identity explicitly; the MetaX standalone environment sets the same identity.
+Plugin tests are not quarantined per node. A platform failure in a plugin
+test stays a failure until the source, toolchain or image is fixed. The shared
+workflow passes its platform identity explicitly; the MetaX standalone
+environment sets the same identity.
