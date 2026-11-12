@@ -1,5 +1,5 @@
 # Extend the user-selected TE development image; build from repository root:
-# docker build -f docker/enflame/Dockerfile -t harbor.baai.ac.cn/flagos-dev/transformer-engine-fl:v2.17.0-enflame-ci-gems5.0.2-20261112 .
+# docker build -f docker/enflame/Dockerfile -t harbor.baai.ac.cn/flagos-dev/transformer-engine-fl:v2.17.0-enflame-ci .
 # manual-20260809-enflame-dev, pinned to preserve its Torch/GCU/ECCL/TE stack.
 ARG ENFLAME_BASE_IMAGE=harbor.baai.ac.cn/flagos-dev/transformerengine-fl@sha256:9f7d14da2e77229cd3284b6590bbe5e92f5f9be7e787d3b7fe762dcc9a7660eb
 FROM ${ENFLAME_BASE_IMAGE} AS ci
