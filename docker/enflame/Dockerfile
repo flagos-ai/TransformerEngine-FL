@@ -212,7 +212,12 @@ RUN bash -c 'for tool in gcc g++ git cmake ninja python3-config; do command -v "
 FROM dev AS ci
 ARG PIP_INDEX_URL=https://pypi.org/simple
 LABEL io.flagos.image.stage="ci"
-RUN python -m pip install --no-cache-dir \
+# ModelOpt pins ORT 1.17.0, which cannot load the IR 10 models emitted by
+# ONNX 1.17.0. TE CI does not use ModelOpt; release/dev retain the vendor stack.
+RUN python -m pip uninstall -y enflame-modelopt \
+    && sed -i '/^enflame-modelopt==/d; s/^onnxruntime==1.17.0$/onnxruntime==1.18.1/' /opt/te-image/constraints.txt \
+    && python -m pip install --no-cache-dir \
+        onnxruntime==1.18.1 \
         coverage==7.17.2 \
         iniconfig==2.3.1 \
         pluggy==1.7.0 \
@@ -221,6 +226,6 @@ RUN python -m pip install --no-cache-dir \
         torchao==0.13.0 \
     && python -m pip check \
     && python -m coverage --version \
-    && python -c 'import importlib.metadata as m; assert m.version("transformer_engine")=="2.17.0+fl.0.3.0"; assert m.version("pytest")=="8.2.1"'
+    && python -c 'import importlib.metadata as m; assert m.version("transformer_engine")=="2.17.0+fl.0.3.0"; assert m.version("pytest")=="8.2.1"; assert m.version("onnx")=="1.17.0"; assert m.version("onnxruntime")=="1.18.1"'
 # CI selects the checked-out source via PYTHONPATH. The image does not patch TE
 # device checks or claim that every Enflame hardware test passes.
