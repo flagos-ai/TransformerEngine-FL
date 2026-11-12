@@ -876,11 +876,13 @@ def write_summary(path: Path, plan: dict) -> None:
         f"{p['name']}/{gap['group']}: {gap['reason']}"
         for p in platforms
         for gap in p["ignored_test_groups"]
-    ] + [
+    ]
+    gaps += [
         f"{p['name']}/{entry['target']}: {entry['reason']}"
         for p in platforms
         for entry in p.get("ignored_test_targets", [])
-    ] + [
+    ]
+    gaps += [
         f"{job['platform']}/{group} ignored targets: {', '.join(targets)}"
         for job in executions
         for group, targets in (job.get("exec") or {}).get("ignored_group_test_targets", {}).items()
