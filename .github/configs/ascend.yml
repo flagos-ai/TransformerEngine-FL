@@ -6,7 +6,7 @@ display_name: 'Huawei Ascend NPU'
 checkout_submodules: recursive
 
 # CI image for the Ascend environment
-ci_image: harbor.baai.ac.cn/flagos-dev/transformerengine-fl:85c2523-ascend-dev
+ci_image: harbor.baai.ac.cn/flagos-dev/transformer-engine-fl:v2.17.0-ascend-ci
 
 # Runner labels for the self-hosted Ascend node
 runner_labels:
