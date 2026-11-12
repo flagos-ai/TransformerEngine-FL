@@ -603,10 +603,10 @@ class PlannerTests(unittest.TestCase):
             )
             self.assertTrue(set(unit["exec"]["group_test_targets"]) <= supported)
         hygon = next(p for p in plan["platforms"] if p["name"] == "hygon")
-        self.assertIn(
-            "optimizer",
-            {entry["group"] for entry in hygon["ignored_test_groups"]},
-        )
+        hygon_ignored = {entry["group"] for entry in hygon["ignored_test_groups"]}
+        self.assertIn("debug", hygon_ignored)
+        # Reopened once Hygon's unit QA ran the plugin-unit preset (FlagOS tests).
+        self.assertNotIn("optimizer", hygon_ignored)
 
     def test_platform_ignored_tests_reach_the_plan(self):
         plan = self.run_planner("nightly")
@@ -620,9 +620,15 @@ class PlannerTests(unittest.TestCase):
         for platform in ("ppu", "hygon", "iluvatar"):
             with self.subTest(platform=platform):
                 self.assertIn(compiled, by_platform[platform]["exec"]["ignored_test_targets"])
-        self.assertIn(
+        # The FlagOS Adam workaround reopened the numerical Adam cases.
+        self.assertNotIn(
             "tests/plugin/backend/flagos/test_optimizer_numerical.py",
             by_platform["ppu"]["exec"]["ignored_test_targets"],
+        )
+        self.assertIn(
+            "tests/plugin/backend/flagos/test_optimizer_extended.py::"
+            "test_fp8_adam_updates_master_and_metadata",
+            by_platform["ascend"]["exec"]["ignored_test_targets"],
         )
         self.assertNotIn(compiled, by_platform["cuda"]["exec"]["ignored_test_targets"])
         platforms = {p["name"]: p for p in plan["platforms"]}
@@ -655,9 +661,15 @@ class PlannerTests(unittest.TestCase):
             "tests/pytorch/test_float8_blockwise_gemm_exact.py",
             by_platform["cuda"]["exec"]["ignored_group_test_targets"]["gemm"],
         )
+        # An ignored vendor_backend keeps FlagOS GEMM tests out of the gemm group.
         self.assertIn(
-            "tests/plugin/backend/reference/test_optimizer.py",
-            by_platform["ascend"]["exec"]["ignored_group_test_targets"]["reference_backend"],
+            "tests/plugin/backend/flagos/test_gemm.py",
+            by_platform["kunlun"]["exec"]["ignored_group_test_targets"]["gemm"],
+        )
+        # Ascend's reopened optimizer group no longer suppresses reference tests.
+        self.assertNotIn(
+            "reference_backend",
+            by_platform["ascend"]["exec"].get("ignored_group_test_targets", {}),
         )
         with tempfile.TemporaryDirectory() as directory:
             summary = Path(directory, "summary.md")
