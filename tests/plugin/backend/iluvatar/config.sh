@@ -260,10 +260,3 @@ readonly ILUVATAR_DISTRIBUTED_TEST_TARGETS=(
     # classify this infrastructure failure as unsupported FP8 or suppress it.
     "tests/pytorch/distributed/test_cast_master_weights_to_fp8.py"
 )
-
-# Exact plugin-node quarantines. Node paths are relative to tests/plugin/.
-# Literal entries only, one quoted node|reason per line; shared pytest collection
-# reads this array for both the outer runner and fresh dispatch subprocesses.
-readonly PLUGIN_IGNORE_TEST_NODES=(
-    'plugin/triton_dispatch_numerics_cases.py::test_mhc_apis_match_native_exactly|CoreX Triton rejects the mHC transpose tuple; restore after compilation and numerics pass'
-)

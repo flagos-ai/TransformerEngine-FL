@@ -66,3 +66,26 @@ def test_reset_to_zero_arguments_are_passed_positionally(repository_root):
                 f"reset_to_zero arguments {missing} by keyword"
             )
     assert launches >= len(kernels)
+
+
+def test_permutation_dims_are_passed_as_varargs(repository_root):
+    """``tl.trans(x, (1, 0))`` relies on upstream unwrapping a dims tuple.
+
+    CoreX Triton forwards the tuple as a single dimension, raising
+    ``ValueError: permute dims must have the same length as input shape``.
+    ``tl.trans(x, 1, 0)`` is the same permutation on every Triton version.
+    """
+    offenders = []
+    for path in sorted((repository_root / KERNEL_DIR).glob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text())):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr in ("trans", "permute")
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "tl"
+                and len(node.args) == 2
+                and isinstance(node.args[1], (ast.Tuple, ast.List))
+            ):
+                offenders.append(f"{path.name}:{node.lineno}")
+    assert not offenders, f"tuple-form tl.trans/tl.permute dims: {offenders}"

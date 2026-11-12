@@ -115,7 +115,7 @@ def _mhc_projection_fwd_fused(
         )  # (BLOCK_SIZE_N, BLOCK_SIZE_K)
         ms_acc += tl.sum(x * x, axis=1)
         h_acc = tl.dot(
-            x, tl.trans(phi, (1, 0)), h_acc, input_precision=precision, out_dtype=tl.float32
+            x, tl.trans(phi, 1, 0), h_acc, input_precision=precision, out_dtype=tl.float32
         )
 
     h_ptrs = h_ptr + offs_m[:, None] * stride_hm + offs_n_full[None, :] * stride_hn
@@ -1148,7 +1148,7 @@ def _mhc_expand_combine_fwd(
     x0, x1 = tl.split(x01)  # (BLOCK_SIZE_M, BLOCK_SIZE_C), (BLOCK_SIZE_M, BLOCK_SIZE_C)
     x2, x3 = tl.split(x23)  # (BLOCK_SIZE_M, BLOCK_SIZE_C), (BLOCK_SIZE_M, BLOCK_SIZE_C)
 
-    H_resT = tl.reshape(tl.trans(H_res, (0, 2, 1)), (BLOCK_SIZE_M, n, 2, 2))
+    H_resT = tl.reshape(tl.trans(H_res, 0, 2, 1), (BLOCK_SIZE_M, n, 2, 2))
     H_res01, H_res23 = tl.split(H_resT)  # (BLOCK_SIZE_M, n, 2), (BLOCK_SIZE_M, n, 2)
     H_res0, H_res1 = tl.split(H_res01)  # (BLOCK_SIZE_M, n), (BLOCK_SIZE_M, n)
     H_res2, H_res3 = tl.split(H_res23)  # (BLOCK_SIZE_M, n), (BLOCK_SIZE_M, n)
@@ -1292,7 +1292,7 @@ def _mhc_expand_combine_bwd(
 
     # grad_H_res = x.T @ grad_output: (BLOCK_SIZE_M, n, BLOCK_SIZE_C) @ (BLOCK_SIZE_M, BLOCK_SIZE_C, n) = (BLOCK_SIZE_M, n, n)
     grad_H_res = tl.dot(
-        tl.trans(x, (0, 2, 1)), grad_out, input_precision=precision, out_dtype=tl.float32
+        tl.trans(x, 0, 2, 1), grad_out, input_precision=precision, out_dtype=tl.float32
     )  # (BLOCK_SIZE_M, n, n)
     grad_H_res = tl.reshape(grad_H_res, (BLOCK_SIZE_M * n * n,))  # (BLOCK_SIZE_M * n * n)
     offs_grad_H_res = pid_m * BLOCK_SIZE_M * n * n + tl.arange(0, BLOCK_SIZE_M * n * n)
@@ -1458,7 +1458,7 @@ def _mhc_expand_combine_with_bias_fwd(
     x0, x1 = tl.split(x01)  # (BLOCK_SIZE_M, BLOCK_SIZE_C), (BLOCK_SIZE_M, BLOCK_SIZE_C)
     x2, x3 = tl.split(x23)  # (BLOCK_SIZE_M, BLOCK_SIZE_C), (BLOCK_SIZE_M, BLOCK_SIZE_C)
 
-    H_resT = tl.reshape(tl.trans(H_res, (0, 2, 1)), (BLOCK_SIZE_M, n, 2, 2))
+    H_resT = tl.reshape(tl.trans(H_res, 0, 2, 1), (BLOCK_SIZE_M, n, 2, 2))
     H_res01, H_res23 = tl.split(H_resT)  # (BLOCK_SIZE_M, n, 2), (BLOCK_SIZE_M, n, 2)
     H_res0, H_res1 = tl.split(H_res01)  # (BLOCK_SIZE_M, n), (BLOCK_SIZE_M, n)
     H_res2, H_res3 = tl.split(H_res23)  # (BLOCK_SIZE_M, n), (BLOCK_SIZE_M, n)
@@ -1617,7 +1617,7 @@ def _mhc_expand_combine_with_bias_bwd(
 
     # grad_H_res = x.T @ grad_output: (BLOCK_SIZE_M, n, BLOCK_SIZE_C) @ (BLOCK_SIZE_M, BLOCK_SIZE_C, n) = (BLOCK_SIZE_M, n, n)
     grad_H_res = tl.dot(
-        tl.trans(x, (0, 2, 1)), grad_out, input_precision=precision, out_dtype=tl.float32
+        tl.trans(x, 0, 2, 1), grad_out, input_precision=precision, out_dtype=tl.float32
     )  # (BLOCK_SIZE_M, n, n)
     grad_H_res = tl.reshape(grad_H_res, (BLOCK_SIZE_M * n * n,))  # (BLOCK_SIZE_M * n * n)
     offs_grad_H_res = pid_m * BLOCK_SIZE_M * n * n + tl.arange(0, BLOCK_SIZE_M * n * n)
