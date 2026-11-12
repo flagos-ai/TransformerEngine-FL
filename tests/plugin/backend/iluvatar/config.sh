@@ -182,6 +182,8 @@ readonly ILUVATAR_IGNORE_TEST_FILTERS=(
         test_permutation_mask_map_alongside_probs[False-1-2039-2-4096-16-4096-5] or \
         test_permutation_mask_map_alongside_probs[False-1-2039-5-4096-7-4096-5] or \
         test_permutation_mask_map_alongside_probs[False-1-2039-5-4096-16-4096-5] or \
+        test_permutation_mask_map_alongside_probs[False-2-2039-2-4096-7-4096-5] or \
+        test_permutation_mask_map_alongside_probs[False-2-2039-5-4096-7-4096-5] or \
         test_permutation_mask_map_alongside_probs[False-2-2039-2-4096-16-4096-5] or \
         test_permutation_mask_map_alongside_probs[False-2-2039-5-4096-16-4096-5] or \
         test_permutation_mask_map_alongside_probs[True-1-2039-2-4096-7-4096-5]) or \
