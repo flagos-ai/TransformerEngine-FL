@@ -196,7 +196,7 @@ class NPUBackend(TEFLBackendBase):
         # only that dimension before feeding the common backward ABI.
         return output, mean.squeeze(-1), rsigma.squeeze(-1)
 
-    # NPU backend adaptation: consume saved statistics with the native NPU backward operator.
+    # NPU backend adaptation: reproduce TENPU's LayerNorm gradient from saved statistics.
     def layernorm_bwd(
         self,
         dz: torch.Tensor,
@@ -207,7 +207,13 @@ class NPUBackend(TEFLBackendBase):
         sm_margin: int,
         zero_centered_gamma: bool,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        """Differentiate LayerNorm with the NPU native backward operator."""
+        """Differentiate LayerNorm exactly as TENPU's LayerNormLinear backward does.
+
+        transformer_engine_npu composes the gradient from elementwise and sum
+        ops (pytorch/module/layernorm_linear.py, _LayerNormLinear.backward);
+        CANN's fused native_layer_norm_backward differs from it by 1-2 ulp, so
+        the same composition is used to keep this backend TENPU-equivalent.
+        """
 
         del sm_margin
         if mu.ndim < x.ndim:
@@ -215,21 +221,21 @@ class NPUBackend(TEFLBackendBase):
         if rsigma.ndim < x.ndim:
             rsigma = rsigma.unsqueeze(-1)
 
+        hidden_size = x.shape[-1]
+        centered = x - mu
+        x_hat = centered * rsigma
         gamma_adjusted = gamma + 1 if zero_centered_gamma else gamma
-        _get_torch_npu()  # Register the NPU implementation for aten native operators.
-        dx, dgamma, dbeta = torch.ops.aten.native_layer_norm_backward.default(
-            dz.contiguous(),
-            x.contiguous(),
-            list(gamma.shape),
-            mu.contiguous(),
-            rsigma.contiguous(),
-            gamma_adjusted.contiguous(),
-            None,
-            [True, True, True],
-        )
+        dx_hat = dz * gamma_adjusted
+        dvar = (dx_hat * centered * (-0.5) * rsigma.pow(3)).sum(dim=-1, keepdim=True)
+        dmean = (-dx_hat * rsigma).sum(dim=-1, keepdim=True) + dvar * (
+            -2.0 / hidden_size
+        ) * centered.sum(dim=-1, keepdim=True)
+        dx = dx_hat * rsigma + dvar * 2.0 / hidden_size * centered + dmean / hidden_size
+        reduce_dims = tuple(range(dz.ndim - 1))
+        dgamma = (dz * x_hat).sum(dim=reduce_dims)
+        dbeta = dz.sum(dim=reduce_dims)
 
-        # CANN accumulates parameter gradients in FP32 for FP16/BF16 inputs,
-        # while Transformer Engine returns gradients in the parameter dtype.
+        # Transformer Engine returns parameter gradients in the parameter dtype.
         if dgamma.dtype != gamma.dtype:
             dgamma = dgamma.to(gamma.dtype)
         if dbeta.dtype != gamma.dtype:
