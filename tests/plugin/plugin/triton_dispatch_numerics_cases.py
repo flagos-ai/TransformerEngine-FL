@@ -47,6 +47,18 @@ def test_pad_matches_native_exactly():
     _assert_equal(entry(inp.clone()), native(inp.clone()))
 
 
+def test_pad_covers_every_output_tile_for_wide_inputs():
+    # Wider than one 128-column tile, so an autotuned block narrower than the
+    # launch grid assumes would leave whole column ranges unwritten.
+    pad = importlib.import_module("transformer_engine.pytorch.triton.pad")
+    inp = torch.randn(300, 517, device="cuda")
+    out = pad.pad_columnwise_scale_inv(inp)
+
+    expected = torch.nn.functional.pad(inp, (0, (4 - 517 % 4) % 4, 0, (128 - 300 % 128) % 128))
+    assert out.shape == expected.shape == (384, 520)
+    assert torch.equal(out, expected)
+
+
 def test_cross_entropy_forward_and_backward_match_native_exactly():
     module_name = "transformer_engine.pytorch.triton.cross_entropy"
     forward, native_forward = _entry_and_native(module_name, "cross_entropy_forward")
