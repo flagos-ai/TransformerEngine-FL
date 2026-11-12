@@ -582,6 +582,15 @@ class CUDABackend(TEFLBackendBase):
         zero_centered_gamma: bool,
     ) -> List[Any]:
         tex = self._get_tex()
+        # The plugin and native extension expose distinct DType enum classes.
+        # Normalize the quantizer just as quantize() does before native dispatch.
+        try:
+            if quantizer is not None and hasattr(quantizer, "dtype") and hasattr(tex, "DType"):
+                qdtype = quantizer.dtype
+                if qdtype is not None:
+                    quantizer.dtype = tex.DType(int(qdtype))
+        except (AttributeError, TypeError, ValueError):
+            pass
         otype = tex.DType(int(otype)) if otype is not None else None
         return tex.layernorm_fwd(
             input,
@@ -620,6 +629,15 @@ class CUDABackend(TEFLBackendBase):
         zero_centered_gamma: bool,
     ) -> List[Any]:
         tex = self._get_tex()
+        # The plugin and native extension expose distinct DType enum classes.
+        # Normalize the quantizer just as quantize() does before native dispatch.
+        try:
+            if quantizer is not None and hasattr(quantizer, "dtype") and hasattr(tex, "DType"):
+                qdtype = quantizer.dtype
+                if qdtype is not None:
+                    quantizer.dtype = tex.DType(int(qdtype))
+        except (AttributeError, TypeError, ValueError):
+            pass
         otype = tex.DType(int(otype)) if otype is not None else None
         return tex.rmsnorm_fwd(
             input, weight, eps, ln_out, quantizer, otype, sm_margin, zero_centered_gamma
