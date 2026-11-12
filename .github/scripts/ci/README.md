@@ -315,11 +315,12 @@ coverage collection, artifacts and required coverage checks remain enabled.
 Plugin tests are not quarantined in test code or launcher scripts. A failure
 caused by this repository stays a failure until it is fixed. A defect owned by
 an external toolchain or image (for example FlagTree or FlagGems) may be listed
-in the platform config as `ignored_test_targets: {<file or node>: <reason>}`;
-each reason names the owner and the restore condition. The planner merges these
-targets into the execution's ignore list, records them under
-`ignored_test_target_reasons` and in the platform's `ignored_test_targets`, and
-lists them in the plan summary. They never count as passing evidence; remove an
-entry as soon as its restore condition holds. The shared
+in the platform config under `ignored_tests`, using the same convention as
+Megatron-LM-FL: a list of `path` or `path::node` entries (coarse or fine), with
+a YAML comment above each group giving the reason, owner and restore condition.
+The planner merges these entries into each execution's ignored targets, lists
+them on the plan's platform entry (`ignored_tests`) and in the plan summary's
+coverage gaps. They never count as passing evidence; remove an entry as soon as
+its restore condition holds. The shared
 workflow passes its platform identity explicitly; the MetaX standalone
 environment sets the same identity.

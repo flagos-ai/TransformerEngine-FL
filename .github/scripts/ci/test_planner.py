@@ -608,7 +608,7 @@ class PlannerTests(unittest.TestCase):
             {entry["group"] for entry in hygon["ignored_test_groups"]},
         )
 
-    def test_explicit_platform_target_ignores_reach_the_plan_with_reasons(self):
+    def test_platform_ignored_tests_reach_the_plan(self):
         plan = self.run_planner("nightly")
         by_platform = {
             g["platform"]: g for g in plan["execution_groups"] if g["group"] == "pytorch_unit"
@@ -619,21 +619,19 @@ class PlannerTests(unittest.TestCase):
         )
         for platform in ("ppu", "hygon", "iluvatar"):
             with self.subTest(platform=platform):
-                execution = by_platform[platform]["exec"]
-                self.assertIn(compiled, execution["ignored_test_targets"])
-                self.assertIn("FlagTree", execution["ignored_test_target_reasons"][compiled])
+                self.assertIn(compiled, by_platform[platform]["exec"]["ignored_test_targets"])
         self.assertIn(
             "tests/plugin/backend/flagos/test_optimizer_numerical.py",
             by_platform["ppu"]["exec"]["ignored_test_targets"],
         )
-        self.assertNotIn("ignored_test_target_reasons", by_platform["cuda"]["exec"])
-        enflame = next(p for p in plan["platforms"] if p["name"] == "enflame")
-        self.assertTrue(enflame["ignored_test_targets"])
-        self.assertTrue(all(entry["reason"].strip() for entry in enflame["ignored_test_targets"]))
-        for bad in ({"tests/plugin/x.py": " "}, {"tests/../x.py": "reason"}, ["tests/x.py"]):
+        self.assertNotIn(compiled, by_platform["cuda"]["exec"]["ignored_test_targets"])
+        platforms = {p["name"]: p for p in plan["platforms"]}
+        self.assertEqual(platforms["cuda"]["ignored_tests"], [])
+        self.assertEqual(len(platforms["enflame"]["ignored_tests"]), 4)
+        for bad in (["tests/plugin/x.py", " "], ["tests/../x.py"], {"tests/x.py": "reason"}):
             with self.subTest(config=bad):
                 with self.assertRaises(ValueError):
-                    planner.platform_ignored_test_targets({"ignored_test_targets": bad})
+                    planner.platform_ignored_tests({"ignored_tests": bad})
 
     def test_cross_group_ignored_target_overlaps_and_npu_ignore_are_recorded(self):
         plan = self.run_planner("nightly")

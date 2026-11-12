@@ -85,8 +85,11 @@ ignored_test_groups:
   optimizer: Hygon unit QA does not run fused optimizer, multi-tensor or reference optimizer targets.
   vendor_backend: Hygon unit QA has no vendor backend or FlagOS backend targets; plugin manager tests only validate dispatch infrastructure.
 
-# Explicit test-node/file ignores for toolchain or image defects owned outside this
-# repository. Each entry is recorded in the plan and never counts as a pass.
-ignored_test_targets:
-  tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_dispatch_entry_does_not_shrink_the_compiled_graph: >-
-    FlagTree runs autotuned zero_pad_kernel with a config TE never declares (BLOCK_N=32), so torch.compile's generated grid returns None (TypeError len(None) in FlagTree jit.py). Owner FlagTree/FlagTune; restore when compiled tracing passes.
+# These tests will be skipped when running pytest (file or file::node).
+# Only defects owned outside this repository belong here; give the reason,
+# owner and restore condition in a comment above each group.
+ignored_tests:
+  # FlagTree/FlagTune: torch.compile's generated grid returns None because FlagTree
+  # launches zero_pad_kernel with BLOCK_N=32, a config TE never declares.
+  # Restore when compiled tracing passes.
+  - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_dispatch_entry_does_not_shrink_the_compiled_graph
