@@ -959,6 +959,46 @@ class PytestSelectionTests(unittest.TestCase):
                     else:
                         self.assertNotIn("[SKIP] test_probe.py", result.stdout)
 
+    def test_isolated_file_crash_fails_without_skipping_remaining_files(self):
+        runner = ROOT / "tests/test_utils/run_ci_test_group.py"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "test_a_crash.py").write_text("import os\ndef test_crash(): os.abort()\n")
+            (root / "test_b_pass.py").write_text("def test_pass(): pass\n")
+            env = {
+                key: value
+                for key, value in os.environ.items()
+                if not key.startswith("TE_CI_")
+                and key not in ("TE_TEST_GROUP_PRESET", "PYTEST_PLUGINS", "PYTEST_ADDOPTS")
+            }
+            env.update(
+                GITHUB_WORKSPACE=str(root),
+                PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
+                TE_TEST_GROUP_JSON=json.dumps(
+                    {
+                        "name": "probe",
+                        "runner": "pytest",
+                        "max_retries": 0,
+                        "steps": [
+                            {
+                                "name": "plugin",
+                                "targets": ["test_a_crash.py", "test_b_pass.py"],
+                                "isolate_files": True,
+                                "use_platform_runner": False,
+                            }
+                        ],
+                    }
+                ),
+            )
+            result = subprocess.run(
+                [sys.executable, str(runner)], env=env, capture_output=True, text=True
+            )
+            output = result.stdout + result.stderr
+            # The crash fails the group but the next file still runs and passes.
+            self.assertEqual(result.returncode, 1, output)
+            self.assertIn("[CRASH] test_a_crash.py: SIGABRT", result.stdout)
+            self.assertIn("[DONE] test_b_pass.py: exit=0", result.stdout)
+
     def test_script_runner_passes_selection_to_child_pytest(self):
         spec = importlib.util.spec_from_file_location(
             "ci_selection_runner", ROOT / "tests/test_utils/run_ci_test_group.py"

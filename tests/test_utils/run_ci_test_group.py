@@ -14,12 +14,20 @@ import fnmatch
 import os
 from pathlib import Path
 import shlex
+import signal
 import subprocess
 import sys
 import time
 from typing import Any
 import xml.etree.ElementTree as ET
 
+
+# A test process that dies from one of these crashed by itself; other files of an
+# isolated step still run. Any other signal (SIGINT/SIGTERM/SIGKILL from job
+# cancellation, timeouts or OOM) stops the group as before.
+_CRASH_SIGNALS = frozenset(
+    {signal.SIGSEGV, signal.SIGABRT, signal.SIGBUS, signal.SIGFPE, signal.SIGILL}
+)
 
 REPO_ROOT = Path(
     os.environ.get("GITHUB_WORKSPACE")
@@ -274,6 +282,15 @@ def _run_pytest(group: dict[str, Any]) -> int:
                 print(f"[SKIP] {relative}: all reported cases skipped", flush=True)
                 continue
             if result.returncode < 0 or result.returncode >= 128:
+                signum = -result.returncode if result.returncode < 0 else result.returncode - 128
+                if step.get("isolate_files") and signum in _CRASH_SIGNALS:
+                    print(
+                        f"[CRASH] {relative}: {signal.Signals(signum).name}; "
+                        "continuing with the remaining files",
+                        flush=True,
+                    )
+                    failed = True
+                    continue
                 return result.returncode
             failed = failed or result.returncode != 0
 
