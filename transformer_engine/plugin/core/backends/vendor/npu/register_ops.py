@@ -181,22 +181,18 @@ def register_builtins(registry) -> None:
 # Dispatch selects per operator, so this list grows one entry at a time;
 # anything left out stays on te.native.
 #
-# Empty on purpose. TE's own Triton kernels do run on Ascend -- slower than a
-# native kernel, but correct -- so every API here resolves to te.native until
-# a faster Ascend implementation exists. Uncomment an entry once
-# triton_permutation.py actually implements it; a listed-but-unimplemented API
-# raises NotImplementedError on NPU.
+# Register only APIs implemented by the NPU backend.
 #
 # One caveat when editing: entries are independent only while they stay
 # equivalent to native. An implementation that encodes row_id_map its own way
 # has to cover the APIs on both ends of that map (see triton_permutation.py).
 _TRITON_PERMUTATION_APIS = (
-    # "make_row_id_map",
-    # "permute_with_mask_map",
-    # "unpermute_with_mask_map",
+    "make_row_id_map",
+    "permute_with_mask_map",
+    "unpermute_with_mask_map",
     # "unpermute_with_mask_map_bwd_with_merging_probs",
-    # "make_chunk_sort_map",
-    # "sort_chunks_by_map",
+    "make_chunk_sort_map",
+    "sort_chunks_by_map",
 )
 
 
