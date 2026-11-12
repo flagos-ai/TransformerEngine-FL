@@ -5,7 +5,8 @@ hardware_name: enflame
 display_name: 'Enflame GCU'
 checkout_submodules: 'false'
 
-ci_image: harbor.baai.ac.cn/flagos-dev/transformer-engine-fl:v2.17.0-enflame-ci
+# v2.17.0-enflame-ci-gems5.0.2-20261112; verified on two GCU devices.
+ci_image: harbor.baai.ac.cn/flagos-dev/transformer-engine-fl@sha256:b4d2ee9d5aa92ac9fc0f96498cb95b791beec68cef0040b8083cd3f95b7974d0
 
 runner_labels:
   - sy-8g-cicd-te
