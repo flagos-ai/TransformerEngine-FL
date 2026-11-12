@@ -37,7 +37,9 @@
 
 分类是镜像层归属，不代表用途互斥。例如 tensorboard 放在 dev 层供研发观测，MCore CI 也会用到；astroid、pyproject_hooks 是研发工具传递依赖，但配方中显式安装并固定版本。Black 已在基础镜像中，不计新增；GCC/G++、Git、CMake、Ninja、pybind11、ONNX Runtime、transformers 等亦为继承。
 
-## 验证结果与限制
+## 镜像构建期间验证与限制
+
+下表是构建期间的逐项审计，其中 MCore 使用缩小参数。成品镜像后续按 L2 计划进行的 CI 复跑、默认参数 MCore、重试统计及 Actions runner 排队状态见 [2026-11-12 CI 实测报告](enflame-ci-validation-20261112.md)，不要混用两次执行的统计口径。
 
 | 项目 | 结果 |
 | --- | --- |
