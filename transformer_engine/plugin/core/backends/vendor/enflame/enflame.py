@@ -16,6 +16,7 @@ import torch
 
 
 from ....ops import *
+from ...reference.impl.optimizer import multi_tensor_compute_scale_and_scale_inv_torch
 from ..compat import vendor_te_compat
 
 
@@ -1842,8 +1843,15 @@ class EnflameBackend(TEFLBackendBase):
         force_pow_2_scales: bool,
         epsilon: float,
     ) -> None:
-        tex = self._get_tex()
-        return tex.multi_tensor_compute_scale_and_scale_inv(
+        """Compute per-tensor FP8 scale and scale_inv with TEX CUDA semantics.
+
+        The Enflame TE 2.9 extension binds this name to a single-tensor kernel
+        ``(amax, scale, float, float, float, Tensor, Tensor)``, not the v2.17
+        multi-tensor ABI, so it cannot be called with tensor lists. These are a
+        few scalar ops per tensor, so the device-agnostic reference keeps GCU in
+        contract.
+        """
+        multi_tensor_compute_scale_and_scale_inv_torch(
             chunk_size, noop_flag, tensor_lists, max_fp8, force_pow_2_scales, epsilon
         )
 
