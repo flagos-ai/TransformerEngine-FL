@@ -51,7 +51,7 @@ def _load_group() -> dict[str, Any]:
                     # CI records the same exclusion in the platform plan. This
                     # fallback also keeps standalone QA off Ascend-only tests.
                     "ignore": (
-                        ["tests/plugin/accuracy/test_compute_scale.py"]
+                        []
                         if os.environ.get("PLATFORM") in ("ascend", "npu")
                         else ["tests/plugin/backend/npu/"]
                     ),

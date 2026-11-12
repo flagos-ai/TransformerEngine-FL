@@ -843,7 +843,7 @@ class PytestSelectionTests(unittest.TestCase):
             )
             for platform, expected in (
                 ("cuda", [targets[0], targets[1], targets[3]]),
-                ("ascend", targets[:3]),
+                ("ascend", targets),
             ):
                 env["PLATFORM"] = platform
                 result = subprocess.run(

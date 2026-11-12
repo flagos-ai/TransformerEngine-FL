@@ -300,9 +300,9 @@ is unchanged. Review the logged node IDs after upstream parameter changes.
 ### Plugin discovery compatibility
 
 The plugin-unit preset forces `TE_FL_PREFER=vendor` for NPU backend files before
-imports. Ascend excludes `tests/plugin/accuracy/test_compute_scale.py` until NPU
-CUDA-semantic scale parity is wired; the execution plan records the same exact
-file exclusion. Other platforms retain this accuracy test.
+imports. Every platform, including Ascend, runs
+`tests/plugin/accuracy/test_compute_scale.py`; the NPU backend follows the TEX
+CUDA scale semantics that test asserts.
 
 Isolated pytest exit code 5 is accepted only when the newly generated JUnit
 report contains skipped cases exclusively, with no failures or errors. Empty

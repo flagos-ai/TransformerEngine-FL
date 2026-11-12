@@ -16,6 +16,7 @@ import os
 import torch
 
 from ....ops import TEFLBackendBase, NVTE_Fused_Attn_Backend, DType
+from ...reference.impl.optimizer import multi_tensor_compute_scale_and_scale_inv_torch
 from .flash_attention import NPUFlashAttention
 
 
@@ -548,12 +549,14 @@ class NPUBackend(TEFLBackendBase):
         force_pow_2_scales: bool,
         epsilon: float,
     ):
-        """Compute per-tensor FP8 scale and scale_inv."""
-        if _noop_requested(noop_flag):
-            return
+        """Compute per-tensor FP8 scale and scale_inv with TEX CUDA semantics.
 
-        opt = _get_tenpu_optimizers()
-        opt.multi_tensor_compute_scale_and_scale_inv(
+        TENPU's kernel returns early on ``noop_flag`` and maps non-finite or
+        tiny amax values differently from the CUDA kernel, which ignores
+        ``noop_flag`` and falls back to scale 1.0. These are a few scalar ops
+        per tensor, so the device-agnostic reference keeps NPU in contract.
+        """
+        multi_tensor_compute_scale_and_scale_inv_torch(
             chunk_size, noop_flag, tensor_lists, max_fp8, force_pow_2_scales, epsilon
         )
 
