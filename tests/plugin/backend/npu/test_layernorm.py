@@ -69,7 +69,13 @@ def _tenpu_backward(grad, x, weight, mean, rsigma, zero_centered_gamma):
 
 @unittest.skipUnless(_NPU_AVAILABLE, "Ascend NPU is required")
 class TestLayerNormTENPUParity(unittest.TestCase):
-    """Require exact parity with TENPU's forward and manual backward."""
+    """TENPU parity under TE's LayerNorm ABI.
+
+    The normalized output and the gradients must equal TENPU's computation
+    exactly. Statistics follow TE's ABI instead of TENPU's internals: they are
+    always FP32 (pytorch/csrc/extensions/normalization.cpp allocates mu and
+    rsigma as at::kFloat), while TENPU keeps them in the input dtype.
+    """
 
     @classmethod
     def setUpClass(cls):
@@ -137,8 +143,19 @@ class TestLayerNormTENPUParity(unittest.TestCase):
                     zero_centered_gamma,
                 )
                 tenpu = _tenpu_forward(x, weight, bias, eps, zero_centered_gamma)
-                for actual, expected in zip(tefl, tenpu):
-                    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+                torch.testing.assert_close(tefl[0], tenpu[0], rtol=0, atol=0)
+                # FP32 statistics per TE's ABI; the reference recomputes them
+                # in FP32, so default FP32 tolerances cover reduction order.
+                _, ref_mean, ref_rsigma = _tenpu_forward(
+                    x.float(),
+                    weight.float(),
+                    None if bias is None else bias.float(),
+                    eps,
+                    zero_centered_gamma,
+                )
+                for actual, expected in ((tefl[1], ref_mean), (tefl[2], ref_rsigma)):
+                    self.assertEqual(actual.dtype, torch.float32)
+                    torch.testing.assert_close(actual, expected)
 
                 grad = torch.randn(
                     tuple(tefl[0].shape), generator=generator, dtype=torch.float32
@@ -152,8 +169,15 @@ class TestLayerNormTENPUParity(unittest.TestCase):
                     0,
                     zero_centered_gamma,
                 )
-                tenpu_grad = _tenpu_backward(
-                    grad, x, weight, tenpu[1], tenpu[2], zero_centered_gamma
+                # TENPU's gradient composition on the same FP32 statistics,
+                # returned in TE's ABI dtypes (dx: input, dgamma/dbeta: weight).
+                tenpu_dx, tenpu_dgamma, tenpu_dbeta = _tenpu_backward(
+                    grad, x, weight, tefl[1], tefl[2], zero_centered_gamma
+                )
+                tenpu_grad = (
+                    tenpu_dx.to(x.dtype),
+                    tenpu_dgamma.to(weight.dtype),
+                    tenpu_dbeta.to(weight.dtype),
                 )
                 for actual, expected in zip(tefl_grad, tenpu_grad):
                     torch.testing.assert_close(actual, expected, rtol=0, atol=0)
