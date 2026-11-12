@@ -12,6 +12,7 @@ import argparse
 import copy
 import hashlib
 import importlib.util
+import io
 import json
 import os
 import subprocess
@@ -1205,7 +1206,9 @@ class GroupReportEvidenceTests(unittest.TestCase):
             '<testsuite tests="1"/>',
             '<testsuite tests="-1"/>',
             '<testsuite tests="oops"/>',
-            '<testsuite tests="2"><testcase/></testsuite>',
+            '<testsuite tests="0"><testcase/></testsuite>',
+            '<testsuite tests="1" failures="1"><testcase/></testsuite>',
+            '<testsuite tests="2" skipped="1"><testcase/><testcase/></testsuite>',
             "<testsuite><testcase><skipped/><error/></testcase></testsuite>",
             "<unknown><testcase/></unknown>",
             "<testsuite>",
@@ -1225,6 +1228,28 @@ class GroupReportEvidenceTests(unittest.TestCase):
             self.parse("<testsuite><testcase><skipped/></testcase></testsuite>"),
             ("skipped", "all_skipped"),
         )
+
+    def test_pytest_subtests_counted_in_summary_are_accepted(self):
+        # pytest>=9 writes unittest subTest/subtests reports into the parent
+        # testcase element but counts each one in the suite summary: this is
+        # tests/plugin/backend/metax/test_overlap_compatibility.py on pytest 9.2
+        # ("10 passed, 8 subtests passed" -> tests="18", 10 testcases).
+        passed = '<testsuite tests="3" failures="0"><testcase/></testsuite>'
+        self.assertEqual(self.parse(passed), ("passed", None))
+        failed = (
+            '<testsuite tests="3" failures="2">'
+            "<testcase><failure/><failure/></testcase></testsuite>"
+        )
+        self.assertEqual(self.parse(failed), ("test_failed", "test_execution"))
+
+    def test_unusable_report_names_the_file_and_reason(self):
+        with patch("sys.stderr", new_callable=io.StringIO) as stderr:
+            self.assertEqual(
+                self.parse('<testsuite tests="0"><testcase/></testsuite>'),
+                ("report_error", "junit_parsing"),
+            )
+        self.assertIn("report.xml", stderr.getvalue())
+        self.assertIn("Inconsistent JUnit tests: summary 0, actual 1", stderr.getvalue())
 
     def test_nested_namespaced_suites_are_counted_once(self):
         xml = """<testsuites xmlns="urn:junit" tests="2" skipped="1">
