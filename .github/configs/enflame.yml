@@ -84,9 +84,7 @@ paths_watch:
 
 # Missing test-group coverage is explicit; these entries do not claim hardware incapability.
 ignored_test_groups:
-  normalization: Enflame unit QA has no normalization, sanity or numerics target; existing HF integration is not a dedicated normalization check.
   quantization: Enflame unit QA does not run recipe, quantized-tensor, FP8 or NVFP4 targets.
-  vendor_backend: Enflame unit QA has no vendor or FlagOS backend target; reference GEMM coverage is recorded under gemm.
 
 # These tests will be skipped when running pytest (file or file::node).
 # Only defects owned outside this repository belong here; give the reason,
