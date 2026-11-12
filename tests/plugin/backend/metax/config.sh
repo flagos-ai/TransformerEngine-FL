@@ -27,5 +27,4 @@ readonly PLATFORM_COVERAGE_ENABLED=true
 # reads this array for both the outer runner and fresh dispatch subprocesses.
 readonly PLUGIN_IGNORE_TEST_NODES=(
     'plugin/triton_dispatch_numerics_cases.py::test_cross_entropy_forward_and_backward_match_native_exactly|cross_entropy num_warps=32 exceeds the MACA compiler limit; restore after launch adaptation'
-    'plugin/triton_dispatch_numerics_cases.py::test_mhc_apis_match_native_exactly|mHC keyword arguments are incompatible with the current Autotuner reset_to_zero hook; restore after adaptation'
 )
