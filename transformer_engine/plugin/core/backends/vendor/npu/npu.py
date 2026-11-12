@@ -235,7 +235,11 @@ class NPUBackend(TEFLBackendBase):
         dgamma = (dz * x_hat).sum(dim=reduce_dims)
         dbeta = dz.sum(dim=reduce_dims)
 
-        # Transformer Engine returns parameter gradients in the parameter dtype.
+        # TE's ABI returns dx in the input dtype and parameter gradients in the
+        # parameter dtype; FP32 statistics (as layernorm_fwd returns, matching
+        # pytorch/csrc/extensions/normalization.cpp) promote half inputs above.
+        if dx.dtype != x.dtype:
+            dx = dx.to(x.dtype)
         if dgamma.dtype != gamma.dtype:
             dgamma = dgamma.to(gamma.dtype)
         if dbeta.dtype != gamma.dtype:
