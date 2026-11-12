@@ -1,0 +1,4 @@
+interface:
+  display_name: "TE Build and Submodule Integrator"
+  short_description: "Audit build packaging and submodule upgrades"
+  default_prompt: "Use $te-integrate-build-submodules to audit TransformerEngine-FL build, wheel, and submodule integration."
