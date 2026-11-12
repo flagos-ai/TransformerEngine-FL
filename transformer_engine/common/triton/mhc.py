@@ -425,15 +425,15 @@ def _mhc_scale_bwd_fused(
 
     grad_a = tl.sum(h * grad_h / rms[:, None], axis=0).to(a.dtype)
     # Write grad_a[0:4].sum to grad_a_ptr[0], grad_a[4:8].sum to grad_a_ptr[1], and grad_a[8:24].sum to grad_a_ptr[2]
-    tl.atomic_add(grad_a_ptr, tl.where(cols[None, :] < n, grad_a, 0.0).sum(), sem="relaxed")
+    tl.atomic_add(grad_a_ptr, tl.sum(tl.where(cols[None, :] < n, grad_a, 0.0)), sem="relaxed")
     tl.atomic_add(
         grad_a_ptr + stride_grad_a,
-        tl.where((cols[None, :] >= n) & (cols[None, :] < 2 * n), grad_a, 0.0).sum(),
+        tl.sum(tl.where((cols[None, :] >= n) & (cols[None, :] < 2 * n), grad_a, 0.0)),
         sem="relaxed",
     )
     tl.atomic_add(
         grad_a_ptr + 2 * stride_grad_a,
-        tl.where((cols[None, :] >= 2 * n) & (cols[None, :] < 2 * n + n * n), grad_a, 0.0).sum(),
+        tl.sum(tl.where((cols[None, :] >= 2 * n) & (cols[None, :] < 2 * n + n * n), grad_a, 0.0)),
         sem="relaxed",
     )
 

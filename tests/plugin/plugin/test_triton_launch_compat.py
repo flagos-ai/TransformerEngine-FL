@@ -109,3 +109,23 @@ def test_kernels_call_assume_through_the_compat_alias(repository_root):
             ):
                 offenders.append(f"{path.name}:{node.lineno}")
     assert not offenders, f"direct tl.assume calls: {offenders}"
+
+
+def test_reductions_use_tl_functions_not_tensor_methods(repository_root):
+    """``tl.where(...).sum()`` fails to compile on Triton 3.2/3.3.
+
+    Triton 3.2 (CoreX) and 3.3.1 (CUDA CI image) raise ``Cannot call
+    @triton.jit'd outside of the scope of a kernel`` for a reduction called as
+    a method on an expression; ``tl.sum(expr)`` is the same reduction.
+    """
+    offenders = []
+    for path in sorted((repository_root / KERNEL_DIR).glob("*.py")):
+        for node in ast.walk(ast.parse(path.read_text())):
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and node.func.attr in ("sum", "max", "min")
+                and isinstance(node.func.value, ast.Call)
+            ):
+                offenders.append(f"{path.name}:{node.lineno}")
+    assert not offenders, f"method-form reductions on expressions: {offenders}"
