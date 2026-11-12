@@ -13,7 +13,7 @@ from transformer_engine import te_device_type
 from transformer_engine.pytorch.utils import (
     get_device_compute_capability,
 )
-from transformer_engine.pytorch.utils import nvtx_range_push, nvtx_range_pop
+from transformer_engine.pytorch.utils import nvtx_range_push, nvtx_range_pop, get_nvtx_range_context
 
 from transformer_engine.pytorch.quantized_tensor import (
     prepare_for_saving,
@@ -71,24 +71,49 @@ class AttnFuncFL(torch.autograd.Function):
 
         max_logit = None
 
-        is_causal = attn_mask_type == "causal"
+        is_causal = "causal" in attn_mask_type
+        ctx.qkv_format, _, _ = dpa_utils.get_qkv_format(qkv_layout)
+        ctx.to_kernel, ctx.from_kernel = {
+            "sbhd": ((1, 2, 0, 3), (2, 0, 1, 3)),
+            "bshd": ((0, 2, 1, 3), (0, 2, 1, 3)),
+            "thd": ((0, 1, 2), (0, 1, 2)),
+        }[ctx.qkv_format]
 
-        q_permuted = q.permute(1, 2, 0, 3).contiguous()
-        k_permuted = k.permute(1, 2, 0, 3).contiguous()
-        v_permuted = v.permute(1, 2, 0, 3).contiguous()
+        q_permuted = q.permute(ctx.to_kernel).contiguous()
+        k_permuted = k.permute(ctx.to_kernel).contiguous()
+        v_permuted = v.permute(ctx.to_kernel).contiguous()
 
-        (out_permuted, m) = flag_gems.scaled_dot_product_attention_forward(
-            q_permuted,
-            k_permuted,
-            v_permuted,
-            attn_mask=None,
-            dropout_p=dropout_p,
-            is_causal=is_causal,
-            scale=attn_scale,
-            enable_gqa=True,
-        )
+        if ctx.qkv_format == "thd":
+            cu_seqlens_q = cu_seqlens_q.contiguous()
+            cu_seqlens_kv = cu_seqlens_kv.contiguous()
+            # TODO: FlagGems varlen on Ascend has known compilation/numerical issues;
+            # Qwen3-VL D=72 currently hits UB overflow and needs an upstream fix.
+            out_permuted, m = flag_gems.flash_attn_varlen_func(
+                q_permuted,
+                k_permuted,
+                v_permuted,
+                cu_seqlens_q=cu_seqlens_q,
+                cu_seqlens_k=cu_seqlens_kv,
+                max_seqlen_q=max_seqlen_q,
+                max_seqlen_k=max_seqlen_kv,
+                dropout_p=dropout_p,
+                softmax_scale=attn_scale,
+                causal=is_causal,
+                return_softmax_lse=True,
+            )
+        else:
+            (out_permuted, m) = flag_gems.scaled_dot_product_attention_forward(
+                q_permuted,
+                k_permuted,
+                v_permuted,
+                attn_mask=None,
+                dropout_p=dropout_p,
+                is_causal=is_causal,
+                scale=attn_scale,
+                enable_gqa=True,
+            )
         # Must be contiguous for .view() in FlashAttentionFL.forward
-        out = out_permuted.permute(2, 0, 1, 3).contiguous()
+        out = out_permuted.permute(ctx.from_kernel).contiguous()
 
         aux_ctx_tensors = [out_permuted, m]
         out_ret = out
@@ -155,7 +180,7 @@ class AttnFuncFL(torch.autograd.Function):
         out_permuted, m = aux_ctx_tensors
         rest = [None]
 
-        with torch.cuda.nvtx.range("AttnFuncFL.backward"):
+        with get_nvtx_range_context("AttnFuncFL.backward"):
             dqkv_nominal_dtype = ctx.nominal_dtype
 
             dqkv_te_dtype = TE_DType[d_out.dtype]
@@ -168,26 +193,46 @@ class AttnFuncFL(torch.autograd.Function):
             )
             m = m.contiguous() if not m.is_contiguous() else m
 
-            # d_out is (seq, batch, heads, dim) from autograd, permute to (batch, heads, seq, dim)
-            d_out_permuted = d_out.permute(1, 2, 0, 3).contiguous()
-
-            dq_permuted, dk_permuted, dv_permuted = flag_gems.scaled_dot_product_attention_backward(
-                d_out_permuted,
-                q_permuted,
-                k_permuted,
-                v_permuted,
-                out_permuted,
-                m,
-                attn_mask=None,
-                dropout_p=ctx.dropout_p,
-                is_causal=ctx.is_causal,
-                scale=ctx.attn_scale,
-                enable_gqa=True,
-            )
-
-            dq = dq_permuted.permute(2, 0, 1, 3)
-            dk = dk_permuted.permute(2, 0, 1, 3)
-            dv = dv_permuted.permute(2, 0, 1, 3)
+            d_out_permuted = d_out.permute(ctx.to_kernel).contiguous()
+            if ctx.qkv_format == "thd":
+                # Varlen LSE uses natural log, but forward returns [H,T], backward [T,H].
+                m = m.transpose(0, 1).contiguous()
+                dq_permuted, dk_permuted, dv_permuted = flag_gems.flash_attention_backward(
+                    d_out_permuted,
+                    q_permuted,
+                    k_permuted,
+                    v_permuted,
+                    out_permuted,
+                    m,
+                    cu_seqlens_q,
+                    cu_seqlens_kv,
+                    ctx.max_seqlen_q,
+                    ctx.max_seqlen_kv,
+                    0.0,
+                    ctx.is_causal,
+                    None,
+                    None,
+                    scale=ctx.attn_scale,
+                )
+            else:
+                dq_permuted, dk_permuted, dv_permuted = (
+                    flag_gems.scaled_dot_product_attention_backward(
+                        d_out_permuted,
+                        q_permuted,
+                        k_permuted,
+                        v_permuted,
+                        out_permuted,
+                        m,
+                        attn_mask=None,
+                        dropout_p=ctx.dropout_p,
+                        is_causal=ctx.is_causal,
+                        scale=ctx.attn_scale,
+                        enable_gqa=True,
+                    )
+                )
+            dq = dq_permuted.permute(ctx.from_kernel)
+            dk = dk_permuted.permute(ctx.from_kernel)
+            dv = dv_permuted.permute(ctx.from_kernel)
 
             rest = None
 
@@ -305,6 +350,20 @@ class FlashAttentionFL(FlashAttentionBase):
 
         qkv_format, q_format, kv_format = dpa_utils.get_qkv_format(qkv_layout, inference_params)
 
+        if self.training and self.attention_dropout != 0.0:
+            raise NotImplementedError("FLAttention only supports attention_dropout=0")
+        if attn_mask_type not in ("no_mask", "causal", "padding", "padding_causal"):
+            raise NotImplementedError(f"FLAttention does not support {attn_mask_type=}")
+        if qkv_format != "thd" and "padding" in attn_mask_type:
+            raise NotImplementedError("FLAttention requires THD inputs for padding masks")
+        if alibi_slopes is not None or inference_params is not None:
+            raise NotImplementedError("FLAttention does not support ALiBi or KV caching")
+        if window_size is not None and tuple(window_size) not in (
+            (-1, -1),
+            (-1, 0) if "causal" in attn_mask_type else (-1, -1),
+        ):
+            raise NotImplementedError("FLAttention does not support sliding window attention")
+
         if q_format in ["bshd", "sbhd"] or kv_format in ["bshd", "sbhd"]:
             batch_size = query_layer.shape[0] if q_format == "bshd" else query_layer.shape[1]
             if cu_seqlens_q is not None:
@@ -360,6 +419,15 @@ class FlashAttentionFL(FlashAttentionBase):
                     and cu_seqlens_q is not None
                     and cu_seqlens_kv is not None
                 ), "max_seqlen_q/kv and cu_seqlens_q/kv can not be None when qkv_format is thd!"
+                max_seqlen_q, max_seqlen_kv = int(max_seqlen_q), int(max_seqlen_kv)
+                if pad_between_seqs:
+                    raise NotImplementedError(
+                        "FLAttention does not support padding between THD sequences"
+                    )
+                if "causal" in attn_mask_type and not torch.equal(cu_seqlens_q, cu_seqlens_kv):
+                    raise NotImplementedError(
+                        "FLAttention requires matching Q/KV lengths for causal THD"
+                    )
         elif inference_params.is_paged:
             page_table = inference_params.cache_manager.page_table
 
