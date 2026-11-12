@@ -1214,3 +1214,70 @@ class TestNPUGroupedGEMMAccuracy:
         assert torch.allclose(
             npu_D0, ref_D0, atol=1e-2, rtol=1e-2
         ), f"accumulate grouped gemm: max_diff={max_diff:.6e}"
+
+
+@requires_npu
+class TestNPUGEMMActivationDimensions:
+    """Linear GEMMs flatten sample axes; they do not perform batched matmul."""
+
+    @pytest.mark.parametrize("shape", [(8, 32), (2, 4, 32), (2, 2, 2, 32)])
+    @pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+    @pytest.mark.parametrize("noncontiguous", [False, True])
+    @pytest.mark.parametrize("flat_dy", [False, True])
+    @pytest.mark.parametrize("destination", ["allocate", "overwrite", "accumulate"])
+    def test_linear_gemms(self, npu_backend, shape, dtype, noncontiguous, flat_dy, destination):
+        torch.manual_seed(42)
+        x = torch.randn(*shape, dtype=dtype, device="npu")
+        dy = torch.randn(*shape[:-1], 64, dtype=dtype, device="npu")
+        if noncontiguous:
+            x = x.transpose(0, -1).contiguous().transpose(0, -1)
+            dy = dy.transpose(0, -1).contiguous().transpose(0, -1)
+        if flat_dy:
+            dy = dy.reshape(-1, dy.shape[-1])
+        weight = torch.randn(64, shape[-1], dtype=dtype, device="npu")
+        bias = torch.randn(64, dtype=dtype, device="npu")
+        x_ref = x.cpu().float()
+        dy_ref = dy.cpu().float()
+        weight_ref = weight.cpu().float()
+        cases = [
+            (weight, x, True, False, x_ref @ weight_ref.T, False),
+            (weight, dy, False, False, dy_ref @ weight_ref, True),
+            (x, dy, False, True, dy_ref.reshape(-1, 64).T @ x_ref.reshape(-1, shape[-1]), True),
+        ]
+        for a, b, trans_a, trans_b, reference, grad in cases:
+            out = None
+            if destination != "allocate":
+                out = torch.ones(reference.shape, dtype=dtype, device="npu")
+            result, dbias, _, _ = npu_backend.generic_gemm(
+                A=a,
+                transA=trans_a,
+                B=b,
+                transB=trans_b,
+                D=out,
+                quantizer=None,
+                output_dtype=dtype,
+                bias=bias if trans_a or trans_b else None,
+                bias_type=dtype,
+                gelu=False,
+                gelu_in=None,
+                grad=grad,
+                workspace=torch.empty(0, dtype=torch.uint8, device="npu"),
+                workspace_size=0,
+                accumulate=destination == "accumulate",
+                use_split_accumulator=False,
+                alpha=0.5,
+                beta=0.25,
+            )
+            # Match the adapter's output rounding before the epilogue.
+            expected = reference.to(dtype).float() * 0.5
+            if not grad:
+                expected = (expected.to(dtype).float() + bias.cpu().float()).to(dtype).float()
+            if destination == "accumulate":
+                expected += 0.25
+            assert result.shape == reference.shape
+            if out is not None:
+                assert result is out
+            assert_close(result, expected, dtype, msg=f"transA={trans_a}, transB={trans_b}")
+            if trans_b:
+                dbias_ref = dy_ref.reshape(-1, 64).sum(0).to(dtype)
+                assert_close(dbias, dbias_ref, dtype, msg="bias gradient")
