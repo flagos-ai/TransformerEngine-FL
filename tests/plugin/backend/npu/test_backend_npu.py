@@ -769,12 +769,18 @@ class TestNPUComputeScaleAccuracy:
                     log2_val, log2_val.round(), atol=1e-5
                 ), f"scale[{i}] not power of 2: {npu_scale.item()}"
 
-    def test_compute_scale_noop_flag(self, npu_backend):
-        """When noop_flag is non-zero, scales should remain unchanged."""
+    def test_compute_scale_ignores_noop_flag_like_tex(self, npu_backend):
+        """noop_flag does not gate this op, matching the TEX CUDA kernel.
+
+        ComputeScaleAndScaleInvFunctor in common/multi_tensor/compute_scale.cu
+        deliberately leaves its noop check commented out so NaN/Inf amax values
+        still propagate into the scale update; tests/plugin/accuracy/
+        test_compute_scale.py asserts the same contract for every backend.
+        """
         amax = torch.tensor([8.0], device="npu")
         scale = torch.tensor([999.0], device="npu")
         scale_inv = torch.tensor([888.0], device="npu")
-        noop = torch.ones(1, device="npu", dtype=torch.int32)  # non-zero => skip
+        noop = torch.ones(1, device="npu", dtype=torch.int32)
 
         npu_backend.multi_tensor_compute_scale_and_scale_inv(
             65536,
@@ -785,8 +791,9 @@ class TestNPUComputeScaleAccuracy:
             1e-12,
         )
 
-        assert scale.item() == 999.0, f"scale changed to {scale.item()} despite noop"
-        assert scale_inv.item() == 888.0, f"scale_inv changed to {scale_inv.item()} despite noop"
+        expected = torch.tensor([448.0 / 8.0], device="npu")
+        assert torch.equal(scale, expected), f"scale={scale.item()} with noop set"
+        assert torch.equal(scale_inv, expected.reciprocal()), f"scale_inv={scale_inv.item()}"
 
 
 # ===========================================================================

@@ -91,6 +91,47 @@ def test_multi_tensor_adam_matches_formula(mode, bias_correction, weight_decay, 
         assert torch.equal(model_param, master_param.bfloat16())
 
 
+@pytest.mark.parametrize("master_weights", [False, True])
+def test_multi_tensor_adam_chunks_large_tensors_like_one_launch(monkeypatch, master_weights):
+    # Tensors above the launch limit are updated through aligned flat views;
+    # shrink the limit so 128 elements take that path (48 + 48 + 32).
+    from transformer_engine.plugin.core.backends.flagos.impl import fused_adam
+
+    monkeypatch.setattr(fused_adam, "_MAX_ELEMENTWISE_NUMEL", 48)
+    torch.manual_seed(11)
+    device = torch.device(te_device_type())
+    model_param = torch.randn(128, device=device, dtype=torch.bfloat16)
+    master_param = model_param.float().clone()
+    grad = torch.randn(128, device=device, dtype=torch.bfloat16)
+    exp_avg = torch.randn(128, device=device)
+    exp_avg_sq = torch.rand(128, device=device)
+    expected = _expected(
+        master_param.clone(),
+        grad,
+        exp_avg.clone(),
+        exp_avg_sq.clone(),
+        mode=1,
+        bias_correction=1,
+        weight_decay=0.1,
+    )
+    tensor_lists = [
+        [grad],
+        [model_param if master_weights else master_param],
+        [exp_avg],
+        [exp_avg_sq],
+    ]
+    if master_weights:
+        tensor_lists.append([master_param])
+    assert len(list(fused_adam._elementwise_chunks([t[0] for t in tensor_lists]))) == 3
+
+    _run_adam(tensor_lists, torch.zeros(1, device=device, dtype=torch.int), 1, 1, 0.1)
+    torch.testing.assert_close(master_param, expected[0], rtol=2e-5, atol=2e-6)
+    torch.testing.assert_close(exp_avg, expected[1], rtol=2e-5, atol=2e-6)
+    torch.testing.assert_close(exp_avg_sq, expected[2], rtol=2e-5, atol=2e-6)
+    if master_weights:
+        assert torch.equal(model_param, master_param.bfloat16())
+
+
 def test_capturable_adam_matches_formula_with_inv_scale_and_master_writeback():
     device = torch.device(te_device_type())
     for master_weights in (False, True):

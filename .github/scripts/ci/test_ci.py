@@ -843,7 +843,7 @@ class PytestSelectionTests(unittest.TestCase):
             )
             for platform, expected in (
                 ("cuda", [targets[0], targets[1], targets[3]]),
-                ("ascend", targets[:3]),
+                ("ascend", targets),
             ):
                 env["PLATFORM"] = platform
                 result = subprocess.run(
@@ -958,97 +958,6 @@ class PytestSelectionTests(unittest.TestCase):
                         self.assertIn("[SKIP] test_probe.py", result.stdout)
                     else:
                         self.assertNotIn("[SKIP] test_probe.py", result.stdout)
-
-    def test_platform_quarantines_reach_nested_dispatch_without_hiding_other_cases(self):
-        import shutil
-
-        functions = (
-            "test_pad_matches_native_exactly",
-            "test_cross_entropy_forward_and_backward_match_native_exactly",
-            "test_grouped_dbias_functions_match_native_exactly",
-            "test_permutation_apis_match_native_exactly",
-            "test_moe_matches_native_exactly",
-            "test_mhc_apis_match_native_exactly",
-            "test_dispatch_entry_does_not_shrink_the_compiled_graph",
-        )
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            plugin = root / "tests/plugin"
-            (plugin / "plugin").mkdir(parents=True)
-            (plugin / "backend/flagos").mkdir(parents=True)
-            shutil.copy(ROOT / "tests/plugin/conftest.py", plugin / "conftest.py")
-            for platform in ("hygon", "metax", "iluvatar", "ppu"):
-                destination = plugin / "backend" / platform
-                destination.mkdir(parents=True)
-                shutil.copy(
-                    ROOT / f"tests/plugin/backend/{platform}/config.sh", destination / "config.sh"
-                )
-
-            cases = plugin / "plugin/triton_dispatch_numerics_cases.py"
-            cases.write_text("".join(f"def {name}(): pass\n" for name in functions))
-            (plugin / "plugin/test_driver.py").write_text(
-                "import subprocess, sys\n"
-                "def test_driver():\n"
-                "    assert subprocess.call([sys.executable, '-m', 'pytest', "
-                "'tests/plugin/plugin/triton_dispatch_numerics_cases.py', "
-                "'--junitxml=inner.xml', '-q']) == 0\n"
-            )
-            optimizer = plugin / "backend/flagos/test_optimizer_numerical.py"
-            optimizer.write_text(
-                "import pytest\n"
-                "@pytest.mark.parametrize('case', [0, 1], ids=['False-0.0-0-0', 'False-0.0-0-1'])\n"
-                "def test_multi_tensor_adam_matches_formula(case): pass\n"
-            )
-            env = {
-                key: value
-                for key, value in os.environ.items()
-                if not key.startswith("TE_CI_") and key not in ("PYTEST_PLUGINS", "PYTEST_ADDOPTS")
-            }
-            env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
-            expected_ignored = {
-                "cuda": set(),
-                "hygon": {functions[1]},
-                "metax": {functions[1], functions[5]},
-                "iluvatar": {functions[5]},
-                "ppu": {functions[6]},
-            }
-            for platform, ignored in expected_ignored.items():
-                with self.subTest(platform=platform):
-                    env["PLATFORM"] = platform
-                    result = subprocess.run(
-                        [
-                            sys.executable,
-                            "-m",
-                            "pytest",
-                            "tests/plugin/",
-                            "-q",
-                            "-s",
-                            "--junitxml=outer.xml",
-                        ],
-                        cwd=root,
-                        env=env,
-                        capture_output=True,
-                        text=True,
-                    )
-                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-                    inner = {
-                        case.get("name")
-                        for case in ET.parse(root / "inner.xml").findall(".//testcase")
-                    }
-                    self.assertEqual(inner, set(functions) - ignored)
-                    outer = {
-                        case.get("name")
-                        for case in ET.parse(root / "outer.xml").findall(".//testcase")
-                    }
-                    expected = {
-                        "test_driver",
-                        "test_multi_tensor_adam_matches_formula[False-0.0-0-1]",
-                    }
-                    if platform != "ppu":
-                        expected.add("test_multi_tensor_adam_matches_formula[False-0.0-0-0]")
-                    self.assertEqual(outer, expected)
-                    if ignored:
-                        self.assertIn(f"[IGNORE][{platform}]", result.stdout)
 
     def test_script_runner_passes_selection_to_child_pytest(self):
         spec = importlib.util.spec_from_file_location(

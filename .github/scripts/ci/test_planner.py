@@ -621,14 +621,11 @@ class PlannerTests(unittest.TestCase):
             "tests/plugin/backend/npu/",
             by_platform["ascend"]["exec"]["ignored_test_targets"],
         )
-        self.assertIn(
-            "tests/plugin/accuracy/test_compute_scale.py",
-            by_platform["ascend"]["exec"]["ignored_test_targets"],
-        )
-        self.assertNotIn(
-            "tests/plugin/accuracy/test_compute_scale.py",
-            by_platform["cuda"]["exec"]["ignored_test_targets"],
-        )
+        for platform in ("ascend", "cuda"):
+            self.assertNotIn(
+                "tests/plugin/accuracy/test_compute_scale.py",
+                by_platform[platform]["exec"]["ignored_test_targets"],
+            )
         self.assertIn(
             "tests/pytorch/test_float8_blockwise_gemm_exact.py",
             by_platform["cuda"]["exec"]["ignored_group_test_targets"]["gemm"],

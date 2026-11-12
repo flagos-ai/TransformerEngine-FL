@@ -4,7 +4,7 @@ hardware_name: hygon
 display_name: 'Hygon DCU (DTK)'
 checkout_submodules: 'false'
 
-ci_image: harbor.baai.ac.cn/flagos-dev/transformerengine-fl:manual-20260717-hygon-dev
+ci_image: harbor.baai.ac.cn/flagos-dev/transformer-engine-fl:v2.17.0-hygon-ci
 
 runner_labels:
   - hg-8g-cicd-te
