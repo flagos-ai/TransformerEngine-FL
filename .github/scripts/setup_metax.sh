@@ -33,9 +33,23 @@ from importlib import metadata
 
 for package in (
     "torch", "triton", "pytest", "coverage", "pytest-cov", "expecttest",
-    "nvdlfw-inspect", "onnxruntime", "onnxruntime-extensions", "flash-attn", "apex",
+    "nvdlfw-inspect", "onnxruntime", "onnxruntime-extensions", "onnxscript", "onnx-ir",
+    "flash-attn", "apex",
 ):
     print(f"{package}=={metadata.version(package)}")
+# Fail before running tests if a runner reused the previous image tag.
+expected = {
+    "torch": "2.8.0+metax3.7.2.0",
+    "triton": "3.0.0+metax3.7.2.0",
+    "flash-attn": "2.6.3+metax3.7.2.0torch2.8",
+    "apex": "0.1+metax3.7.2.0",
+    "onnxscript": "0.7.2",
+    "onnx-ir": "1.1.0",
+}
+for package, version in expected.items():
+    actual = metadata.version(package)
+    if actual != version:
+        raise RuntimeError(f"Unexpected MetaX image dependency: {package}=={actual}; expected {version}")
 CHECK
 
 echo "===== Install checked-out TE-FL Python/plugin layer ====="

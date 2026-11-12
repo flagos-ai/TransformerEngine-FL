@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # Build from the repository root:
 # docker build -f docker/metax/Dockerfile -t harbor.baai.ac.cn/flagos-dev/transformer-engine-fl:v2.17.0-metax-ci .
-ARG METAX_BASE_IMAGE=harbor.baai.ac.cn/flagos-base/flagos-base-metax-maca3.8.1.3:2.3.0@sha256:5951295dd62343881e123d8e13766a4686fbc275cf510de713bdd8b78b681e6f
+ARG METAX_BASE_IMAGE=harbor.baai.ac.cn/flagos-base/flagos-base-metax-maca3.7.2.1:2.3.0@sha256:e2682f632e4dda707bbb4d8900b9c2d75733f056b701171dce6bd2ea417f4166
 # Optional: reuse a previously validated dependency image by digest.
 # The default still builds every dependency from the MACA base above.
 ARG METAX_RUNTIME_IMAGE=dependencies
@@ -45,20 +45,20 @@ RUN apt-get update \
 # Keep dependency pins in this standalone Dockerfile.
 RUN mkdir -p /opt/te-image \
     && printf '%s\n' \
-        'torch==2.10.0+metax3.8.1.0' \
-        'torchvision==0.25.0+metax3.8.1.0' \
-        'triton==3.6.0+metax3.8.1.0' \
-        'flash-attn==2.6.3+metax3.8.1.0torch2.10' \
-        'apex==0.1+metax3.8.1.0' \
+        'torch==2.8.0+metax3.7.2.0' \
+        'torchvision==0.15.1+metax3.7.2.0' \
+        'triton==3.0.0+metax3.7.2.0' \
+        'flash-attn==2.6.3+metax3.7.2.0torch2.8' \
+        'apex==0.1+metax3.7.2.0' \
         'numpy==1.26.4' \
         'pytest==8.2.1' \
         > /opt/te-image/constraints.txt \
     && printf '%s\n' \
-        'torch @ https://resource.flagos.net/repository/flagos-pypi-metax/packages/torch/2.10.0+metax3.8.1.0/torch-2.10.0+metax3.8.1.0-cp312-cp312-linux_x86_64.whl#sha256=e17cbcc675ea6e82b9a6dc4dcd6f3ae5d75d1ac6d1c428f97f244bb4344d0b54' \
-        'triton @ https://resource.flagos.net/repository/flagos-pypi-metax/packages/triton/3.6.0+metax3.8.1.0/triton-3.6.0+metax3.8.1.0-cp312-cp312-linux_x86_64.whl#sha256=f73dbb1b9bac8de6a17a6afb623329a372b0a2a10b1593ba7b19e0541fab20fe' \
-        'torchvision @ https://resource.flagos.net/repository/flagos-pypi-metax/packages/torchvision/0.25.0+metax3.8.1.0/torchvision-0.25.0+metax3.8.1.0-cp312-cp312-linux_x86_64.whl#sha256=2fb0078a2b4259bc52cd9d17f5e2bdd0f3378a5aea4810d838eccc978e40f2b6' \
-        'flash-attn @ https://resource.flagos.net/repository/flagos-pypi-metax/packages/flash-attn/2.6.3+metax3.8.1.0torch2.10/flash_attn-2.6.3+metax3.8.1.0torch2.10-cp312-cp312-linux_x86_64.whl#sha256=7b12945e844565f7fe933ba2460bd11a23e004812caa6e028ac313b2ef0ee169' \
-        'apex @ https://resource.flagos.net/repository/flagos-pypi-metax/packages/apex/0.1+metax3.8.1.0/apex-0.1+metax3.8.1.0-cp312-cp312-linux_x86_64.whl#sha256=57dfdc64caad6e05e43233d8706f49279bbb43ab411509c0491aa56ebc3bb158' \
+        'torch @ https://resource.flagos.net/repository/flagos-pypi-metax/packages/torch/2.8.0+metax3.7.2.0/torch-2.8.0+metax3.7.2.0-cp312-cp312-linux_x86_64.whl#sha256=8bb172671d6a44c741f671d62f5d0f84c37a884b918af7276c9fbde8638a3d26' \
+        'triton @ https://resource.flagos.net/repository/flagos-pypi-metax/packages/triton/3.0.0+metax3.7.2.0/triton-3.0.0+metax3.7.2.0-cp312-cp312-linux_x86_64.whl#sha256=4ea454ac5df9bcd0ac856207bbfffb3fb0a398f73fb7cfaf4cb21712a3041162' \
+        'torchvision @ https://resource.flagos.net/repository/flagos-pypi-metax/packages/torchvision/0.15.1+metax3.7.2.0/torchvision-0.15.1+metax3.7.2.0-cp312-cp312-linux_x86_64.whl#sha256=40594b08694cbbe3232ee4780f1cce162389f2a8702b559bdc7b00e4b60d4748' \
+        'flash-attn @ https://resource.flagos.net/repository/flagos-pypi-metax/packages/flash-attn/2.6.3+metax3.7.2.0torch2.8/flash_attn-2.6.3+metax3.7.2.0torch2.8-cp312-cp312-linux_x86_64.whl#sha256=99958f6407e53ce1d650050074b288a574213e3c33b07addeadd5bf1603f88b9' \
+        'apex @ https://resource.flagos.net/repository/flagos-pypi-metax/packages/apex/0.1+metax3.7.2.0/apex-0.1+metax3.7.2.0-cp312-cp312-linux_x86_64.whl#sha256=519ec7c50068852714edb3382894f7fb9ffa56c5ff64ca54e310faf0cb47b135' \
         'flag-gems @ https://resource.flagos.net/repository/flagos-pypi-metax/packages/flag-gems/5.4.0/flag_gems-5.4.0-py3-none-any.whl#sha256=09cb175e29f4fdfc78b87df46c4500d5a9b451e12cd64dda9a7d669f522bf5e5' \
         'numpy==1.26.4' \
         'pytest==8.2.1' \
@@ -73,7 +73,6 @@ RUN mkdir -p /opt/te-image \
         'einops==0.8.1' \
         'nvdlfw-inspect==0.2.2' \
         'onnx==1.19.1' \
-        'onnxscript==0.5.6' \
         'onnxruntime==1.23.2' \
         'onnxruntime-extensions==0.14.0' \
         'transformers==4.57.1' \
@@ -91,24 +90,24 @@ RUN python -m pip install --no-cache-dir --index-url "${PYPI_INDEX}" \
 
 # The vendor wheel and TE-FL both own transformer_engine/. Keep the native
 # vendor libraries outside site-packages; the MetaX plugin loads them by path.
-# This vendor wheel targets torch 2.8. On C550 with torch 2.10, vendor GEMM
-# falls back to FlagGems; FP32/BF16 forward and backward were validated.
+# Keep the native extension and the MACA PyTorch wheel on torch 2.8.
 RUN python -m pip install --no-cache-dir --no-deps --target "${TE_METAX_TE_HOME}" "${METAX_TE_WHEEL}" \
     && python -m pip install --no-cache-dir --index-url "${PYPI_INDEX}" "${TE_FL_WHEEL}" \
     && python -m pip check \
     && python -m pip freeze --all > /opt/te-image/requirements.lock \
-    && python -c 'import importlib.metadata as m; from pathlib import Path; assert m.version("torch") == "2.10.0+metax3.8.1.0"; assert m.version("transformer_engine") == "2.17.0+fl.0.3.0"; assert list(Path("/opt/metax-te/transformer_engine").glob("transformer_engine_torch*.so"))'
+    && python -c 'import importlib.metadata as m; from pathlib import Path; assert m.version("torch") == "2.8.0+metax3.7.2.0"; assert m.version("transformer_engine") == "2.17.0+fl.0.3.0"; assert list(Path("/opt/metax-te/transformer_engine").glob("transformer_engine_torch*.so"))'
 
 FROM ${METAX_RUNTIME_IMAGE} AS runtime
 ARG VCS_REF=unknown
 ARG BUILD_DATE=unknown
+ARG PYPI_INDEX=https://pypi.org/simple
 LABEL org.opencontainers.image.revision="${VCS_REF}" \
       org.opencontainers.image.created="${BUILD_DATE}"
 
 # TE-FL attention imports the legacy transformer_engine_metax namespace,
 # while MetaX TE >= 2.13 ships transformer_engine/. Provide the actual vendor
 # Python modules under the legacy namespace without overwriting TE-FL.
-# This fixes package discovery; it does not change the torch 2.8 native ABI.
+# Both the native vendor extension and the runtime use the torch 2.8 ABI.
 RUN python - <<'PY'
 from pathlib import Path
 import re
@@ -183,6 +182,15 @@ FlashAttention = _LegacyFlashAttention
 assert (dest/'pytorch/attention/dot_product_attention/backends.py').is_file()
 print('Installed vendor attention namespace:', dest)
 PY
+
+# ONNX Script 0.5.x rejects local functions retained by newer ONNX IR during
+# opset conversion. Keep this compatible pair pinned even when reusing an
+# earlier dependency image through METAX_RUNTIME_IMAGE.
+RUN python -m pip install --no-cache-dir --index-url "${PYPI_INDEX}" \
+        onnxscript==0.7.2 onnx-ir==1.1.0 \
+    && printf '%s\n' 'onnxscript==0.7.2' 'onnx-ir==1.1.0' >> /opt/te-image/constraints.txt \
+    && python -m pip check \
+    && python -m pip freeze --all > /opt/te-image/requirements.lock
 
 WORKDIR /workspace
 CMD ["bash"]
