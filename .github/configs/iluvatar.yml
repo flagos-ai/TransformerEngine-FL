@@ -6,9 +6,8 @@ hardware_name: iluvatar
 display_name: 'Iluvatar BI-V150 (CoreX 4.5.0)'
 checkout_submodules: 'false'
 # Build with docker build --target ci -f docker/iluvatar/Dockerfile -t <ci_image> .
-# The published -dev tag was built using --target ci; the suffix is a tag name.
 # Preload the resulting image on the runner (pull policy: never).
-ci_image: harbor.baai.ac.cn/flagos-dev/transformerengine-fl:f886262-iluvatar-dev
+ci_image: harbor.baai.ac.cn/flagos-dev/transformer-engine-fl:v2.17.0-iluvatar-ci
 container_pull_policy: never
 runner_labels:
   - ts-8g-cicd-te
