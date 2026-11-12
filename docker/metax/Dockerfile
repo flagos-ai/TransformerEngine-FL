@@ -73,7 +73,6 @@ RUN mkdir -p /opt/te-image \
         'einops==0.8.1' \
         'nvdlfw-inspect==0.2.2' \
         'onnx==1.19.1' \
-        'onnxscript==0.5.6' \
         'onnxruntime==1.23.2' \
         'onnxruntime-extensions==0.14.0' \
         'transformers==4.57.1' \
@@ -101,6 +100,7 @@ RUN python -m pip install --no-cache-dir --no-deps --target "${TE_METAX_TE_HOME}
 FROM ${METAX_RUNTIME_IMAGE} AS runtime
 ARG VCS_REF=unknown
 ARG BUILD_DATE=unknown
+ARG PYPI_INDEX=https://pypi.org/simple
 LABEL org.opencontainers.image.revision="${VCS_REF}" \
       org.opencontainers.image.created="${BUILD_DATE}"
 
@@ -182,6 +182,15 @@ FlashAttention = _LegacyFlashAttention
 assert (dest/'pytorch/attention/dot_product_attention/backends.py').is_file()
 print('Installed vendor attention namespace:', dest)
 PY
+
+# ONNX Script 0.5.x rejects local functions retained by newer ONNX IR during
+# opset conversion. Keep this compatible pair pinned even when reusing an
+# earlier dependency image through METAX_RUNTIME_IMAGE.
+RUN python -m pip install --no-cache-dir --index-url "${PYPI_INDEX}" \
+        onnxscript==0.7.2 onnx-ir==1.1.0 \
+    && printf '%s\n' 'onnxscript==0.7.2' 'onnx-ir==1.1.0' >> /opt/te-image/constraints.txt \
+    && python -m pip check \
+    && python -m pip freeze --all > /opt/te-image/requirements.lock
 
 WORKDIR /workspace
 CMD ["bash"]
