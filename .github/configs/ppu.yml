@@ -82,10 +82,6 @@ ignored_test_groups:
 # Only defects owned outside this repository belong here; give the reason,
 # owner and restore condition in a comment above each group.
 ignored_tests:
-  # FlagGems/FlagTree: in-place ops repeat on first-call tuning
-  # (flag_gems.mul_(ones, 0.9) gives 0.9**N in a fresh process), so whichever
-  # Adam case runs first fails. Restore when that repro is exact.
-  - tests/plugin/backend/flagos/test_optimizer_numerical.py
   # FlagTree/FlagTune: torch.compile's generated grid returns None because FlagTree
   # launches zero_pad_kernel with BLOCK_N=32, a config TE never declares.
   # Restore when compiled tracing passes.

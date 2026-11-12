@@ -264,6 +264,24 @@ def _elementwise_chunks(tensors):
         yield tuple(t[start:end] for t in flat)
 
 
+def _scale_(tensor, factor):
+    """In-place ``tensor *= factor`` that stays exact under first-call autotuning.
+
+    Workaround for FlagTree's Triton 3.6 vendor builds (flagtree 0.7.0+ppu3.6,
+    0.7.1a1+iluvatar3.6, 0.7.0+hcu3.6): the autotuner benchmarks every candidate
+    config on the live arguments without restoring them, so the first
+    flag_gems.mul_ tuned in a process scales its input 25-103 times (0.9 ** N).
+    That silently corrupts Adam moments on the default flagos path (measured
+    77-99% update error on the first step after a checkpoint resume). CUDA
+    (triton 3.7.1, same flag_gems 5.4.0) is unaffected. Writing an
+    out-of-place product back with copy_ is idempotent however often a launch
+    repeats. Cost: one temporary of the tensor's size per call. Restore
+    flag_gems.mul_ once the FlagTree autotuner preserves in-place arguments
+    (restore_value / reset_to_zero).
+    """
+    flag_gems.copy_(tensor, flag_gems.mul(tensor, factor))
+
+
 def _adam_update_fl(
     g,
     model_param,
@@ -288,11 +306,11 @@ def _adam_update_fl(
     if not is_adamw and weight_decay != 0:
         adam_grad = flag_gems.add(adam_grad, param_to_update, alpha=weight_decay)
 
-    flag_gems.mul_(m, beta1)
+    _scale_(m, beta1)
     flag_gems.add_(m, adam_grad, alpha=1 - beta1)
 
     grad_squared = flag_gems.mul(adam_grad, adam_grad)
-    flag_gems.mul_(v, beta2)
+    _scale_(v, beta2)
     flag_gems.add_(v, grad_squared, alpha=1 - beta2)
 
     m_corr = m
@@ -304,7 +322,7 @@ def _adam_update_fl(
     update = flag_gems.true_divide(m_corr, flag_gems.add(flag_gems.sqrt(v_corr), eps))
 
     if is_adamw and weight_decay != 0:
-        flag_gems.mul_(param_to_update, 1 - lr * weight_decay)
+        _scale_(param_to_update, 1 - lr * weight_decay)
 
     flag_gems.add_(param_to_update, update, alpha=-lr)
 
@@ -385,10 +403,12 @@ def multi_tensor_adam_param_remainder_fl(
             g_float = flag_gems.add(g_float, param_master, alpha=weight_decay)
 
         # Update first moment: m = beta1 * m + (1 - beta1) * g
-        flag_gems.add_(flag_gems.mul_(m, beta1), g_float, alpha=1 - beta1)
+        _scale_(m, beta1)
+        flag_gems.add_(m, g_float, alpha=1 - beta1)
 
         # Update second moment: v = beta2 * v + (1 - beta2) * g^2
-        flag_gems.add_(flag_gems.mul_(v, beta2), flag_gems.mul(g_float, g_float), alpha=1 - beta2)
+        _scale_(v, beta2)
+        flag_gems.add_(v, flag_gems.mul(g_float, g_float), alpha=1 - beta2)
 
         # Apply bias correction
         m_corr = flag_gems.true_divide(m, bias_correction1)
