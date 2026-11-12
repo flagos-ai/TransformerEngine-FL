@@ -633,7 +633,15 @@ class PlannerTests(unittest.TestCase):
         self.assertNotIn(compiled, by_platform["cuda"]["exec"]["ignored_test_targets"])
         platforms = {p["name"]: p for p in plan["platforms"]}
         self.assertEqual(platforms["cuda"]["ignored_tests"], [])
-        self.assertEqual(len(platforms["enflame"]["ignored_tests"]), 4)
+        enflame_ignored = platforms["enflame"]["ignored_tests"]
+        for node in (
+            "test_cross_entropy_forward_and_backward_match_native_exactly",
+            "test_mhc_apis_match_native_exactly",
+        ):
+            self.assertIn(
+                f"tests/plugin/plugin/triton_dispatch_numerics_cases.py::{node}", enflame_ignored
+            )
+        self.assertEqual(enflame_ignored, sorted(set(enflame_ignored)))
         for bad in (["tests/plugin/x.py", " "], ["tests/../x.py"], {"tests/x.py": "reason"}):
             with self.subTest(config=bad):
                 with self.assertRaises(ValueError):
