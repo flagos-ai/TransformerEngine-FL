@@ -18,6 +18,9 @@ os.environ.setdefault("PLATFORM", "ascend")
 os.environ.setdefault("TE_FL_SKIP_CUDA", "1")
 os.environ.setdefault("NVTE_FRAMEWORK", "pytorch")
 os.environ.setdefault("NVTE_WITH_NCCL_EP", "0")
+# These are parity tests of the NPU vendor backend, so select it explicitly
+# instead of inheriting the job's global preference (e.g. flagos).
+os.environ["TE_FL_PREFER"] = "vendor"
 
 try:
     import torch_npu  # noqa: F401
@@ -76,6 +79,12 @@ class TestLayerNormTENPUParity(unittest.TestCase):
 
         cls.tex = tex
         cls.DType = DType
+
+    def _assert_npu_selected(self, *op_names):
+        from transformer_engine.plugin.core import get_manager
+
+        for op_name in op_names:
+            self.assertEqual(get_manager().get_selected_impl_id(op_name), "vendor.npu", op_name)
 
     @staticmethod
     def _te_dtype(dtype):
@@ -148,6 +157,7 @@ class TestLayerNormTENPUParity(unittest.TestCase):
                 )
                 for actual, expected in zip(tefl_grad, tenpu_grad):
                     torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+        self._assert_npu_selected("layernorm_fwd", "layernorm_bwd")
 
     def test_dense_output_reuse_and_otype(self):
         """Honor TE-FL's preallocated dense output and output dtype ABI."""
@@ -172,6 +182,7 @@ class TestLayerNormTENPUParity(unittest.TestCase):
         torch.testing.assert_close(output, expected.bfloat16(), rtol=0, atol=0)
         torch.testing.assert_close(mean, expected_mean, rtol=0, atol=0)
         torch.testing.assert_close(rsigma, expected_rsigma, rtol=0, atol=0)
+        self._assert_npu_selected("layernorm_fwd")
 
     def test_z_current_scaling_quantizer_matches_separate_tenpu_quantize(self):
         """TENPU quantizes dense LayerNorm output as a separate operation."""
