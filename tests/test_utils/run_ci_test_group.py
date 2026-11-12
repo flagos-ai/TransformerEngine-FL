@@ -88,9 +88,30 @@ def _load_group() -> dict[str, Any]:
     return group
 
 
+def _selection_plugin_path(env: dict[str, str]) -> None:
+    """Make the selection plugin importable whenever PYTEST_PLUGINS requests it.
+
+    An intermediate shell can replace PYTHONPATH (the Ascend CI image's
+    BASH_ENV assigns it absolutely in /etc/profile.d/vendor.sh), so a nested
+    runner restores the plugin directories itself before launching pytest.
+    """
+    plugins = [name.strip() for name in env.get("PYTEST_PLUGINS", "").split(",") if name.strip()]
+    if "ci_pytest_selection" not in plugins:
+        return
+    plugin_dir = str(Path(__file__).resolve().parent)
+    contract_dir = str(Path(__file__).resolve().parents[2] / ".github/scripts/ci")
+    parts = [part for part in env.get("PYTHONPATH", "").split(os.pathsep) if part]
+    env["PYTHONPATH"] = os.pathsep.join(
+        [path for path in (plugin_dir, contract_dir) if path not in parts] + parts
+    )
+
+
 def _selection_env(env: dict[str, str], group: dict[str, Any]) -> None:
     """Carry the plan's file selection into every child pytest invocation."""
     if "test_targets" not in group:
+        # Nested presets inherit the outer plan's selection through the
+        # environment; only the plugin path may need restoring.
+        _selection_plugin_path(env)
         return
     targets = group["test_targets"]
     if (
@@ -106,15 +127,11 @@ def _selection_env(env: dict[str, str], group: dict[str, Any]) -> None:
     ):
         raise SystemExit("ignored_test_targets must be a list of repository-relative paths")
     env["TE_CI_IGNORE_TEST_TARGETS_JSON"] = json.dumps(ignored)
-    plugin_dir = str(Path(__file__).resolve().parent)
-    contract_dir = str(Path(__file__).resolve().parents[2] / ".github/scripts/ci")
-    env["PYTHONPATH"] = os.pathsep.join(
-        part for part in (plugin_dir, contract_dir, env.get("PYTHONPATH", "")) if part
-    )
     plugins = [name.strip() for name in env.get("PYTEST_PLUGINS", "").split(",") if name.strip()]
     if "ci_pytest_selection" not in plugins:
         plugins.append("ci_pytest_selection")
     env["PYTEST_PLUGINS"] = ",".join(plugins)
+    _selection_plugin_path(env)
 
 
 def _run_script(group: dict[str, Any]) -> int:

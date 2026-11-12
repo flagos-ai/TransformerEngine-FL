@@ -959,6 +959,48 @@ class PytestSelectionTests(unittest.TestCase):
                     else:
                         self.assertNotIn("[SKIP] test_probe.py", result.stdout)
 
+    def test_nested_runner_restores_selection_plugin_after_pythonpath_reset(self):
+        # Ascend's CI image resets PYTHONPATH in every bash (BASH_ENV); a nested
+        # preset run must still be able to import ci_pytest_selection.
+        runner = ROOT / "tests/test_utils/run_ci_test_group.py"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "test_pass.py").write_text("def test_pass(): pass\n")
+            env = {
+                key: value
+                for key, value in os.environ.items()
+                if not key.startswith("TE_CI_")
+                and key not in ("TE_TEST_GROUP_PRESET", "PYTEST_ADDOPTS")
+            }
+            env.update(
+                GITHUB_WORKSPACE=str(root),
+                PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
+                PYTEST_PLUGINS="ci_pytest_selection",
+                PYTHONPATH="/opt/unrelated/site-packages:",
+                TE_TEST_GROUP_JSON=json.dumps(
+                    {
+                        "name": "nested",
+                        "runner": "pytest",
+                        "max_retries": 0,
+                        "steps": [
+                            {
+                                "name": "plugin",
+                                "targets": ["test_pass.py"],
+                                "isolate_files": True,
+                                "use_platform_runner": False,
+                            }
+                        ],
+                    }
+                ),
+            )
+            result = subprocess.run(
+                [sys.executable, str(runner)], env=env, capture_output=True, text=True
+            )
+            output = result.stdout + result.stderr
+            self.assertEqual(result.returncode, 0, output)
+            self.assertNotIn("Error importing plugin", output)
+            self.assertIn("1 passed", result.stdout)
+
     def test_isolated_file_crash_fails_without_skipping_remaining_files(self):
         runner = ROOT / "tests/test_utils/run_ci_test_group.py"
         with tempfile.TemporaryDirectory() as directory:
