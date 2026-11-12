@@ -89,6 +89,9 @@ class NPUBackend(TEFLBackendBase):
     def is_available(self) -> bool:
         return _check_npu_available()
 
+    def get_num_cublas_streams(self) -> int:
+        return 4
+
     # ===================== Attention =====================
 
     def get_attention_backend(self, attention_params=None):
