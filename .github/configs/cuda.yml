@@ -55,7 +55,7 @@ device_types:
 coverage:
   enabled: true
   required: false
-  python: /opt/miniconda3/envs/flagscale-train/bin/python3
+  python: /flagos/bin/python3
   sources:
     - transformer_engine
   include:
