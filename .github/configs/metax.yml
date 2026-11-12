@@ -26,6 +26,9 @@ container_volumes:
   - /nfs/metax_fs:/nfs/metax_fs
 
 # Container options
+# LD_LIBRARY_PATH comes from the image (MACA base: /opt/maca/lib:/opt/maca/mxgpu_llvm/lib).
+# Do not pass -e LD_LIBRARY_PATH here: docker receives these options unexpanded,
+# so a value here replaces the image's and torch then cannot load libmxomp.so.
 container_options: >-
   --hostname=te_cicd
   --ipc=host
@@ -37,7 +40,6 @@ container_options: >-
   --group-add video
   -e PLATFORM=metax
   -e TORCH_DISTRIBUTED_BACKEND=mccl
-  -e LD_LIBRARY_PATH=/opt/maca/lib:/usr/local/lib:$LD_LIBRARY_PATH
 
 # Platform-specific environment setup script
 setup_script: .github/scripts/setup_metax.sh
