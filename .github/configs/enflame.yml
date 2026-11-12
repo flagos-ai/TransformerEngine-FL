@@ -87,3 +87,15 @@ ignored_test_groups:
   normalization: Enflame unit QA has no normalization, sanity or numerics target; existing HF integration is not a dedicated normalization check.
   quantization: Enflame unit QA does not run recipe, quantized-tensor, FP8 or NVFP4 targets.
   vendor_backend: Enflame unit QA has no vendor or FlagOS backend target; reference GEMM coverage is recorded under gemm.
+
+# Explicit test-node/file ignores for toolchain or image defects owned outside this
+# repository. Each entry is recorded in the plan and never counts as a pass.
+ignored_test_targets:
+  tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_cross_entropy_forward_and_backward_match_native_exactly: >-
+    FlagTree Enflame backend (flagtree 0.7.0+enflame3.6) cannot legalize tt.atomic_rmw (no Triton atomics on GCU). Owner FlagTree/Enflame; restore when atomics compile.
+  tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_grouped_dbias_functions_match_native_exactly: >-
+    FlagTree Enflame backend (flagtree 0.7.0+enflame3.6) hangs compiling the atomic grouped-dbias kernels (>50 min, no progress). Owner FlagTree/Enflame; restore when atomics compile.
+  tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_mhc_apis_match_native_exactly: >-
+    FlagTree Enflame backend (flagtree 0.7.0+enflame3.6) crashes (SIGSEGV) compiling the mHC kernels, which use tl.atomic_add. Owner FlagTree/Enflame; restore when atomics compile.
+  tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_real_permutation_forward_backward_matches_pytorch: >-
+    FlagTree Enflame backend (flagtree 0.7.0+enflame3.6) aborts in unpermute_with_mask_map_bwd_with_merging_probs after the forward passes. Owner FlagTree/Enflame; restore when the backward kernel runs.

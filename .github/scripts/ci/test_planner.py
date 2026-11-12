@@ -608,6 +608,33 @@ class PlannerTests(unittest.TestCase):
             {entry["group"] for entry in hygon["ignored_test_groups"]},
         )
 
+    def test_explicit_platform_target_ignores_reach_the_plan_with_reasons(self):
+        plan = self.run_planner("nightly")
+        by_platform = {
+            g["platform"]: g for g in plan["execution_groups"] if g["group"] == "pytorch_unit"
+        }
+        compiled = (
+            "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
+            "test_dispatch_entry_does_not_shrink_the_compiled_graph"
+        )
+        for platform in ("ppu", "hygon", "iluvatar"):
+            with self.subTest(platform=platform):
+                execution = by_platform[platform]["exec"]
+                self.assertIn(compiled, execution["ignored_test_targets"])
+                self.assertIn("FlagTree", execution["ignored_test_target_reasons"][compiled])
+        self.assertIn(
+            "tests/plugin/backend/flagos/test_optimizer_numerical.py",
+            by_platform["ppu"]["exec"]["ignored_test_targets"],
+        )
+        self.assertNotIn("ignored_test_target_reasons", by_platform["cuda"]["exec"])
+        enflame = next(p for p in plan["platforms"] if p["name"] == "enflame")
+        self.assertTrue(enflame["ignored_test_targets"])
+        self.assertTrue(all(entry["reason"].strip() for entry in enflame["ignored_test_targets"]))
+        for bad in ({"tests/plugin/x.py": " "}, {"tests/../x.py": "reason"}, ["tests/x.py"]):
+            with self.subTest(config=bad):
+                with self.assertRaises(ValueError):
+                    planner.platform_ignored_test_targets({"ignored_test_targets": bad})
+
     def test_cross_group_ignored_target_overlaps_and_npu_ignore_are_recorded(self):
         plan = self.run_planner("nightly")
         by_platform = {

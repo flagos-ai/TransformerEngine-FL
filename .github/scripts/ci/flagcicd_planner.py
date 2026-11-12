@@ -310,6 +310,23 @@ def select_test_groups(project: dict, changed: list[str], test_level: str, stage
     }
 
 
+def platform_ignored_test_targets(config: dict) -> dict[str, str]:
+    """Return explicit per-platform test-target ignores, each with its reason.
+
+    Used for known toolchain/image defects whose fix belongs outside this
+    repository; the plan records every entry so it never counts as a pass.
+    """
+    targets = config.get("ignored_test_targets", {})
+    if not isinstance(targets, dict) or any(
+        not isinstance(target, str) or not isinstance(reason, str) or not reason.strip()
+        for target, reason in targets.items()
+    ):
+        raise ValueError("ignored_test_targets must map test targets to non-empty reasons")
+    for target in targets:
+        contract.split_test_target(target)
+    return dict(sorted(targets.items()))
+
+
 def platform_test_groups(project: dict, config: dict, selection: dict) -> tuple[list, list]:
     """Record unavailable platform test groups and propagate dependency gaps."""
     if "unsupported_test_groups" in config:
@@ -605,7 +622,11 @@ def build_execution_groups(
         }
         if execution["platform"] != "ascend" and "tests/plugin/backend/npu/" in catalog_targets:
             ignored_targets.add("tests/plugin/backend/npu/")
+        explicit = platform_ignored_test_targets(platforms[execution["platform"]]["config"])
+        ignored_targets.update(explicit)
         execution["exec"]["ignored_test_targets"] = sorted(ignored_targets)
+        if explicit:
+            execution["exec"]["ignored_test_target_reasons"] = explicit
         group_targets = execution["exec"].get("group_test_targets", {})
         if group_targets and ignored_targets:
             overlaps = {}
@@ -763,6 +784,10 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
                     and group["device"] == p["config"].get("device_types", [None])[0]
                 ),
                 "ignored_test_groups": ignored_groups,
+                "ignored_test_targets": [
+                    {"target": target, "reason": reason}
+                    for target, reason in platform_ignored_test_targets(p["config"]).items()
+                ],
                 "coverage_groups": sorted(
                     {
                         group["execution"]["entry"]
@@ -851,6 +876,10 @@ def write_summary(path: Path, plan: dict) -> None:
         f"{p['name']}/{gap['group']}: {gap['reason']}"
         for p in platforms
         for gap in p["ignored_test_groups"]
+    ] + [
+        f"{p['name']}/{entry['target']}: {entry['reason']}"
+        for p in platforms
+        for entry in p.get("ignored_test_targets", [])
     ] + [
         f"{job['platform']}/{group} ignored targets: {', '.join(targets)}"
         for job in executions
