@@ -17,6 +17,7 @@ echo "Python: $(command -v python3) ($(python3 --version 2>&1))"
 if [ -n "${GITHUB_ENV:-}" ]; then
     {
         echo "TE_FL_SKIP_CUDA=$TE_FL_SKIP_CUDA"
+        echo "TE_FL_PREFER=$TE_FL_PREFER"
         echo "NVTE_WITH_MACA=$NVTE_WITH_MACA"
         echo "NVTE_WITH_NCCL_EP=$NVTE_WITH_NCCL_EP"
         echo "CUDA_HOME=$CUDA_HOME"
