@@ -78,7 +78,6 @@ paths_watch:
 
 # Missing test-group coverage is explicit; these entries do not claim hardware incapability.
 ignored_test_groups:
-  debug: The current DTK reference backend lacks quantize and FP8 debug feature support; the full nvinspect debug suite is not adapted to Hygon.
   attention: Hygon unit QA does not run attention, RoPE, GQA or HF attention targets; CP utilities belong to the separate distributed group.
   quantization: Hygon unit QA has no recipe, quantized-tensor, FP8 or NVFP4 target.
 
@@ -86,7 +85,7 @@ ignored_test_groups:
 # Only defects owned outside this repository belong here; give the reason,
 # owner and restore condition in a comment above each group.
 ignored_tests:
-  # FlagTree/FlagTune: torch.compile's generated grid returns None because FlagTree
-  # launches zero_pad_kernel with BLOCK_N=32, a config TE never declares.
-  # Restore when compiled tracing passes.
+  # Hygon DCU launch limit: num_warps=32 exceeds the device thread limit.
+  - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_cross_entropy_forward_and_backward_match_native_exactly
+  # FlagTree/FlagTune: compiled graph tracing currently produces an invalid grid.
   - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_dispatch_entry_does_not_shrink_the_compiled_graph

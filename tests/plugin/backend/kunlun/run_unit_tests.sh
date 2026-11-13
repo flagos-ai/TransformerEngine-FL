@@ -78,6 +78,10 @@ run_suite() {
             "python3 -m pytest -s -v --tb=auto \
             --junitxml=$XML_LOG_DIR/pytest_test_deferred_init.xml \
             $TE_PATH/tests/pytorch/test_deferred_init.py"
+
+        run_test_step "plugin-unit" \
+            "TE_TEST_GROUP_PRESET=plugin-unit python3 \
+            $TE_PATH/tests/test_utils/run_ci_test_group.py"
             ;;
         distributed | pytorch_distributed_unittest)
         run_test_step "pytest_test_numerics.xml" \

@@ -71,7 +71,7 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual({entry["name"] for entry in plan["platforms"]}, expected)
 
     def supported_suites(self, platform):
-        return set(UNIT_SUITES) - ({"pytorch_debug"} if platform == "hygon" else set())
+        return set(UNIT_SUITES)
 
     def run_planner(self, stage: str, **kwargs) -> dict:
         """Run planner and return parsed plan."""
@@ -604,7 +604,7 @@ class PlannerTests(unittest.TestCase):
             self.assertTrue(set(unit["exec"]["group_test_targets"]) <= supported)
         hygon = next(p for p in plan["platforms"] if p["name"] == "hygon")
         hygon_ignored = {entry["group"] for entry in hygon["ignored_test_groups"]}
-        self.assertIn("debug", hygon_ignored)
+        self.assertNotIn("debug", hygon_ignored)
         # Reopened once Hygon's unit QA ran the plugin-unit preset (FlagOS tests).
         self.assertNotIn("optimizer", hygon_ignored)
 
@@ -669,11 +669,11 @@ class PlannerTests(unittest.TestCase):
             "tests/pytorch/test_float8_blockwise_gemm_exact.py",
             by_platform["cuda"]["exec"]["ignored_group_test_targets"]["gemm"],
         )
-        # An ignored vendor_backend keeps FlagOS GEMM tests out of the gemm group.
-        self.assertIn(
-            "tests/plugin/backend/flagos/test_gemm.py",
-            by_platform["kunlun"]["exec"]["ignored_group_test_targets"]["gemm"],
-        )
+        # Kunlun's vendor_backend remains enabled for coverage.
+        kunlun_gemm_ignored = by_platform["kunlun"]["exec"].get(
+            "ignored_group_test_targets", {}
+        ).get("gemm", [])
+        self.assertNotIn("tests/plugin/backend/flagos/test_gemm.py", kunlun_gemm_ignored)
         # Ascend's reopened optimizer group no longer suppresses reference tests.
         self.assertNotIn(
             "reference_backend",
@@ -689,6 +689,54 @@ class PlannerTests(unittest.TestCase):
                 " tests/pytorch/test_float8_blockwise_gemm_exact.py",
                 text,
             )
+
+    def test_plugin_node_ignores_are_loaded_from_platform_yaml(self):
+        plan = self.run_planner("nightly")
+        by_platform = {
+            group["platform"]: group["exec"]["ignored_test_targets"]
+            for group in plan["execution_groups"]
+            if group["group"] == "pytorch_unit"
+        }
+        expected = {
+            "hygon": {
+                "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
+                "test_cross_entropy_forward_and_backward_match_native_exactly",
+                "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
+                "test_dispatch_entry_does_not_shrink_the_compiled_graph",
+            },
+            "metax": {
+                "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
+                "test_cross_entropy_forward_and_backward_match_native_exactly",
+                "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
+                "test_mhc_apis_match_native_exactly",
+                "tests/pytorch/test_fusible_ops.py::TestBasicOps::"
+                "test_dropout[dtype0-shape2-None-True-0.5]",
+            },
+            "iluvatar": {
+                "tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_mhc_apis_match_native_exactly",
+                "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
+                "test_dispatch_entry_does_not_shrink_the_compiled_graph",
+            },
+            "ppu": {
+                "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
+                "test_dispatch_entry_does_not_shrink_the_compiled_graph",
+                "tests/plugin/backend/flagos/test_optimizer_numerical.py::"
+                "test_multi_tensor_adam_matches_formula[False-0.0-0-0]",
+            },
+        }
+        for platform, targets in expected.items():
+            with self.subTest(platform=platform):
+                self.assertTrue(targets <= set(by_platform[platform]))
+                config = next(p for p in plan["platforms"] if p["name"] == platform)
+                self.assertEqual(config["ignored_tests"], sorted(targets))
+
+    def test_platform_ignored_tests_validate_targets(self):
+        for targets in (["tests/../escape.py"], ["tests/test_case.py::"]):
+            with self.subTest(targets=targets):
+                with self.assertRaises(ValueError):
+                    planner.platform_ignored_tests({"ignored_tests": targets})
+        with self.assertRaises(ValueError):
+            planner.platform_ignored_tests({"ignored_tests": "tests/test_case.py"})
 
     def test_overlap_expansion_uses_the_requested_source_tree(self):
         project = planner.load_project(ROOT / ".flagcicd/project.yaml")
@@ -719,7 +767,6 @@ class PlannerTests(unittest.TestCase):
             "metax": {"quantization", "attention"},
             "musa": {"quantization"},
             "ppu": {"quantization"},
-            "hygon": {"debug"},
         }
         for stage, options in (
             ("nightly", {}),
@@ -744,14 +791,6 @@ class PlannerTests(unittest.TestCase):
                             any(
                                 group["platform"] == name and group["group"] == gap
                                 for group in plan["ignored"]
-                            )
-                        )
-                    if name == "hygon":
-                        self.assertNotIn("pytorch_debug", platform["coverage_groups"])
-                        self.assertFalse(
-                            any(
-                                group["platform"] == name and group["group"] == "pytorch_debug"
-                                for group in plan["execution_groups"]
                             )
                         )
 
