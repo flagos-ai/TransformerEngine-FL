@@ -71,7 +71,25 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual({entry["name"] for entry in plan["platforms"]}, expected)
 
     def supported_suites(self, platform):
-        return set(UNIT_SUITES)
+        config = yaml.safe_load((ROOT / ".github/configs" / f"{platform}.yml").read_text())
+        ignored_groups = set(config.get("ignored_test_groups", {}))
+        suite_groups = {
+            "pytorch_debug": "debug",
+            "pytorch_unit": "core",
+            "pytorch_distributed": "distributed",
+            "pytorch_onnx": "onnx",
+        }
+        matrix = {
+            entry["name"]: entry
+            for entry in config.get("unit_test_matrix", [])
+            if isinstance(entry, dict) and entry.get("name")
+        }
+        return {
+            suite
+            for suite, logical_group in suite_groups.items()
+            if logical_group not in ignored_groups
+            and not matrix.get(suite, {}).get("blocked", False)
+        }
 
     def run_planner(self, stage: str, **kwargs) -> dict:
         """Run planner and return parsed plan."""
@@ -585,6 +603,19 @@ class PlannerTests(unittest.TestCase):
                     {g["group"] for g in plan["execution_groups"]},
                     {"preflight", *UNIT_SUITES, "pytorch_mcore_integration"},
                 )
+                for platform in plan["platforms"]:
+                    self.assertEqual(
+                        {
+                            g["group"]
+                            for g in plan["execution_groups"]
+                            if g["platform"] == platform["name"]
+                        },
+                        {
+                            "preflight",
+                            *self.supported_suites(platform["name"]),
+                            "pytorch_mcore_integration",
+                        },
+                    )
                 for group in plan["execution_groups"]:
                     if group["group"] == "pytorch_unit":
                         self.assertEqual(group["exec"]["test_targets"], ["tests/"])
@@ -1000,6 +1031,11 @@ class PlannerTests(unittest.TestCase):
                     suites = suites - {"pytorch_debug"}
                 plan = self.run_planner("pr", changed_files=json.dumps([path]))
                 selected = {g["group"] for g in plan["execution_groups"]}
+                suites = {
+                    suite
+                    for suite in suites
+                    if suite not in UNIT_SUITES or suite in self.supported_suites(config.stem)
+                }
                 self.assertTrue(suites <= selected, path)
                 self.assertEqual([p["name"] for p in plan["platforms"]], [config.stem])
                 keys = [(g["platform"], g["device"], g["group"]) for g in plan["execution_groups"]]
