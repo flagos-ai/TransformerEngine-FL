@@ -109,6 +109,13 @@ paths_watch:
   - tests/plugin/backend/metax/
   - transformer_engine/plugin/core/backends/vendor/metax/
 
+# Plugin node quarantines. Remove each target when its restore condition holds.
+ignored_tests:
+  # num_warps=32 exceeds the MACA compiler limit; restore after launch adaptation.
+  - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_cross_entropy_forward_and_backward_match_native_exactly
+  # mHC keyword arguments are incompatible with the current Autotuner reset_to_zero hook.
+  - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_mhc_apis_match_native_exactly
+
 # Current QA coverage gaps, recorded in the plan instead of claimed as passing.
 ignored_test_groups:
   attention: MetaX unit QA filters attention, RoPE, GQA, numerics and sanity attention targets; no matching attention testcase executes.

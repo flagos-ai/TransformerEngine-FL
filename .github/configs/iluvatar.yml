@@ -78,6 +78,12 @@ paths_watch:
   - .github/scripts/setup_iluvatar.sh
   - tests/plugin/backend/iluvatar/
   - transformer_engine/plugin/core/backends/vendor/iluvatar/
+
+# Plugin node quarantines. Remove each target when its restore condition holds.
+ignored_tests:
+  # CoreX Triton rejects this mHC transpose tuple; restore after compilation and numerics pass.
+  - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_mhc_apis_match_native_exactly
+
 # RoPE uses the FlagOS backend tests, as on PPU; the common large-shape RoPE
 # matrix is not launched on this 32 GiB baseline (see the Iluvatar config.sh).
 # Whole-file exclusions and reproduction reasons are recorded in config.sh:

@@ -344,6 +344,18 @@ def platform_test_groups(project: dict, config: dict, selection: dict) -> tuple[
     )
 
 
+def platform_ignored_tests(config: dict) -> list[str]:
+    """Return validated file/node exclusions declared by a platform YAML file."""
+    targets = config.get("ignored_tests", [])
+    if not isinstance(targets, list) or any(
+        not isinstance(target, str) or not target.strip() for target in targets
+    ):
+        raise ValueError("ignored_tests must be a list of test files or nodes")
+    for target in targets:
+        contract.split_test_target(target)
+    return sorted(set(targets))
+
+
 def _group_evidence(group_def: dict) -> str:
     evidence = group_def.get("evidence")
     if evidence not in EVIDENCE_TYPES:
@@ -609,6 +621,7 @@ def build_execution_groups(
             # Keep the plan aligned with the standalone plugin-unit preset:
             # NPU compute-scale CUDA-semantic parity is not wired in this CI.
             ignored_targets.add("tests/plugin/accuracy/test_compute_scale.py")
+        ignored_targets.update(platform_ignored_tests(platforms[execution["platform"]]["config"]))
         execution["exec"]["ignored_test_targets"] = sorted(ignored_targets)
         group_targets = execution["exec"].get("group_test_targets", {})
         if group_targets and ignored_targets:
@@ -767,6 +780,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
                     and group["device"] == p["config"].get("device_types", [None])[0]
                 ),
                 "ignored_test_groups": ignored_groups,
+                "ignored_tests": platform_ignored_tests(p["config"]),
                 "coverage_groups": sorted(
                     {
                         group["execution"]["entry"]
@@ -855,6 +869,10 @@ def write_summary(path: Path, plan: dict) -> None:
         f"{p['name']}/{gap['group']}: {gap['reason']}"
         for p in platforms
         for gap in p["ignored_test_groups"]
+    ] + [
+        f"{p['name']}/{target}: ignored by platform config"
+        for p in platforms
+        for target in p.get("ignored_tests", [])
     ] + [
         f"{job['platform']}/{group} ignored targets: {', '.join(targets)}"
         for job in executions

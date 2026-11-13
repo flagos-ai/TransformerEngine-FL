@@ -66,11 +66,3 @@ declare -A PPU_IGNORE_K=(
   [tests/pytorch/test_cpu_offloading.py]='(test_memory and (multihead_attention or transformer_layer)) or (test_numerics and transformer_layer) or (test_numerics and UnfusedAttention and True-multihead_attention)'
   [tests/pytorch/test_cpu_offloading_v1.py]='test_cpu_offload and (multihead_attention or transformer_layer)'
 )
-
-# Exact plugin-node quarantines. Node paths are relative to tests/plugin/.
-# Literal entries only, one quoted node|reason per line; shared pytest collection
-# reads this array for both the outer runner and fresh dispatch subprocesses.
-readonly PLUGIN_IGNORE_TEST_NODES=(
-    'plugin/triton_dispatch_numerics_cases.py::test_dispatch_entry_does_not_shrink_the_compiled_graph|torch.compile/FlagTree autotune grid compatibility failure; restore after compiled tracing passes'
-    'backend/flagos/test_optimizer_numerical.py::test_multi_tensor_adam_matches_formula[False-0.0-0-0]|repeated Adam numerical mismatch; first-call cause unconfirmed; restore after fresh-process numerics pass'
-)

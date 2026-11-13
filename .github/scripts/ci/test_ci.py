@@ -977,11 +977,33 @@ class PytestSelectionTests(unittest.TestCase):
             (plugin / "plugin").mkdir(parents=True)
             (plugin / "backend/flagos").mkdir(parents=True)
             shutil.copy(ROOT / "tests/plugin/conftest.py", plugin / "conftest.py")
-            for platform in ("hygon", "metax", "iluvatar", "ppu"):
-                destination = plugin / "backend" / platform
-                destination.mkdir(parents=True)
-                shutil.copy(
-                    ROOT / f"tests/plugin/backend/{platform}/config.sh", destination / "config.sh"
+            config_dir = root / ".github/configs"
+            config_dir.mkdir(parents=True)
+            platform_targets = {
+                "hygon": [
+                    "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
+                    "test_cross_entropy_forward_and_backward_match_native_exactly"
+                ],
+                "metax": [
+                    "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
+                    "test_cross_entropy_forward_and_backward_match_native_exactly",
+                    "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
+                    "test_mhc_apis_match_native_exactly",
+                ],
+                "iluvatar": [
+                    "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
+                    "test_mhc_apis_match_native_exactly"
+                ],
+                "ppu": [
+                    "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
+                    "test_dispatch_entry_does_not_shrink_the_compiled_graph",
+                    "tests/plugin/backend/flagos/test_optimizer_numerical.py::"
+                    "test_multi_tensor_adam_matches_formula[False-0.0-0-0]",
+                ],
+            }
+            for platform, targets in platform_targets.items():
+                (config_dir / f"{platform}.yml").write_text(
+                    "ignored_tests:\n" + "".join(f"  - {target!r}\n" for target in targets)
                 )
 
             cases = plugin / "plugin/triton_dispatch_numerics_cases.py"
@@ -1048,7 +1070,7 @@ class PytestSelectionTests(unittest.TestCase):
                         expected.add("test_multi_tensor_adam_matches_formula[False-0.0-0-0]")
                     self.assertEqual(outer, expected)
                     if ignored:
-                        self.assertIn(f"[IGNORE][{platform}]", result.stdout)
+                        self.assertIn("[IGNORE][", result.stdout)
 
     def test_script_runner_passes_selection_to_child_pytest(self):
         spec = importlib.util.spec_from_file_location(

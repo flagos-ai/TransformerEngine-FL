@@ -76,11 +76,14 @@ paths_watch:
   - tests/plugin/backend/hygon/
   - transformer_engine/plugin/core/backends/vendor/hygon/
 
+# Plugin node quarantines. Remove each target when its restore condition holds.
+ignored_tests:
+  # Hygon DCU launch limit: num_warps=32 exceeds the device thread limit.
+  - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_cross_entropy_forward_and_backward_match_native_exactly
+
 # Missing test-group coverage is explicit; these entries do not claim hardware incapability.
 ignored_test_groups:
-  debug: The current DTK reference backend lacks quantize and FP8 debug feature support; the full nvinspect debug suite is not adapted to Hygon.
   normalization: Hygon unit QA runs deferred-init/JIT, plugin policy and reference lifecycle/activation/dropout/GEMM only; no normalization target is wired.
   attention: Hygon unit QA does not run attention, RoPE, GQA or HF attention targets; CP utilities belong to the separate distributed group.
   quantization: Hygon unit QA has no recipe, quantized-tensor, FP8 or NVFP4 target.
   optimizer: Hygon unit QA does not run fused optimizer, multi-tensor or reference optimizer targets.
-  vendor_backend: Hygon unit QA has no vendor backend or FlagOS backend targets; plugin manager tests only validate dispatch infrastructure.

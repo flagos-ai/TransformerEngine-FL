@@ -88,6 +88,12 @@ run_pytorch() {
     run_pytest test_recipe "${tests_root}/test_recipe.py"
     run_pytest test_deferred_init "${tests_root}/test_deferred_init.py"
 
+    if ! TE_TEST_GROUP_PRESET=plugin-unit python3 \
+        "${TE_PATH}/tests/test_utils/run_ci_test_group.py"; then
+        echo "[FAIL] plugin-unit"
+        FAILED=1
+    fi
+
     PYTORCH_JIT=0 \
     NVTE_TORCH_COMPILE=0 \
     NVTE_ALLOW_NONDETERMINISTIC_ALGO=0 \

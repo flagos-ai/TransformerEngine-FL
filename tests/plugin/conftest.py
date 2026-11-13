@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import os
-import re
-import shlex
 from pathlib import Path
 
 import pytest
+import yaml
 
 
 @pytest.fixture(scope="session")
@@ -17,35 +16,34 @@ def repository_root() -> Path:
 
 
 def _platform_ignore_rules(platform: str) -> dict[str, str]:
-    """Read literal node rules from the owning platform config, without executing it."""
-    if not re.fullmatch(r"[a-z0-9_]+", platform):
+    """Read plugin node rules from the owning YAML platform configuration."""
+    if not platform or any(
+        char not in "abcdefghijklmnopqrstuvwxyz0123456789_-" for char in platform
+    ):
         return {}
-    path = Path(__file__).resolve().parent / "backend" / platform / "config.sh"
+    root = Path(
+        os.environ.get("GITHUB_WORKSPACE")
+        or os.environ.get("TE_PATH")
+        or Path(__file__).resolve().parents[2]
+    )
+    path = root / ".github" / "configs" / f"{platform}.yml"
     if not path.is_file():
         return {}
-    source = path.read_text()
-    declaration = "readonly PLUGIN_IGNORE_TEST_NODES=("
-    if declaration not in source:
-        return {}
-    block = source.split(declaration, 1)[1]
-    lines = block.splitlines()
+    try:
+        config = yaml.safe_load(path.read_text()) or {}
+    except (OSError, yaml.YAMLError) as error:
+        raise pytest.UsageError(f"Invalid platform config {path}: {error}") from error
     rules = {}
-    for line in lines:
-        if line.strip() == ")":
-            return rules
-        try:
-            entries = shlex.split(line, comments=True)
-        except ValueError as error:
-            raise pytest.UsageError(f"Invalid plugin ignore rule in {path}: {error}") from error
-        if not entries:
+    for target in config.get("ignored_tests", []) or []:
+        if (
+            not isinstance(target, str)
+            or not target.startswith("tests/plugin/")
+            or "::" not in target
+        ):
             continue
-        if len(entries) != 1:
-            raise pytest.UsageError(f"Expected one quoted node|reason per line in {path}")
-        node, separator, reason = entries[0].partition("|")
-        if not separator or "::" not in node or not reason.strip() or node in rules:
-            raise pytest.UsageError(f"Invalid or duplicate plugin ignore rule in {path}: {node}")
-        rules[node] = reason
-    raise pytest.UsageError(f"Unterminated PLUGIN_IGNORE_TEST_NODES array in {path}")
+        path_part, node = target.split("::", 1)
+        rules[f"{path_part.removeprefix('tests/plugin/')}::{node}"] = target
+    return rules
 
 
 @pytest.hookimpl(tryfirst=True)
@@ -61,11 +59,11 @@ def pytest_collection_modifyitems(config, items):
             selected.append(item)
             continue
         node = path.relative_to(root).as_posix() + "::" + item.nodeid.split("::", 1)[1]
-        reason = rules.get(node)
-        if reason is None:
+        target = rules.get(node)
+        if target is None:
             selected.append(item)
         else:
-            print(f"[IGNORE][{platform}] {node}: {reason}")
+            print(f"[IGNORE][{platform}] {target}")
             ignored.append(item)
     if ignored:
         items[:] = selected

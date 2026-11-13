@@ -44,8 +44,10 @@ platform scripts do not duplicate inline JSON or `TE_FL_*` unset lists. Inner
 pytest groups disable retries so the outer platform job owns retry policy.
 PPU retains its per-file timeout/summary and Iluvatar its per-file ignore audit,
 while both query `--list-targets` and `--target-env` from the shared preset.
-MUSA and Kunlun keep their existing unit suites unchanged while `plugin_core`,
-`reference_backend` and `vendor_backend` remain in `ignored_test_groups`.
+MUSA and Kunlun run the shared plugin-unit preset from their unit suites, along
+with the existing platform tests. Enflame and Hygon use the same preset for
+their vendor coverage; Hygon also runs its debug suite. Remaining gaps stay in
+`ignored_test_groups`.
 The old per-file backend calls are removed to avoid duplicate execution.
 Distinct relative paths produce distinct JUnit filenames even when test files
 share a basename. Numerics helper files are invoked by their driver rather
@@ -312,15 +314,12 @@ whole-suite retries; integration/compat jobs retain their existing retry policy.
 FlagOps upload is advisory and explicitly skips when its API token is absent;
 coverage collection, artifacts and required coverage checks remain enabled.
 
-Exact plugin collection quarantines live in each platform
-`tests/plugin/backend/<platform>/config.sh` under `PLUGIN_IGNORE_TEST_NODES`.
-Use one literal quoted `node|reason` per line, with paths relative to
-`tests/plugin/`. The shared `conftest.py` only reads and applies these rules
-by `PLATFORM`; it contains no platform-specific exclusion list. Hygon excludes the cross-entropy dispatch case;
-MetaX excludes cross-entropy and mHC; Iluvatar excludes mHC; PPU excludes the
-compiled-graph guard and only Adam parameter `[False-0.0-0-0]`. These rules also
-apply inside the dispatch driver's fresh pytest subprocess. Other cases remain
-selected, including CUDA's complete dispatch suite. Every deselection logs its
-reason and restoration condition, contributes no passing evidence, and leaves
-operator implementations unchanged. The shared workflow passes its platform
-identity explicitly; the MetaX standalone environment sets the same identity.
+Plugin file and node quarantines live in each platform's `.github/configs/<platform>.yml`
+`ignored_tests` list. `config.sh` remains limited to execution settings such as
+devices, timeouts, and environment variables. The planner passes YAML exclusions
+to the common pytest selection plugin, which also applies them in nested dispatch
+test processes. Every deselection contributes no passing evidence. Hygon excludes
+the cross-entropy dispatch case; MetaX excludes cross-entropy and mHC; Iluvatar
+excludes mHC; PPU excludes the compiled-graph guard and Adam parameter
+`[False-0.0-0-0]`. Other cases remain selected, including CUDA's complete dispatch
+suite.
