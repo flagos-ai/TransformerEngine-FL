@@ -20,6 +20,16 @@ def _validate_tensor_lists(tensor_lists, expected_lists, name):
     return num_tensors
 
 
+def _scale_(tensor, factor):
+    """Scale in place without exposing the tensor to unsafe first-call tuning.
+
+    Some FlagTree Triton 3.6 backends benchmark in-place kernels on live
+    arguments without restoring them between candidates.  An out-of-place
+    product followed by copy_ is idempotent if the autotuner repeats it.
+    """
+    flag_gems.copy_(tensor, flag_gems.mul(tensor, factor))
+
+
 def _capturable_adam_fl(
     noop_flag,
     tensor_lists,
@@ -227,11 +237,11 @@ def multi_tensor_adam_fl(
         if not is_adamw and weight_decay != 0:
             adam_grad = flag_gems.add(adam_grad, param_to_update, alpha=weight_decay)
 
-        flag_gems.mul_(m, beta1)
+        _scale_(m, beta1)
         flag_gems.add_(m, adam_grad, alpha=1 - beta1)
 
         grad_squared = flag_gems.mul(adam_grad, adam_grad)
-        flag_gems.mul_(v, beta2)
+        _scale_(v, beta2)
         flag_gems.add_(v, grad_squared, alpha=1 - beta2)
 
         m_corr = m
@@ -243,7 +253,7 @@ def multi_tensor_adam_fl(
         update = flag_gems.true_divide(m_corr, flag_gems.add(flag_gems.sqrt(v_corr), eps))
 
         if is_adamw and weight_decay != 0:
-            flag_gems.mul_(param_to_update, 1 - lr * weight_decay)
+            _scale_(param_to_update, 1 - lr * weight_decay)
 
         flag_gems.add_(param_to_update, update, alpha=-lr)
 
@@ -324,10 +334,12 @@ def multi_tensor_adam_param_remainder_fl(
             g_float = flag_gems.add(g_float, param_master, alpha=weight_decay)
 
         # Update first moment: m = beta1 * m + (1 - beta1) * g
-        flag_gems.add_(flag_gems.mul_(m, beta1), g_float, alpha=1 - beta1)
+        _scale_(m, beta1)
+        flag_gems.add_(m, g_float, alpha=1 - beta1)
 
         # Update second moment: v = beta2 * v + (1 - beta2) * g^2
-        flag_gems.add_(flag_gems.mul_(v, beta2), flag_gems.mul(g_float, g_float), alpha=1 - beta2)
+        _scale_(v, beta2)
+        flag_gems.add_(v, flag_gems.mul(g_float, g_float), alpha=1 - beta2)
 
         # Apply bias correction
         m_corr = flag_gems.true_divide(m, bias_correction1)
