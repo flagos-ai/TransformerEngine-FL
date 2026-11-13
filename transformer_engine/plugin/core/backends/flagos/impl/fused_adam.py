@@ -30,6 +30,76 @@ def _scale_(tensor, factor):
     flag_gems.copy_(tensor, flag_gems.mul(tensor, factor))
 
 
+# Some FlagGems vendor kernels use 32-bit signed element or byte offsets.
+# Keep even FP32 byte offsets below 2**31 while retaining large tensor support.
+_MAX_ELEMENTWISE_NUMEL = 2**28
+
+
+def _elementwise_chunks(tensors):
+    """Yield aligned flat views that stay below FlagGems offset limits."""
+    numel = tensors[0].numel()
+    if numel <= _MAX_ELEMENTWISE_NUMEL:
+        yield tensors
+        return
+    if any(t.numel() != numel or not t.is_contiguous() for t in tensors):
+        raise ValueError(
+            "FlagOS multi_tensor_adam requires contiguous, same-size tensors "
+            f"above {_MAX_ELEMENTWISE_NUMEL} elements"
+        )
+    flat = [t.view(-1) for t in tensors]
+    for start in range(0, numel, _MAX_ELEMENTWISE_NUMEL):
+        end = min(start + _MAX_ELEMENTWISE_NUMEL, numel)
+        yield tuple(t[start:end] for t in flat)
+
+
+def _adam_update_fl(
+    g,
+    model_param,
+    m,
+    v,
+    p_master,
+    lr,
+    beta1,
+    beta2,
+    eps,
+    is_adamw,
+    bias_correction,
+    bias_correction1,
+    bias_correction2,
+    weight_decay,
+):
+    param_to_update = p_master if p_master is not None else model_param
+
+    # Adam moments are maintained in FP32. Promote low-precision gradients
+    # before both moment updates so the square is not rounded in BF16.
+    adam_grad = g.to(dtype=m.dtype)
+    if not is_adamw and weight_decay != 0:
+        adam_grad = flag_gems.add(adam_grad, param_to_update, alpha=weight_decay)
+
+    _scale_(m, beta1)
+    flag_gems.add_(m, adam_grad, alpha=1 - beta1)
+
+    grad_squared = flag_gems.mul(adam_grad, adam_grad)
+    _scale_(v, beta2)
+    flag_gems.add_(v, grad_squared, alpha=1 - beta2)
+
+    m_corr = m
+    v_corr = v
+    if bias_correction == 1:
+        m_corr = flag_gems.true_divide(m_corr, bias_correction1)
+        v_corr = flag_gems.true_divide(v_corr, bias_correction2)
+
+    update = flag_gems.true_divide(m_corr, flag_gems.add(flag_gems.sqrt(v_corr), eps))
+
+    if is_adamw and weight_decay != 0:
+        _scale_(param_to_update, 1 - lr * weight_decay)
+
+    flag_gems.add_(param_to_update, update, alpha=-lr)
+
+    if p_master is not None:
+        flag_gems.copy_(model_param, p_master.to(dtype=model_param.dtype))
+
+
 def _capturable_adam_fl(
     noop_flag,
     tensor_lists,
@@ -226,39 +296,28 @@ def multi_tensor_adam_fl(
         m = tensor_lists[2][i]
         v = tensor_lists[3][i]
         p_master = tensor_lists[4][i] if num_lists == 5 else None
-        param_to_update = p_master if p_master is not None else model_param
 
         if not g.is_contiguous():
             g = g.contiguous()
 
-        # Adam moments are maintained in FP32. Promote low-precision gradients
-        # before both moment updates so the square is not rounded in BF16.
-        adam_grad = g.to(dtype=m.dtype)
-        if not is_adamw and weight_decay != 0:
-            adam_grad = flag_gems.add(adam_grad, param_to_update, alpha=weight_decay)
-
-        _scale_(m, beta1)
-        flag_gems.add_(m, adam_grad, alpha=1 - beta1)
-
-        grad_squared = flag_gems.mul(adam_grad, adam_grad)
-        _scale_(v, beta2)
-        flag_gems.add_(v, grad_squared, alpha=1 - beta2)
-
-        m_corr = m
-        v_corr = v
-        if bias_correction == 1:
-            m_corr = flag_gems.true_divide(m_corr, bias_correction1)
-            v_corr = flag_gems.true_divide(v_corr, bias_correction2)
-
-        update = flag_gems.true_divide(m_corr, flag_gems.add(flag_gems.sqrt(v_corr), eps))
-
-        if is_adamw and weight_decay != 0:
-            _scale_(param_to_update, 1 - lr * weight_decay)
-
-        flag_gems.add_(param_to_update, update, alpha=-lr)
-
-        if p_master is not None:
-            flag_gems.copy_(model_param, p_master.to(dtype=model_param.dtype))
+        tensors = (g, model_param, m, v) + ((p_master,) if p_master is not None else ())
+        for g_part, param_part, m_part, v_part, *master_part in _elementwise_chunks(tensors):
+            _adam_update_fl(
+                g_part,
+                param_part,
+                m_part,
+                v_part,
+                master_part[0] if master_part else None,
+                lr,
+                beta1,
+                beta2,
+                eps,
+                is_adamw,
+                bias_correction,
+                bias_correction1,
+                bias_correction2,
+                weight_decay,
+            )
 
 
 def multi_tensor_adam_param_remainder_fl(
