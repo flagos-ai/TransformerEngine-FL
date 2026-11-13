@@ -4,8 +4,7 @@ set -euo pipefail
 : "${GITHUB_WORKSPACE:?GITHUB_WORKSPACE is required}"
 : "${TE_CI_ARTIFACT_DIR:?TE_CI_ARTIFACT_DIR is required}"
 
-source /opt/miniconda3/etc/profile.d/conda.sh
-conda activate flagscale-train
+source /flagos/bin/activate
 
 export TE_FL_SKIP_CUDA=0
 export SKIP_CUDA_BUILD=0

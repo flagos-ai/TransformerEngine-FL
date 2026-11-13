@@ -25,8 +25,13 @@ def pad_columnwise_scale_inv(inp: torch.Tensor) -> torch.Tensor:
     in_s0, in_s1 = inp.stride()
     out_s0, out_s1 = out.stride()
 
-    BLOCK_M, BLOCK_N = 128, 128
-    grid = (triton.cdiv(out_x, BLOCK_M), triton.cdiv(out_y, BLOCK_N))
+    # zero_pad_kernel is autotuned: size the grid from the selected config so
+    # every output tile is covered whatever block shape the autotuner picks.
+    # pylint: disable=unnecessary-lambda-assignment
+    grid = lambda META: (
+        triton.cdiv(out_x, META["BLOCK_M"]),
+        triton.cdiv(out_y, META["BLOCK_N"]),
+    )
 
     zero_pad_kernel[grid](
         inp,

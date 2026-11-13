@@ -17,16 +17,17 @@ whatever ran before them.
 import sys
 
 import pytest
-import torch
 
-from plugin.utils import REPOSITORY_ROOT, run_in_fresh_process
+from plugin.utils import REPOSITORY_ROOT, run_in_fresh_process, triton_device_unavailable_reason
 
 
 CASES = "tests/plugin/plugin/triton_dispatch_numerics_cases.py"
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required")
 def test_numerics_cases_pass_in_a_clean_process():
+    unavailable = triton_device_unavailable_reason()
+    if unavailable is not None:
+        pytest.skip(unavailable)
     command = [sys.executable, "-m", "pytest", CASES, "-q", "-p", "no:randomly"]
     returncode = run_in_fresh_process(command, cwd=REPOSITORY_ROOT)
 

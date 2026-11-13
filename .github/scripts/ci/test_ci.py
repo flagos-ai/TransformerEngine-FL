@@ -843,7 +843,7 @@ class PytestSelectionTests(unittest.TestCase):
             )
             for platform, expected in (
                 ("cuda", [targets[0], targets[1], targets[3]]),
-                ("ascend", targets[:3]),
+                ("ascend", targets),
             ):
                 env["PLATFORM"] = platform
                 result = subprocess.run(
@@ -959,118 +959,87 @@ class PytestSelectionTests(unittest.TestCase):
                     else:
                         self.assertNotIn("[SKIP] test_probe.py", result.stdout)
 
-    def test_platform_quarantines_reach_nested_dispatch_without_hiding_other_cases(self):
-        import shutil
-
-        functions = (
-            "test_pad_matches_native_exactly",
-            "test_cross_entropy_forward_and_backward_match_native_exactly",
-            "test_grouped_dbias_functions_match_native_exactly",
-            "test_permutation_apis_match_native_exactly",
-            "test_moe_matches_native_exactly",
-            "test_mhc_apis_match_native_exactly",
-            "test_dispatch_entry_does_not_shrink_the_compiled_graph",
-        )
+    def test_nested_runner_restores_selection_plugin_after_pythonpath_reset(self):
+        # Ascend's CI image resets PYTHONPATH in every bash (BASH_ENV); a nested
+        # preset run must still be able to import ci_pytest_selection.
+        runner = ROOT / "tests/test_utils/run_ci_test_group.py"
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            plugin = root / "tests/plugin"
-            (plugin / "plugin").mkdir(parents=True)
-            (plugin / "backend/flagos").mkdir(parents=True)
-            shutil.copy(ROOT / "tests/plugin/conftest.py", plugin / "conftest.py")
-            config_dir = root / ".github/configs"
-            config_dir.mkdir(parents=True)
-            platform_targets = {
-                "hygon": [
-                    "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
-                    "test_cross_entropy_forward_and_backward_match_native_exactly"
-                ],
-                "metax": [
-                    "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
-                    "test_cross_entropy_forward_and_backward_match_native_exactly",
-                    "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
-                    "test_mhc_apis_match_native_exactly",
-                ],
-                "iluvatar": [
-                    "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
-                    "test_mhc_apis_match_native_exactly"
-                ],
-                "ppu": [
-                    "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
-                    "test_dispatch_entry_does_not_shrink_the_compiled_graph",
-                    "tests/plugin/backend/flagos/test_optimizer_numerical.py::"
-                    "test_multi_tensor_adam_matches_formula[False-0.0-0-0]",
-                ],
-            }
-            for platform, targets in platform_targets.items():
-                (config_dir / f"{platform}.yml").write_text(
-                    "ignored_tests:\n" + "".join(f"  - {target!r}\n" for target in targets)
-                )
-
-            cases = plugin / "plugin/triton_dispatch_numerics_cases.py"
-            cases.write_text("".join(f"def {name}(): pass\n" for name in functions))
-            (plugin / "plugin/test_driver.py").write_text(
-                "import subprocess, sys\n"
-                "def test_driver():\n"
-                "    assert subprocess.call([sys.executable, '-m', 'pytest', "
-                "'tests/plugin/plugin/triton_dispatch_numerics_cases.py', "
-                "'--junitxml=inner.xml', '-q']) == 0\n"
-            )
-            optimizer = plugin / "backend/flagos/test_optimizer_numerical.py"
-            optimizer.write_text(
-                "import pytest\n"
-                "@pytest.mark.parametrize('case', [0, 1], ids=['False-0.0-0-0', 'False-0.0-0-1'])\n"
-                "def test_multi_tensor_adam_matches_formula(case): pass\n"
-            )
+            (root / "test_pass.py").write_text("def test_pass(): pass\n")
             env = {
                 key: value
                 for key, value in os.environ.items()
-                if not key.startswith("TE_CI_") and key not in ("PYTEST_PLUGINS", "PYTEST_ADDOPTS")
+                if not key.startswith("TE_CI_")
+                and key not in ("TE_TEST_GROUP_PRESET", "PYTEST_ADDOPTS")
             }
-            env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
-            expected_ignored = {
-                "cuda": set(),
-                "hygon": {functions[1]},
-                "metax": {functions[1], functions[5]},
-                "iluvatar": {functions[5]},
-                "ppu": {functions[6]},
-            }
-            for platform, ignored in expected_ignored.items():
-                with self.subTest(platform=platform):
-                    env["PLATFORM"] = platform
-                    result = subprocess.run(
-                        [
-                            sys.executable,
-                            "-m",
-                            "pytest",
-                            "tests/plugin/",
-                            "-q",
-                            "-s",
-                            "--junitxml=outer.xml",
+            env.update(
+                GITHUB_WORKSPACE=str(root),
+                PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
+                PYTEST_PLUGINS="ci_pytest_selection",
+                PYTHONPATH="/opt/unrelated/site-packages:",
+                TE_TEST_GROUP_JSON=json.dumps(
+                    {
+                        "name": "nested",
+                        "runner": "pytest",
+                        "max_retries": 0,
+                        "steps": [
+                            {
+                                "name": "plugin",
+                                "targets": ["test_pass.py"],
+                                "isolate_files": True,
+                                "use_platform_runner": False,
+                            }
                         ],
-                        cwd=root,
-                        env=env,
-                        capture_output=True,
-                        text=True,
-                    )
-                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-                    inner = {
-                        case.get("name")
-                        for case in ET.parse(root / "inner.xml").findall(".//testcase")
                     }
-                    self.assertEqual(inner, set(functions) - ignored)
-                    outer = {
-                        case.get("name")
-                        for case in ET.parse(root / "outer.xml").findall(".//testcase")
+                ),
+            )
+            result = subprocess.run(
+                [sys.executable, str(runner)], env=env, capture_output=True, text=True
+            )
+            output = result.stdout + result.stderr
+            self.assertEqual(result.returncode, 0, output)
+            self.assertNotIn("Error importing plugin", output)
+            self.assertIn("1 passed", result.stdout)
+
+    def test_isolated_file_crash_fails_without_skipping_remaining_files(self):
+        runner = ROOT / "tests/test_utils/run_ci_test_group.py"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "test_a_crash.py").write_text("import os\ndef test_crash(): os.abort()\n")
+            (root / "test_b_pass.py").write_text("def test_pass(): pass\n")
+            env = {
+                key: value
+                for key, value in os.environ.items()
+                if not key.startswith("TE_CI_")
+                and key not in ("TE_TEST_GROUP_PRESET", "PYTEST_PLUGINS", "PYTEST_ADDOPTS")
+            }
+            env.update(
+                GITHUB_WORKSPACE=str(root),
+                PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
+                TE_TEST_GROUP_JSON=json.dumps(
+                    {
+                        "name": "probe",
+                        "runner": "pytest",
+                        "max_retries": 0,
+                        "steps": [
+                            {
+                                "name": "plugin",
+                                "targets": ["test_a_crash.py", "test_b_pass.py"],
+                                "isolate_files": True,
+                                "use_platform_runner": False,
+                            }
+                        ],
                     }
-                    expected = {
-                        "test_driver",
-                        "test_multi_tensor_adam_matches_formula[False-0.0-0-1]",
-                    }
-                    if platform != "ppu":
-                        expected.add("test_multi_tensor_adam_matches_formula[False-0.0-0-0]")
-                    self.assertEqual(outer, expected)
-                    if ignored:
-                        self.assertIn("[IGNORE][", result.stdout)
+                ),
+            )
+            result = subprocess.run(
+                [sys.executable, str(runner)], env=env, capture_output=True, text=True
+            )
+            output = result.stdout + result.stderr
+            # The crash fails the group but the next file still runs and passes.
+            self.assertEqual(result.returncode, 1, output)
+            self.assertIn("[CRASH] test_a_crash.py: SIGABRT", result.stdout)
+            self.assertIn("[DONE] test_b_pass.py: exit=0", result.stdout)
 
     def test_script_runner_passes_selection_to_child_pytest(self):
         spec = importlib.util.spec_from_file_location(

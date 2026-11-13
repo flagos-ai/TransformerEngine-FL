@@ -603,10 +603,49 @@ class PlannerTests(unittest.TestCase):
             )
             self.assertTrue(set(unit["exec"]["group_test_targets"]) <= supported)
         hygon = next(p for p in plan["platforms"] if p["name"] == "hygon")
-        self.assertIn(
-            "optimizer",
-            {entry["group"] for entry in hygon["ignored_test_groups"]},
+        hygon_ignored = {entry["group"] for entry in hygon["ignored_test_groups"]}
+        self.assertNotIn("debug", hygon_ignored)
+        # Reopened once Hygon's unit QA ran the plugin-unit preset (FlagOS tests).
+        self.assertNotIn("optimizer", hygon_ignored)
+
+    def test_platform_ignored_tests_reach_the_plan(self):
+        plan = self.run_planner("nightly")
+        by_platform = {
+            g["platform"]: g for g in plan["execution_groups"] if g["group"] == "pytorch_unit"
+        }
+        compiled = (
+            "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
+            "test_dispatch_entry_does_not_shrink_the_compiled_graph"
         )
+        for platform in ("ppu", "hygon", "iluvatar"):
+            with self.subTest(platform=platform):
+                self.assertIn(compiled, by_platform[platform]["exec"]["ignored_test_targets"])
+        # Keep the numerical Adam cases enabled so backend issues remain visible.
+        self.assertNotIn(
+            "tests/plugin/backend/flagos/test_optimizer_numerical.py",
+            by_platform["ppu"]["exec"]["ignored_test_targets"],
+        )
+        self.assertIn(
+            "tests/plugin/backend/flagos/test_optimizer_extended.py::"
+            "test_fp8_adam_updates_master_and_metadata",
+            by_platform["ascend"]["exec"]["ignored_test_targets"],
+        )
+        self.assertIn(compiled, by_platform["cuda"]["exec"]["ignored_test_targets"])
+        platforms = {p["name"]: p for p in plan["platforms"]}
+        self.assertEqual(platforms["cuda"]["ignored_tests"], [compiled])
+        enflame_ignored = platforms["enflame"]["ignored_tests"]
+        for node in (
+            "test_cross_entropy_forward_and_backward_match_native_exactly",
+            "test_mhc_apis_match_native_exactly",
+        ):
+            self.assertIn(
+                f"tests/plugin/plugin/triton_dispatch_numerics_cases.py::{node}", enflame_ignored
+            )
+        self.assertEqual(enflame_ignored, sorted(set(enflame_ignored)))
+        for bad in (["tests/plugin/x.py", " "], ["tests/../x.py"], {"tests/x.py": "reason"}):
+            with self.subTest(config=bad):
+                with self.assertRaises(ValueError):
+                    planner.platform_ignored_tests({"ignored_tests": bad})
 
     def test_cross_group_ignored_target_overlaps_and_npu_ignore_are_recorded(self):
         plan = self.run_planner("nightly")
@@ -621,21 +660,24 @@ class PlannerTests(unittest.TestCase):
             "tests/plugin/backend/npu/",
             by_platform["ascend"]["exec"]["ignored_test_targets"],
         )
-        self.assertIn(
-            "tests/plugin/accuracy/test_compute_scale.py",
-            by_platform["ascend"]["exec"]["ignored_test_targets"],
-        )
-        self.assertNotIn(
-            "tests/plugin/accuracy/test_compute_scale.py",
-            by_platform["cuda"]["exec"]["ignored_test_targets"],
-        )
+        for platform in ("ascend", "cuda"):
+            self.assertNotIn(
+                "tests/plugin/accuracy/test_compute_scale.py",
+                by_platform[platform]["exec"]["ignored_test_targets"],
+            )
         self.assertIn(
             "tests/pytorch/test_float8_blockwise_gemm_exact.py",
             by_platform["cuda"]["exec"]["ignored_group_test_targets"]["gemm"],
         )
-        self.assertIn(
-            "tests/plugin/backend/reference/test_optimizer.py",
-            by_platform["ascend"]["exec"]["ignored_group_test_targets"]["reference_backend"],
+        # Kunlun's vendor_backend remains enabled for coverage.
+        kunlun_gemm_ignored = by_platform["kunlun"]["exec"].get(
+            "ignored_group_test_targets", {}
+        ).get("gemm", [])
+        self.assertNotIn("tests/plugin/backend/flagos/test_gemm.py", kunlun_gemm_ignored)
+        # Ascend's reopened optimizer group no longer suppresses reference tests.
+        self.assertNotIn(
+            "reference_backend",
+            by_platform["ascend"]["exec"].get("ignored_group_test_targets", {}),
         )
         with tempfile.TemporaryDirectory() as directory:
             summary = Path(directory, "summary.md")
@@ -658,17 +700,22 @@ class PlannerTests(unittest.TestCase):
         expected = {
             "hygon": {
                 "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
-                "test_cross_entropy_forward_and_backward_match_native_exactly"
+                "test_cross_entropy_forward_and_backward_match_native_exactly",
+                "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
+                "test_dispatch_entry_does_not_shrink_the_compiled_graph",
             },
             "metax": {
                 "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
                 "test_cross_entropy_forward_and_backward_match_native_exactly",
                 "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
                 "test_mhc_apis_match_native_exactly",
+                "tests/pytorch/test_fusible_ops.py::TestBasicOps::"
+                "test_dropout[dtype0-shape2-None-True-0.5]",
             },
             "iluvatar": {
+                "tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_mhc_apis_match_native_exactly",
                 "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
-                "test_mhc_apis_match_native_exactly"
+                "test_dispatch_entry_does_not_shrink_the_compiled_graph",
             },
             "ppu": {
                 "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"

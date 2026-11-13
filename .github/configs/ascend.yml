@@ -6,7 +6,7 @@ display_name: 'Huawei Ascend NPU'
 checkout_submodules: recursive
 
 # CI image for the Ascend environment
-ci_image: harbor.baai.ac.cn/flagos-dev/transformerengine-fl:85c2523-ascend-dev
+ci_image: harbor.baai.ac.cn/flagos-dev/transformer-engine-fl:v2.17.0-ascend-ci
 
 # Runner labels for the self-hosted Ascend node
 runner_labels:
@@ -96,4 +96,12 @@ paths_watch:
 # Missing test-group coverage is explicit; these entries do not claim hardware incapability.
 ignored_test_groups:
   quantization: Ascend unit QA runs selected non-FP8 portable cases and vendor NPU tests; recipe/quantized-tensor/FP8/NVFP4 target groups are not wired.
-  optimizer: Ascend unit QA does not run fused optimizer, multi-tensor or backend optimizer targets.
+
+# These tests will be skipped when running pytest (file or file::node).
+# Only defects owned outside this repository belong here; give the reason,
+# owner and restore condition in a comment above each group.
+ignored_tests:
+  # torch_npu/CANN: casting FP32 to float8_e4m3fn/float8_e5m2 on the 910 fails in
+  # aclnnInplaceCopy (error 561103) while the test builds its FP8 parameter, before
+  # the FlagOS FP8 Adam runs. Restore when torch_npu supports float8 copies.
+  - tests/plugin/backend/flagos/test_optimizer_extended.py::test_fp8_adam_updates_master_and_metadata

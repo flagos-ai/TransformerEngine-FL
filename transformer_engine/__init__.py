@@ -92,6 +92,14 @@ try:
 except Exception as e:
     pass
 
+# Apply Enflame/GCU (VENDOR) device identity: TE_DEVICE_TYPE = "gcu"
+try:
+    from .plugin.core.backends.vendor.enflame.patches import apply_patch as _enflame_apply_patch
+
+    _enflame_apply_patch()
+except Exception as e:
+    pass
+
 
 def te_device_type(default: str = "cuda") -> str:
     try:

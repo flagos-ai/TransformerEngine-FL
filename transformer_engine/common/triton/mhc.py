@@ -12,6 +12,14 @@ import os
 import triton
 import triton.language as tl
 
+if hasattr(tl, "assume"):
+    _assume = tl.assume
+else:  # Older Triton builds (e.g. MACA Triton 3.0) have no tl.assume.
+
+    @triton.jit
+    def _assume(cond):  # pylint: disable=unused-argument
+        """tl.assume only feeds optimisation hints, so a no-op keeps semantics."""
+
 
 def projection_config_fwd():
     block_m = [64, 128]
@@ -77,19 +85,19 @@ def _mhc_projection_fwd_fused(
     pid_m = tl.program_id(axis=0)
     pid_k = tl.program_id(axis=1)
 
-    tl.assume(pid_m >= 0)
-    tl.assume(pid_k >= 0)
-    tl.assume(stride_xm > 0)
-    tl.assume(stride_xk == 1)
-    tl.assume(stride_phin == K)
-    tl.assume(stride_phik == 1)
-    tl.assume(stride_hm == 32)
-    tl.assume(stride_hn == 1)
-    tl.assume(stride_ms == 1)
+    _assume(pid_m >= 0)
+    _assume(pid_k >= 0)
+    _assume(stride_xm > 0)
+    _assume(stride_xk == 1)
+    _assume(stride_phin == K)
+    _assume(stride_phik == 1)
+    _assume(stride_hm == 32)
+    _assume(stride_hn == 1)
+    _assume(stride_ms == 1)
 
-    tl.assume(BLOCK_SIZE_M % 32 == 0)
-    tl.assume(BLOCK_SIZE_K % 32 == 0)
-    tl.assume(BLOCK_SIZE_N == 32)
+    _assume(BLOCK_SIZE_M % 32 == 0)
+    _assume(BLOCK_SIZE_K % 32 == 0)
+    _assume(BLOCK_SIZE_N == 32)
 
     offs_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
     offs_n_full = tl.arange(0, BLOCK_SIZE_N)
@@ -115,7 +123,7 @@ def _mhc_projection_fwd_fused(
         )  # (BLOCK_SIZE_N, BLOCK_SIZE_K)
         ms_acc += tl.sum(x * x, axis=1)
         h_acc = tl.dot(
-            x, tl.trans(phi, (1, 0)), h_acc, input_precision=precision, out_dtype=tl.float32
+            x, tl.trans(phi, 1, 0), h_acc, input_precision=precision, out_dtype=tl.float32
         )
 
     h_ptrs = h_ptr + offs_m[:, None] * stride_hm + offs_n_full[None, :] * stride_hn
@@ -163,21 +171,21 @@ def _mhc_projection_bwd_fused(
     pid_m = tl.program_id(axis=0)
     pid_k = tl.program_id(axis=1)
 
-    tl.assume(pid_m >= 0)
-    tl.assume(pid_k >= 0)
-    tl.assume(stride_xm > 0)
-    tl.assume(stride_xk == 1)
-    tl.assume(stride_grad_hm == 32)
-    tl.assume(stride_grad_hn == 1)
-    tl.assume(stride_phin == K)
-    tl.assume(stride_phik == 1)
-    tl.assume(stride_grad_phin == K)
-    tl.assume(stride_grad_phik == 1)
-    tl.assume(stride_grad_ms == 1)
+    _assume(pid_m >= 0)
+    _assume(pid_k >= 0)
+    _assume(stride_xm > 0)
+    _assume(stride_xk == 1)
+    _assume(stride_grad_hm == 32)
+    _assume(stride_grad_hn == 1)
+    _assume(stride_phin == K)
+    _assume(stride_phik == 1)
+    _assume(stride_grad_phin == K)
+    _assume(stride_grad_phik == 1)
+    _assume(stride_grad_ms == 1)
 
-    tl.assume(BLOCK_SIZE_M % 32 == 0)
-    tl.assume(BLOCK_SIZE_K % 32 == 0)
-    tl.assume(BLOCK_SIZE_N == 32)
+    _assume(BLOCK_SIZE_M % 32 == 0)
+    _assume(BLOCK_SIZE_K % 32 == 0)
+    _assume(BLOCK_SIZE_N == 32)
 
     offs_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
     offs_k = pid_k * BLOCK_SIZE_K + tl.arange(0, BLOCK_SIZE_K)
@@ -258,16 +266,16 @@ def _mhc_scale_fwd_fused(
 ):
     pid = tl.program_id(0)
 
-    tl.assume(M > 0)
-    tl.assume(n == 4)
-    tl.assume(stride_hm == 32)
-    tl.assume(stride_hn == 1)
-    tl.assume(stride_out_m == 32)
-    tl.assume(stride_out_n == 1)
-    tl.assume(stride_a == 1)
-    tl.assume(stride_b == 1)
-    tl.assume(stride_ms == 1)
-    tl.assume(BLOCK_SIZE_N == 32)
+    _assume(M > 0)
+    _assume(n == 4)
+    _assume(stride_hm == 32)
+    _assume(stride_hn == 1)
+    _assume(stride_out_m == 32)
+    _assume(stride_out_n == 1)
+    _assume(stride_a == 1)
+    _assume(stride_b == 1)
+    _assume(stride_ms == 1)
+    _assume(BLOCK_SIZE_N == 32)
 
     N = 2 * n + n * n
 
@@ -352,22 +360,22 @@ def _mhc_scale_bwd_fused(
 ):
     pid = tl.program_id(0)
 
-    tl.assume(M > 0)
-    tl.assume(n == 4)
-    tl.assume(stride_grad_out_m == 32)
-    tl.assume(stride_grad_out_n == 1)
-    tl.assume(stride_out_m == 32)
-    tl.assume(stride_out_n == 1)
-    tl.assume(stride_grad_hm == 32)
-    tl.assume(stride_grad_hn == 1)
-    tl.assume(stride_hm == 32)
-    tl.assume(stride_hn == 1)
-    tl.assume(stride_grad_a == 1)
-    tl.assume(stride_a == 1)
-    tl.assume(stride_grad_b == 1)
-    tl.assume(stride_grad_ms == 1)
-    tl.assume(stride_ms == 1)
-    tl.assume(BLOCK_SIZE_N == 32)
+    _assume(M > 0)
+    _assume(n == 4)
+    _assume(stride_grad_out_m == 32)
+    _assume(stride_grad_out_n == 1)
+    _assume(stride_out_m == 32)
+    _assume(stride_out_n == 1)
+    _assume(stride_grad_hm == 32)
+    _assume(stride_grad_hn == 1)
+    _assume(stride_hm == 32)
+    _assume(stride_hn == 1)
+    _assume(stride_grad_a == 1)
+    _assume(stride_a == 1)
+    _assume(stride_grad_b == 1)
+    _assume(stride_grad_ms == 1)
+    _assume(stride_ms == 1)
+    _assume(BLOCK_SIZE_N == 32)
 
     N = 2 * n + n * n
 
@@ -417,15 +425,15 @@ def _mhc_scale_bwd_fused(
 
     grad_a = tl.sum(h * grad_h / rms[:, None], axis=0).to(a.dtype)
     # Write grad_a[0:4].sum to grad_a_ptr[0], grad_a[4:8].sum to grad_a_ptr[1], and grad_a[8:24].sum to grad_a_ptr[2]
-    tl.atomic_add(grad_a_ptr, tl.where(cols[None, :] < n, grad_a, 0.0).sum(), sem="relaxed")
+    tl.atomic_add(grad_a_ptr, tl.sum(tl.where(cols[None, :] < n, grad_a, 0.0)), sem="relaxed")
     tl.atomic_add(
         grad_a_ptr + stride_grad_a,
-        tl.where((cols[None, :] >= n) & (cols[None, :] < 2 * n), grad_a, 0.0).sum(),
+        tl.sum(tl.where((cols[None, :] >= n) & (cols[None, :] < 2 * n), grad_a, 0.0)),
         sem="relaxed",
     )
     tl.atomic_add(
         grad_a_ptr + 2 * stride_grad_a,
-        tl.where((cols[None, :] >= 2 * n) & (cols[None, :] < 2 * n + n * n), grad_a, 0.0).sum(),
+        tl.sum(tl.where((cols[None, :] >= 2 * n) & (cols[None, :] < 2 * n + n * n), grad_a, 0.0)),
         sem="relaxed",
     )
 
@@ -476,8 +484,8 @@ def _mhc_sinkhorn_fwd_fused_recompute(
     pid = tl.program_id(0)
 
     tl.static_assert(BLOCK_SIZE % (n * n) == 0, "BLOCK_SIZE must be divisible by n*n")
-    tl.assume(M > 0 and iters > 0)
-    tl.assume(n == 4)
+    _assume(M > 0 and iters > 0)
+    _assume(n == 4)
 
     BATCH_SIZE: tl.constexpr = BLOCK_SIZE // (n * n)
 
@@ -550,8 +558,8 @@ def _mhc_sinkhorn_bwd_fused_recompute(
     pid = tl.program_id(0)
 
     tl.static_assert(BLOCK_SIZE % (n * n) == 0, "BLOCK_SIZE must be divisible by n*n")
-    tl.assume(M > 0 and iters > 0)
-    tl.assume(n == 4)
+    _assume(M > 0 and iters > 0)
+    _assume(n == 4)
 
     BATCH_SIZE: tl.constexpr = BLOCK_SIZE // (n * n)  # Assume there's no remainder for simplicity
 
@@ -684,8 +692,8 @@ def _mhc_sinkhorn_fwd_fused(
     pid = tl.program_id(0)
 
     tl.static_assert(BLOCK_SIZE % (n * n) == 0, "BLOCK_SIZE must be divisible by n*n")
-    tl.assume(M > 0 and iters > 0)
-    tl.assume(n == 4)
+    _assume(M > 0 and iters > 0)
+    _assume(n == 4)
 
     BATCH_SIZE: tl.constexpr = BLOCK_SIZE // (n * n)  # Assume there's no remainder for simplicity
 
@@ -777,8 +785,8 @@ def _mhc_sinkhorn_bwd_fused(
     pid = tl.program_id(0)
 
     tl.static_assert(BLOCK_SIZE % (n * n) == 0, "BLOCK_SIZE must be divisible by n*n")
-    tl.assume(M > 0 and iters > 0)
-    tl.assume(n == 4)
+    _assume(M > 0 and iters > 0)
+    _assume(n == 4)
 
     BATCH_SIZE: tl.constexpr = BLOCK_SIZE // (n * n)  # Assume there's no remainder for simplicity
 
@@ -897,13 +905,13 @@ def _mhc_aggregate_fwd(
     pid_c = tl.program_id(0)
 
     tl.static_assert(n == 4)
-    tl.assume(M > 0)
-    tl.assume(C > 0)
-    tl.assume(n == 4)
-    tl.assume(stride_xm > 0 and stride_xCn == 1)
-    tl.assume(stride_output_m > 0 and stride_output_c == 1)
+    _assume(M > 0)
+    _assume(C > 0)
+    _assume(n == 4)
+    _assume(stride_xm > 0 and stride_xCn == 1)
+    _assume(stride_output_m > 0 and stride_output_c == 1)
 
-    tl.assume(BLOCK_SIZE_C % 32 == 0)
+    _assume(BLOCK_SIZE_C % 32 == 0)
 
     offs_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
     offs_c = pid_c * BLOCK_SIZE_C + tl.arange(0, BLOCK_SIZE_C)
@@ -984,14 +992,14 @@ def _mhc_aggregate_bwd(
     pid_c = tl.program_id(0)
 
     tl.static_assert(n == 4)
-    tl.assume(M > 0)
-    tl.assume(C > 0)
-    tl.assume(n == 4)
-    tl.assume(stride_xm > 0 and stride_xCn == 1)
-    tl.assume(stride_grad_xm > 0 and stride_grad_xCn == 1)
-    tl.assume(stride_grad_output_m > 0 and stride_grad_output_c == 1)
+    _assume(M > 0)
+    _assume(C > 0)
+    _assume(n == 4)
+    _assume(stride_xm > 0 and stride_xCn == 1)
+    _assume(stride_grad_xm > 0 and stride_grad_xCn == 1)
+    _assume(stride_grad_output_m > 0 and stride_grad_output_c == 1)
 
-    tl.assume(BLOCK_SIZE_C % 32 == 0)
+    _assume(BLOCK_SIZE_C % 32 == 0)
 
     offs_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
     offs_c = pid_c * BLOCK_SIZE_C + tl.arange(0, BLOCK_SIZE_C)
@@ -1091,14 +1099,14 @@ def _mhc_expand_combine_fwd(
     pid_c = tl.program_id(0)
 
     tl.static_assert(n == 4)
-    tl.assume(M > 0)
-    tl.assume(C > 0)
-    tl.assume(n == 4)
-    tl.assume(stride_fm > 0 and stride_fc == 1)
-    tl.assume(stride_xm > 0 and stride_xCn == 1)
-    tl.assume(stride_output_m > 0 and stride_output_Cn == 1)
+    _assume(M > 0)
+    _assume(C > 0)
+    _assume(n == 4)
+    _assume(stride_fm > 0 and stride_fc == 1)
+    _assume(stride_xm > 0 and stride_xCn == 1)
+    _assume(stride_output_m > 0 and stride_output_Cn == 1)
 
-    tl.assume(BLOCK_SIZE_C % 32 == 0)
+    _assume(BLOCK_SIZE_C % 32 == 0)
 
     offs_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
     offs_c = pid_c * BLOCK_SIZE_C + tl.arange(0, BLOCK_SIZE_C)
@@ -1148,7 +1156,7 @@ def _mhc_expand_combine_fwd(
     x0, x1 = tl.split(x01)  # (BLOCK_SIZE_M, BLOCK_SIZE_C), (BLOCK_SIZE_M, BLOCK_SIZE_C)
     x2, x3 = tl.split(x23)  # (BLOCK_SIZE_M, BLOCK_SIZE_C), (BLOCK_SIZE_M, BLOCK_SIZE_C)
 
-    H_resT = tl.reshape(tl.trans(H_res, (0, 2, 1)), (BLOCK_SIZE_M, n, 2, 2))
+    H_resT = tl.reshape(tl.trans(H_res, 0, 2, 1), (BLOCK_SIZE_M, n, 2, 2))
     H_res01, H_res23 = tl.split(H_resT)  # (BLOCK_SIZE_M, n, 2), (BLOCK_SIZE_M, n, 2)
     H_res0, H_res1 = tl.split(H_res01)  # (BLOCK_SIZE_M, n), (BLOCK_SIZE_M, n)
     H_res2, H_res3 = tl.split(H_res23)  # (BLOCK_SIZE_M, n), (BLOCK_SIZE_M, n)
@@ -1229,16 +1237,16 @@ def _mhc_expand_combine_bwd(
     pid_c = tl.program_id(0)
 
     tl.static_assert(n == 4)
-    tl.assume(M > 0)
-    tl.assume(C > 0)
-    tl.assume(n == 4)
-    tl.assume(stride_fm > 0 and stride_fc == 1)
-    tl.assume(stride_xm > 0 and stride_xCn == 1)
-    tl.assume(stride_grad_output_m > 0 and stride_grad_output_Cn == 1)
-    tl.assume(stride_grad_fm > 0 and stride_grad_fc == 1)
-    tl.assume(stride_grad_xm > 0 and stride_grad_xCn == 1)
+    _assume(M > 0)
+    _assume(C > 0)
+    _assume(n == 4)
+    _assume(stride_fm > 0 and stride_fc == 1)
+    _assume(stride_xm > 0 and stride_xCn == 1)
+    _assume(stride_grad_output_m > 0 and stride_grad_output_Cn == 1)
+    _assume(stride_grad_fm > 0 and stride_grad_fc == 1)
+    _assume(stride_grad_xm > 0 and stride_grad_xCn == 1)
 
-    tl.assume(BLOCK_SIZE_C % 32 == 0)
+    _assume(BLOCK_SIZE_C % 32 == 0)
 
     offs_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
     offs_c = pid_c * BLOCK_SIZE_C + tl.arange(0, BLOCK_SIZE_C)
@@ -1292,7 +1300,7 @@ def _mhc_expand_combine_bwd(
 
     # grad_H_res = x.T @ grad_output: (BLOCK_SIZE_M, n, BLOCK_SIZE_C) @ (BLOCK_SIZE_M, BLOCK_SIZE_C, n) = (BLOCK_SIZE_M, n, n)
     grad_H_res = tl.dot(
-        tl.trans(x, (0, 2, 1)), grad_out, input_precision=precision, out_dtype=tl.float32
+        tl.trans(x, 0, 2, 1), grad_out, input_precision=precision, out_dtype=tl.float32
     )  # (BLOCK_SIZE_M, n, n)
     grad_H_res = tl.reshape(grad_H_res, (BLOCK_SIZE_M * n * n,))  # (BLOCK_SIZE_M * n * n)
     offs_grad_H_res = pid_m * BLOCK_SIZE_M * n * n + tl.arange(0, BLOCK_SIZE_M * n * n)
@@ -1398,15 +1406,15 @@ def _mhc_expand_combine_with_bias_fwd(
     pid_c = tl.program_id(0)
 
     tl.static_assert(n == 4)
-    tl.assume(M > 0)
-    tl.assume(C > 0)
-    tl.assume(n == 4)
-    tl.assume(stride_fm > 0 and stride_fc == 1)
-    tl.assume(stride_bias == 1)
-    tl.assume(stride_xm > 0 and stride_xCn == 1)
-    tl.assume(stride_output_m > 0 and stride_output_Cn == 1)
+    _assume(M > 0)
+    _assume(C > 0)
+    _assume(n == 4)
+    _assume(stride_fm > 0 and stride_fc == 1)
+    _assume(stride_bias == 1)
+    _assume(stride_xm > 0 and stride_xCn == 1)
+    _assume(stride_output_m > 0 and stride_output_Cn == 1)
 
-    tl.assume(BLOCK_SIZE_C % 32 == 0)
+    _assume(BLOCK_SIZE_C % 32 == 0)
 
     offs_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
     offs_c = pid_c * BLOCK_SIZE_C + tl.arange(0, BLOCK_SIZE_C)
@@ -1458,7 +1466,7 @@ def _mhc_expand_combine_with_bias_fwd(
     x0, x1 = tl.split(x01)  # (BLOCK_SIZE_M, BLOCK_SIZE_C), (BLOCK_SIZE_M, BLOCK_SIZE_C)
     x2, x3 = tl.split(x23)  # (BLOCK_SIZE_M, BLOCK_SIZE_C), (BLOCK_SIZE_M, BLOCK_SIZE_C)
 
-    H_resT = tl.reshape(tl.trans(H_res, (0, 2, 1)), (BLOCK_SIZE_M, n, 2, 2))
+    H_resT = tl.reshape(tl.trans(H_res, 0, 2, 1), (BLOCK_SIZE_M, n, 2, 2))
     H_res01, H_res23 = tl.split(H_resT)  # (BLOCK_SIZE_M, n, 2), (BLOCK_SIZE_M, n, 2)
     H_res0, H_res1 = tl.split(H_res01)  # (BLOCK_SIZE_M, n), (BLOCK_SIZE_M, n)
     H_res2, H_res3 = tl.split(H_res23)  # (BLOCK_SIZE_M, n), (BLOCK_SIZE_M, n)
@@ -1543,18 +1551,18 @@ def _mhc_expand_combine_with_bias_bwd(
     pid_c = tl.program_id(0)
 
     tl.static_assert(n == 4)
-    tl.assume(M > 0)
-    tl.assume(C > 0)
-    tl.assume(n == 4)
-    tl.assume(stride_fm > 0 and stride_fc == 1)
-    tl.assume(stride_bias == 1)
-    tl.assume(stride_xm > 0 and stride_xCn == 1)
-    tl.assume(stride_grad_output_m > 0 and stride_grad_output_Cn == 1)
-    tl.assume(stride_grad_fm > 0 and stride_grad_fc == 1)
-    tl.assume(stride_grad_bias == 1)
-    tl.assume(stride_grad_xm > 0 and stride_grad_xCn == 1)
+    _assume(M > 0)
+    _assume(C > 0)
+    _assume(n == 4)
+    _assume(stride_fm > 0 and stride_fc == 1)
+    _assume(stride_bias == 1)
+    _assume(stride_xm > 0 and stride_xCn == 1)
+    _assume(stride_grad_output_m > 0 and stride_grad_output_Cn == 1)
+    _assume(stride_grad_fm > 0 and stride_grad_fc == 1)
+    _assume(stride_grad_bias == 1)
+    _assume(stride_grad_xm > 0 and stride_grad_xCn == 1)
 
-    tl.assume(BLOCK_SIZE_C % 32 == 0)
+    _assume(BLOCK_SIZE_C % 32 == 0)
 
     offs_m = pid_m * BLOCK_SIZE_M + tl.arange(0, BLOCK_SIZE_M)
     offs_c = pid_c * BLOCK_SIZE_C + tl.arange(0, BLOCK_SIZE_C)
@@ -1617,7 +1625,7 @@ def _mhc_expand_combine_with_bias_bwd(
 
     # grad_H_res = x.T @ grad_output: (BLOCK_SIZE_M, n, BLOCK_SIZE_C) @ (BLOCK_SIZE_M, BLOCK_SIZE_C, n) = (BLOCK_SIZE_M, n, n)
     grad_H_res = tl.dot(
-        tl.trans(x, (0, 2, 1)), grad_out, input_precision=precision, out_dtype=tl.float32
+        tl.trans(x, 0, 2, 1), grad_out, input_precision=precision, out_dtype=tl.float32
     )  # (BLOCK_SIZE_M, n, n)
     grad_H_res = tl.reshape(grad_H_res, (BLOCK_SIZE_M * n * n,))  # (BLOCK_SIZE_M * n * n)
     offs_grad_H_res = pid_m * BLOCK_SIZE_M * n * n + tl.arange(0, BLOCK_SIZE_M * n * n)

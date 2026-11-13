@@ -5,7 +5,8 @@ hardware_name: enflame
 display_name: 'Enflame GCU'
 checkout_submodules: 'false'
 
-ci_image: harbor.baai.ac.cn/flagos-dev/transformerengine-fl:manual-20260809-enflame-dev
+# v2.17.0-enflame-ci-gems5.0.2-20261112; verified on two GCU devices.
+ci_image: harbor.baai.ac.cn/flagos-dev/transformer-engine-fl:v2.17.0-enflame-ci-gems5.0.2-20261112
 
 runner_labels:
   - sy-8g-cicd-te
@@ -84,5 +85,36 @@ paths_watch:
 
 # Missing test-group coverage is explicit; these entries do not claim hardware incapability.
 ignored_test_groups:
-  normalization: Enflame unit QA has no normalization, sanity or numerics target; existing HF integration is not a dedicated normalization check.
   quantization: Enflame unit QA does not run recipe, quantized-tensor, FP8 or NVFP4 targets.
+
+# These tests will be skipped when running pytest (file or file::node).
+# Only defects owned outside this repository belong here; give the reason,
+# owner and restore condition in a comment above each group.
+ignored_tests:
+  # FlagTree Enflame backend (flagtree 0.7.0+enflame3.6): tt.atomic_rmw cannot be
+  # legalized, so kernels using tl.atomic_add fail to compile (cross entropy),
+  # hang while compiling (grouped dbias) or crash (mHC). Restore when atomics compile.
+  - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_cross_entropy_forward_and_backward_match_native_exactly
+  - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_grouped_dbias_functions_match_native_exactly
+  - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_mhc_apis_match_native_exactly
+  # FlagTree Enflame backend: unpermute_with_mask_map_bwd_with_merging_probs aborts
+  # after the forward passes. Restore when the backward kernel runs.
+  - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_real_permutation_forward_backward_matches_pytorch
+  # FlagGems 5.0.2 Enflame backend (flag_gems/runtime/backend/_enflame/gcu300) in
+  # v2.17.0-enflame-ci-gems5.0.2-20261112: these lifecycle tests drive FlagOS impls with
+  # CPU tensors, which its mm rejects ("Expected a gcu device, but got: cpu") or the
+  # FlagTree GCU launcher cannot address ("cannot be accessed from Kurama"), and its
+  # mm/addmm shape checks reject generic_gemm_fl's 3-D cases ("incompatible dimensions").
+  # Same seven selectors as Iluvatar's baseline; all passed with flag_gems 5.4.0 on
+  # v2.17.0-enflame-ci. Restore when the Enflame FlagGems ops accept these inputs.
+  - tests/plugin/backend/flagos/test_gemm.py::test_generic_gemm_lifecycle_matrix
+  - tests/plugin/backend/flagos/test_gemm.py::test_grouped_gemm_standard_lifecycle
+  - tests/plugin/backend/flagos/test_multi_tensor.py::test_l2_norm_non_finite_tracking
+  - tests/plugin/backend/flagos/test_multi_tensor.py::test_scale_standard_lifecycle
+  - tests/plugin/backend/flagos/test_multi_tensor.py::test_scale_non_finite_tracking
+  - tests/plugin/backend/flagos/test_optimizer.py::test_multi_tensor_adam_lifecycle
+  - tests/plugin/backend/flagos/test_optimizer.py::test_param_remainder_bit_manipulation_lifecycle
+  # torch_gcu/topsaten: casting FP32 to float8_e4m3fn/float8_e5m2 is unsupported
+  # (TOPSATEN_STATUS_NOT_SUPPORT) and aborts the process while the test builds its FP8
+  # parameter, before the FlagOS FP8 Adam runs. Restore when torch_gcu supports float8 copies.
+  - tests/plugin/backend/flagos/test_optimizer_extended.py::test_fp8_adam_updates_master_and_metadata

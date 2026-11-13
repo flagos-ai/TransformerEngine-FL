@@ -58,9 +58,7 @@ declare -A PPU_IGNORE_K=(
   [tests/pytorch/test_sanity.py]='test_sanity_grouped_linear and (1-dtype or 2-dtype)'
   [tests/pytorch/test_numerics.py]='(test_gpt_cuda_graph and (dtype1 or dtype2)) or (test_layernorm_accuracy and (dtype1 or dtype2)) or (test_transformer_layer_hidden_states_format and 126m-2-dtype)'
   [tests/pytorch/test_cuda_graphs.py]='test_make_graphed_callables_with_kwargs or (test_make_graphed_callables and (transformer or mha) and (dtype1 or dtype2)) or (test_make_graphed_callables_with_dot_product_attention and (dtype1 or dtype2))'
-  # test_large_tensor: FlagOS/FlagGems elementwise ops (e.g. flag_gems.mul in multi_tensor_adam_fl)
-  # use 32-bit signed offsets (vmem.ld.b32x4.sign) and produce 0.0 / invalid page for numel >= 2^31.
-  [tests/pytorch/test_fused_optimizer.py]='TestFusedSGD or test_bf16_exp_avg_and_exp_avg_sq or test_large_tensor'
+  [tests/pytorch/test_fused_optimizer.py]='TestFusedSGD or test_bf16_exp_avg_and_exp_avg_sq'
   [tests/pytorch/test_multi_tensor.py]='test_multi_tensor_compute_scale_and_scale_inv'
   [tests/pytorch/test_fusible_ops.py]='test_grouped_linear or test_backward_add_rmsnorm or test_grouped_mlp or (test_basic_linear and not test_basic_linear_quantized and (in_shape0 or in_shape1 or in_shape2)) or (test_layer_norm and not test_layer_norm_autocast and (dtype1 or dtype2)) or (test_rmsnorm and True and (dtype1 or dtype2)) or (test_activation and dtype1 and (qgelu or qgeglu or (glu and not (geglu or reglu or sreglu or swiglu)))) or (test_clamped_swiglu and dtype1) or (test_dropout and (dtype1 or dtype2) and shape2 and True and 0.5) or (test_forward_linear_bias_activation and (dtype1 or dtype2) and (in_shape0 or in_shape2)) or (test_forward_linear_bias_add and dtype1 and True) or (test_forward_linear_scale_add and dtype1 and (2.5 or 3.5)) or (TestCheckpointing and test_linear and True)'
   [tests/pytorch/test_cpu_offloading.py]='(test_memory and (multihead_attention or transformer_layer)) or (test_numerics and transformer_layer) or (test_numerics and UnfusedAttention and True-multihead_attention)'

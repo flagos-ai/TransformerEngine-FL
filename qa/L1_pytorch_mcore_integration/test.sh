@@ -137,6 +137,13 @@ if [ -n "${MCORE_PREPARE_SCRIPT:-}" ]; then
     python3 "${MCORE_PREPARE_SCRIPT}" "${MCORE_PATH}"
 fi
 
+# Ensure the checked-out Megatron-LM-FL precedes any preinstalled megatron
+# package in Python's import path (including image-level startup hooks).
+case ":${PYTHONPATH:-}:" in
+    ":${MCORE_PATH}:"*) ;;
+    *) export PYTHONPATH="${MCORE_PATH}${PYTHONPATH:+:${PYTHONPATH}}" ;;
+esac
+
 # Megatron-LM-FL tokenizer imports happen at module import time, so direct
 # source execution needs these Python deps available before pretrain_gpt.py
 # starts.
@@ -149,8 +156,7 @@ PY
 
 # Megatron's mock dataset requires its pybind11 helper extension. Source-only
 # checkouts do not provide the compiled module.
-if ! PYTHONPATH="${MCORE_PATH}:${PYTHONPATH:-}" python3 -c \
-    "import megatron.core.datasets.helpers_cpp" 2>/dev/null; then
+if ! python3 -c "import megatron.core.datasets.helpers_cpp" 2>/dev/null; then
     (cd "${MCORE_PATH}" && python3 setup.py build_ext --inplace)
 fi
 

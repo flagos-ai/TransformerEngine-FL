@@ -44,10 +44,8 @@ platform scripts do not duplicate inline JSON or `TE_FL_*` unset lists. Inner
 pytest groups disable retries so the outer platform job owns retry policy.
 PPU retains its per-file timeout/summary and Iluvatar its per-file ignore audit,
 while both query `--list-targets` and `--target-env` from the shared preset.
-MUSA and Kunlun run the shared plugin-unit preset from their unit suites, along
-with the existing platform tests. Enflame and Hygon use the same preset for
-their vendor coverage; Hygon also runs its debug suite. Remaining gaps stay in
-`ignored_test_groups`.
+MUSA and Kunlun keep their existing unit suites unchanged while `plugin_core`,
+`reference_backend` and `vendor_backend` remain in `ignored_test_groups`.
 The old per-file backend calls are removed to avoid duplicate execution.
 Distinct relative paths produce distinct JUnit filenames even when test files
 share a basename. Numerics helper files are invoked by their driver rather
@@ -302,9 +300,9 @@ is unchanged. Review the logged node IDs after upstream parameter changes.
 ### Plugin discovery compatibility
 
 The plugin-unit preset forces `TE_FL_PREFER=vendor` for NPU backend files before
-imports. Ascend excludes `tests/plugin/accuracy/test_compute_scale.py` until NPU
-CUDA-semantic scale parity is wired; the execution plan records the same exact
-file exclusion. Other platforms retain this accuracy test.
+imports. Every platform, including Ascend, runs
+`tests/plugin/accuracy/test_compute_scale.py`; the NPU backend follows the TEX
+CUDA scale semantics that test asserts.
 
 Isolated pytest exit code 5 is accepted only when the newly generated JUnit
 report contains skipped cases exclusively, with no failures or errors. Empty
@@ -314,12 +312,15 @@ whole-suite retries; integration/compat jobs retain their existing retry policy.
 FlagOps upload is advisory and explicitly skips when its API token is absent;
 coverage collection, artifacts and required coverage checks remain enabled.
 
-Plugin file and node quarantines live in each platform's `.github/configs/<platform>.yml`
-`ignored_tests` list. `config.sh` remains limited to execution settings such as
-devices, timeouts, and environment variables. The planner passes YAML exclusions
-to the common pytest selection plugin, which also applies them in nested dispatch
-test processes. Every deselection contributes no passing evidence. Hygon excludes
-the cross-entropy dispatch case; MetaX excludes cross-entropy and mHC; Iluvatar
-excludes mHC; PPU excludes the compiled-graph guard and Adam parameter
-`[False-0.0-0-0]`. Other cases remain selected, including CUDA's complete dispatch
-suite.
+Plugin tests are not quarantined in test code or launcher scripts. A failure
+caused by this repository stays a failure until it is fixed. A defect owned by
+an external toolchain or image (for example FlagTree or FlagGems) may be listed
+in the platform config under `ignored_tests`, using the same convention as
+Megatron-LM-FL: a list of `path` or `path::node` entries (coarse or fine), with
+a YAML comment above each group giving the reason, owner and restore condition.
+The planner merges these entries into each execution's ignored targets, lists
+them on the plan's platform entry (`ignored_tests`) and in the plan summary's
+coverage gaps. They never count as passing evidence; remove an entry as soon as
+its restore condition holds. The shared
+workflow passes its platform identity explicitly; the MetaX standalone
+environment sets the same identity.

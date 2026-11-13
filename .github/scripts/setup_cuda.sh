@@ -6,8 +6,7 @@ set -euo pipefail
 WORKSPACE="${GITHUB_WORKSPACE:-$(pwd)}"
 
 echo "===== Step 0: Activate Python environment ====="
-source /opt/miniconda3/etc/profile.d/conda.sh
-conda activate flagscale-train
+source /flagos/bin/activate
 source "$WORKSPACE/tests/plugin/backend/cuda/set_env.sh"
 {
     echo "TE_FL_SKIP_CUDA=$TE_FL_SKIP_CUDA"

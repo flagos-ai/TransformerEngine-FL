@@ -310,6 +310,23 @@ def select_test_groups(project: dict, changed: list[str], test_level: str, stage
     }
 
 
+def platform_ignored_tests(config: dict) -> list[str]:
+    """Return the platform's explicitly ignored test files or nodes.
+
+    Same convention as Megatron-LM-FL's `ignored_tests`: a list of
+    `path` or `path::node` entries, with the reason in a YAML comment above
+    each group. The plan records every entry so it never counts as a pass.
+    """
+    targets = config.get("ignored_tests", [])
+    if not isinstance(targets, list) or any(
+        not isinstance(target, str) or not target.strip() for target in targets
+    ):
+        raise ValueError("ignored_tests must be a list of test files or nodes")
+    for target in targets:
+        contract.split_test_target(target)
+    return sorted(set(targets))
+
+
 def platform_test_groups(project: dict, config: dict, selection: dict) -> tuple[list, list]:
     """Record unavailable platform test groups and propagate dependency gaps."""
     if "unsupported_test_groups" in config:
@@ -342,18 +359,6 @@ def platform_test_groups(project: dict, config: dict, selection: dict) -> tuple[
             if name in unavailable
         ],
     )
-
-
-def platform_ignored_tests(config: dict) -> list[str]:
-    """Return validated file/node exclusions declared by a platform YAML file."""
-    targets = config.get("ignored_tests", [])
-    if not isinstance(targets, list) or any(
-        not isinstance(target, str) or not target.strip() for target in targets
-    ):
-        raise ValueError("ignored_tests must be a list of test files or nodes")
-    for target in targets:
-        contract.split_test_target(target)
-    return sorted(set(targets))
 
 
 def _group_evidence(group_def: dict) -> str:
@@ -617,10 +622,6 @@ def build_execution_groups(
         }
         if execution["platform"] != "ascend" and "tests/plugin/backend/npu/" in catalog_targets:
             ignored_targets.add("tests/plugin/backend/npu/")
-        if execution["platform"] == "ascend":
-            # Keep the plan aligned with the standalone plugin-unit preset:
-            # NPU compute-scale CUDA-semantic parity is not wired in this CI.
-            ignored_targets.add("tests/plugin/accuracy/test_compute_scale.py")
         ignored_targets.update(platform_ignored_tests(platforms[execution["platform"]]["config"]))
         execution["exec"]["ignored_test_targets"] = sorted(ignored_targets)
         group_targets = execution["exec"].get("group_test_targets", {})
@@ -869,11 +870,13 @@ def write_summary(path: Path, plan: dict) -> None:
         f"{p['name']}/{gap['group']}: {gap['reason']}"
         for p in platforms
         for gap in p["ignored_test_groups"]
-    ] + [
+    ]
+    gaps += [
         f"{p['name']}/{target}: ignored by platform config"
         for p in platforms
         for target in p.get("ignored_tests", [])
-    ] + [
+    ]
+    gaps += [
         f"{job['platform']}/{group} ignored targets: {', '.join(targets)}"
         for job in executions
         for group, targets in (job.get("exec") or {}).get("ignored_group_test_targets", {}).items()

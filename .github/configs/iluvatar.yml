@@ -6,9 +6,8 @@ hardware_name: iluvatar
 display_name: 'Iluvatar BI-V150 (CoreX 4.5.0)'
 checkout_submodules: 'false'
 # Build with docker build --target ci -f docker/iluvatar/Dockerfile -t <ci_image> .
-# The published -dev tag was built using --target ci; the suffix is a tag name.
 # Preload the resulting image on the runner (pull policy: never).
-ci_image: harbor.baai.ac.cn/flagos-dev/transformerengine-fl:f886262-iluvatar-dev
+ci_image: harbor.baai.ac.cn/flagos-dev/transformer-engine-fl:v2.17.0-iluvatar-ci
 container_pull_policy: never
 runner_labels:
   - ts-8g-cicd-te
@@ -83,6 +82,8 @@ paths_watch:
 ignored_tests:
   # CoreX Triton rejects this mHC transpose tuple; restore after compilation and numerics pass.
   - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_mhc_apis_match_native_exactly
+  # FlagTree/FlagTune: compiled graph tracing currently produces an invalid grid.
+  - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_dispatch_entry_does_not_shrink_the_compiled_graph
 
 # RoPE uses the FlagOS backend tests, as on PPU; the common large-shape RoPE
 # matrix is not launched on this 32 GiB baseline (see the Iluvatar config.sh).

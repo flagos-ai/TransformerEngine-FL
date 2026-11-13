@@ -28,7 +28,6 @@ run_test_step() {
         case "$test_path" in
             *"test_numerics.py" | \
             *"test_sanity.py" | \
-            *"test_parallel_cross_entropy.py" | \
             *"test_fused_rope.py" | \
             *"test_gqa.py" | \
             *"test_fused_optimizer.py" | \
