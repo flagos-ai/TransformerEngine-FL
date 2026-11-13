@@ -670,9 +670,9 @@ class PlannerTests(unittest.TestCase):
             by_platform["cuda"]["exec"]["ignored_group_test_targets"]["gemm"],
         )
         # Kunlun's vendor_backend remains enabled for coverage.
-        kunlun_gemm_ignored = by_platform["kunlun"]["exec"].get(
-            "ignored_group_test_targets", {}
-        ).get("gemm", [])
+        kunlun_gemm_ignored = (
+            by_platform["kunlun"]["exec"].get("ignored_group_test_targets", {}).get("gemm", [])
+        )
         self.assertNotIn("tests/plugin/backend/flagos/test_gemm.py", kunlun_gemm_ignored)
         # Ascend's reopened optimizer group no longer suppresses reference tests.
         self.assertNotIn(
@@ -699,29 +699,45 @@ class PlannerTests(unittest.TestCase):
         }
         expected = {
             "hygon": {
-                "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
-                "test_cross_entropy_forward_and_backward_match_native_exactly",
-                "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
-                "test_dispatch_entry_does_not_shrink_the_compiled_graph",
+                (
+                    "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
+                    "test_cross_entropy_forward_and_backward_match_native_exactly"
+                ),
+                (
+                    "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
+                    "test_dispatch_entry_does_not_shrink_the_compiled_graph"
+                ),
             },
             "metax": {
-                "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
-                "test_cross_entropy_forward_and_backward_match_native_exactly",
-                "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
-                "test_mhc_apis_match_native_exactly",
-                "tests/pytorch/test_fusible_ops.py::TestBasicOps::"
-                "test_dropout[dtype0-shape2-None-True-0.5]",
+                (
+                    "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
+                    "test_cross_entropy_forward_and_backward_match_native_exactly"
+                ),
+                (
+                    "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
+                    "test_mhc_apis_match_native_exactly"
+                ),
+                (
+                    "tests/pytorch/test_fusible_ops.py::TestBasicOps::"
+                    "test_dropout[dtype0-shape2-None-True-0.5]"
+                ),
             },
             "iluvatar": {
                 "tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_mhc_apis_match_native_exactly",
-                "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
-                "test_dispatch_entry_does_not_shrink_the_compiled_graph",
+                (
+                    "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
+                    "test_dispatch_entry_does_not_shrink_the_compiled_graph"
+                ),
             },
             "ppu": {
-                "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
-                "test_dispatch_entry_does_not_shrink_the_compiled_graph",
-                "tests/plugin/backend/flagos/test_optimizer_numerical.py::"
-                "test_multi_tensor_adam_matches_formula[False-0.0-0-0]",
+                (
+                    "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
+                    "test_dispatch_entry_does_not_shrink_the_compiled_graph"
+                ),
+                (
+                    "tests/plugin/backend/flagos/test_optimizer_numerical.py::"
+                    "test_multi_tensor_adam_matches_formula[False-0.0-0-0]"
+                ),
             },
         }
         for platform, targets in expected.items():
