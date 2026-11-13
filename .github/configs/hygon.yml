@@ -94,8 +94,10 @@ ignored_tests:
   # Restore after the shared check handles non-CUDA runtimes.
   - tests/pytorch/debug/test_log.py
   - tests/pytorch/test_sanity.py
-  # Hygon's current TE-FL registry has no quantize operator for these debug
-  # quantization paths. Restore after the Hygon backend exposes quantize.
+  # Hygon's current TE-FL registry has no quantize operator. These debug
+  # quantization paths call tex.quantize; restore after the backend exposes it.
+  - tests/pytorch/debug/test_api_features.py::test_per_tensor_scaling
+  - tests/pytorch/debug/test_api_features.py::test_fake_quant
   - tests/pytorch/debug/test_api_features.py::test_statistics_collection
   - tests/pytorch/debug/test_api_features.py::test_statistics_multi_run
   # Hygon DTK launch/runtime limitations; restore after the affected paths pass.
