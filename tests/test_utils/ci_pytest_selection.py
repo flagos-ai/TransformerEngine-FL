@@ -77,16 +77,19 @@ def pytest_configure(config):
 @pytest.hookimpl(tryfirst=True)
 def pytest_collection(session):
     selection = session.config._flagcicd_selection
-    if selection is None:
+    ignored = session.config._flagcicd_ignored
+    if selection is None and not ignored.targets:
         return
     selected = []
     for argument in session.config.args:
         path = Path(argument.split("::", 1)[0])
         if not path.is_absolute():
             path = Path(session.config.invocation_params.dir) / path
-        if session.config._flagcicd_ignored.selected(path):
+        if ignored.selected(path):
             print(f"[IGNORE] {argument}")
-        elif selection.selected(path, ancestors=path.is_dir()):
+        elif selection is not None and selection.selected(path, ancestors=path.is_dir()):
+            selected.append(argument)
+        elif selection is None:
             selected.append(argument)
     if not selected:
         # Platform launchers invoke pytest once per test file. An unrelated
@@ -110,29 +113,34 @@ def pytest_ignore_collect(collection_path: Path, config):
 @pytest.hookimpl(tryfirst=True)
 def pytest_collection_modifyitems(session, config, items):
     selection = config._flagcicd_selection
-    if selection is None:
+    ignored = config._flagcicd_ignored
+    if selection is None and not ignored.targets:
         return
     selected, deselected = [], []
     for item in items:
         path = Path(item.path).resolve()
-        if not path.is_relative_to(selection.root):
+        root = selection.root if selection is not None else ignored.root
+        if not path.is_relative_to(root):
             raise pytest.UsageError(f"Collected test is outside the repository: {path}")
-        relative_path = path.relative_to(selection.root).as_posix()
+        relative_path = path.relative_to(root).as_posix()
         nodeid = relative_path + "::" + item.nodeid.split("::", 1)[1]
-        if any(test_target_matches(nodeid, target) for target in config._flagcicd_ignored.targets):
+        if any(test_target_matches(nodeid, target) for target in ignored.targets):
             print(f"[IGNORE] {nodeid}")
             deselected.append(item)
             continue
-        if not any(test_target_matches(nodeid, target) for target in selection.targets):
+        if selection is not None and not any(
+            test_target_matches(nodeid, target) for target in selection.targets
+        ):
             deselected.append(item)
             continue
         selected.append(item)
-        item.user_properties.extend(
-            [
-                ("flagcicd_test_path", relative_path),
-                ("flagcicd_test_nodeid", nodeid),
-            ]
-        )
+        if selection is not None:
+            item.user_properties.extend(
+                [
+                    ("flagcicd_test_path", relative_path),
+                    ("flagcicd_test_nodeid", nodeid),
+                ]
+            )
     config._flagcicd_had_items = bool(items)
     items[:] = selected
     if deselected:
@@ -140,8 +148,10 @@ def pytest_collection_modifyitems(session, config, items):
 
 
 def pytest_collection_finish(session):
+    selection = session.config._flagcicd_selection
+    ignored = session.config._flagcicd_ignored
     if (
-        session.config._flagcicd_selection is not None
+        (selection is not None or ignored.targets)
         and getattr(session.config, "_flagcicd_had_items", False)
         and not session.items
         and not session.testsfailed

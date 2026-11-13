@@ -108,6 +108,17 @@ def _selection_plugin_path(env: dict[str, str]) -> None:
 
 def _selection_env(env: dict[str, str], group: dict[str, Any]) -> None:
     """Carry the plan's file selection into every child pytest invocation."""
+    ignored = group.get("ignored_test_targets")
+    if ignored is not None:
+        if not isinstance(ignored, list) or any(
+            not isinstance(target, str) or not target.strip() for target in ignored
+        ):
+            raise SystemExit("ignored_test_targets must be a list of repository-relative paths")
+        env["TE_CI_IGNORE_TEST_TARGETS_JSON"] = json.dumps(ignored)
+        plugins = [name.strip() for name in env.get("PYTEST_PLUGINS", "").split(",") if name.strip()]
+        if "ci_pytest_selection" not in plugins:
+            plugins.append("ci_pytest_selection")
+        env["PYTEST_PLUGINS"] = ",".join(plugins)
     if "test_targets" not in group:
         # Nested presets inherit the outer plan's selection through the
         # environment; only the plugin path may need restoring.

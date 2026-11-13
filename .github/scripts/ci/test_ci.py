@@ -641,7 +641,7 @@ sys.exit(2)
 class PytestSelectionTests(unittest.TestCase):
     """Exercise real pytest processes, without importing accelerator libraries."""
 
-    def run_pytest(self, root, arguments, targets=None, *, raw=None):
+    def run_pytest(self, root, arguments, targets=None, *, raw=None, ignored=None):
         env = dict(os.environ)
         env.pop("TE_CI_TEST_TARGETS_JSON", None)
         env.update(
@@ -661,6 +661,8 @@ class PytestSelectionTests(unittest.TestCase):
         )
         if targets is not None or raw is not None:
             env["TE_CI_TEST_TARGETS_JSON"] = raw if raw is not None else json.dumps(targets)
+        if ignored is not None:
+            env["TE_CI_IGNORE_TEST_TARGETS_JSON"] = json.dumps(ignored)
         return subprocess.run(
             [sys.executable, "-m", "pytest", "-q", *arguments],
             cwd=root,
@@ -801,6 +803,37 @@ class PytestSelectionTests(unittest.TestCase):
             result = self.run_pytest(root, ["test_failure.py"])
             self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
             self.assertIn("1 failed", result.stdout)
+
+    def test_ignore_only_selection_filters_files_and_nodes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "test_mixed.py").write_text(
+                "def test_ignored(): assert False\n"
+                "def test_kept(): assert True\n"
+            )
+            result = self.run_pytest(
+                root,
+                ["test_mixed.py", "--junitxml=nodes.xml"],
+                ignored=["test_mixed.py::test_ignored"],
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("1 passed, 1 deselected", result.stdout)
+            (root / "test_all_ignored.py").write_text("def test_fail(): assert False\n")
+            result = self.run_pytest(
+                root,
+                ["test_all_ignored.py::test_fail"],
+                ignored=["test_all_ignored.py::test_fail"],
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("No selected FlagCICD test nodes remain", result.stdout)
+            (root / "test_excluded.py").write_text("raise RuntimeError('must not import')\n")
+            result = self.run_pytest(
+                root,
+                ["test_excluded.py", "--junitxml=file.xml"],
+                ignored=["test_excluded.py"],
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertNotIn("must not import", result.stdout + result.stderr)
 
     def test_invalid_selection_cannot_disable_filtering(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -1072,6 +1105,37 @@ class PytestSelectionTests(unittest.TestCase):
                 self.assertEqual(runner._run_script(group), 0)
             self.assertEqual(ET.parse(root / "excluded.xml").findall(".//testcase"), [])
             self.assertEqual(len(ET.parse(root / "selected.xml").findall(".//testcase")), 1)
+
+    def test_script_runner_passes_ignore_only_selection_to_child_pytest(self):
+        spec = importlib.util.spec_from_file_location(
+            "ci_ignore_selection_runner", ROOT / "tests/test_utils/run_ci_test_group.py"
+        )
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "test_ignored.py").write_text("def test_fail(): assert False\n")
+            (root / "test_kept.py").write_text("def test_pass(): assert True\n")
+            script = root / "suite.sh"
+            script.write_text(
+                '"$PYTHON_BIN" -m pytest -q test_ignored.py --junitxml=ignored.xml\n'
+                '"$PYTHON_BIN" -m pytest -q test_kept.py --junitxml=kept.xml\n'
+            )
+            group = {
+                "name": "ignored-script",
+                "path": "suite.sh",
+                "ignored_test_targets": ["test_ignored.py"],
+                "env": {"PYTHON_BIN": sys.executable},
+            }
+            with patch.object(runner, "REPO_ROOT", root), patch.dict(
+                os.environ,
+                GITHUB_WORKSPACE=str(root),
+                PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
+                PYTEST_PLUGINS="",
+            ):
+                self.assertEqual(runner._run_script(group), 0)
+            self.assertEqual(ET.parse(root / "ignored.xml").findall(".//testcase"), [])
+            self.assertEqual(len(ET.parse(root / "kept.xml").findall(".//testcase")), 1)
 
 
 if __name__ == "__main__":

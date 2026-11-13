@@ -105,3 +105,11 @@ ignored_tests:
   # aclnnInplaceCopy (error 561103) while the test builds its FP8 parameter, before
   # the FlagOS FP8 Adam runs. Restore when torch_npu supports float8 copies.
   - tests/plugin/backend/flagos/test_optimizer_extended.py::test_fp8_adam_updates_master_and_metadata
+  # torch_npu/CANN: vendor.npu multi-tensor scale uses different overflow and
+  # frexp/double fallback semantics from the CUDA reference. Restore when the
+  # NPU extension reports the same scale/scale_inv contract.
+  - tests/plugin/accuracy/test_compute_scale.py
+  # torch_npu/CANN: this exact NPU layernorm parity case differs by one ULP under
+  # strict equality; the other NPU layernorm cases remain enabled. Restore when
+  # the vendor kernel reaches the reference tolerance.
+  - tests/plugin/backend/npu/test_layernorm.py::TestLayerNormTENPUParity::test_dense_forward_backward_matrix

@@ -125,8 +125,17 @@ ignored_tests:
   - tests/pytorch/test_fused_optimizer.py::TestAdamTest::test_grad_scaler_capturable
   - tests/pytorch/test_fused_optimizer.py::TestAdamTest::test_grad_scaler_capturable_master
   - tests/pytorch/test_fused_optimizer.py::TestFusedAdam::test_multi_params
+  # Enflame migration patch/extension ABI mismatch: the current image has no
+  # migration.patches.transformer_engine.v2_9_0.multi_tensor_sgd and its torch
+  # reference helper still has the older arity. Restore after the image and
+  # migration patch expose the same fused-SGD ABI.
+  - tests/pytorch/test_fused_optimizer.py::TestFusedSGD
   - tests/pytorch/test_hf_integration.py::test_save_and_load_hf_model
   - tests/pytorch/test_jit.py
+  # Enflame vendor extension ABI mismatch: multi_tensor_compute_scale_and_scale_inv
+  # rejects the arguments used by TE's scale contract. Restore after the extension
+  # and image are updated together.
+  - tests/plugin/accuracy/test_compute_scale.py
   # Enflame distributed numerics/graph cases are currently unavailable in the
   # vendor runtime; restore after isolated multi-device runs pass.
   - tests/pytorch/distributed/test_numerics.py

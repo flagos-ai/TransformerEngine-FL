@@ -636,6 +636,15 @@ class PlannerTests(unittest.TestCase):
         )
         self.assertIn(compiled, by_platform["cuda"]["exec"]["ignored_test_targets"])
         platforms = {p["name"]: p for p in plan["platforms"]}
+        for node in (
+            "tests/plugin/accuracy/test_compute_scale.py::test_compute_scale_saturates_fp32_overflow",
+            "tests/plugin/backend/flagos/test_gemm.py::test_generic_gemm_lifecycle_matrix",
+            "tests/plugin/backend/reference/test_dropout.py::test_dropout_fwd_zero_probability",
+            "tests/plugin/backend/reference/test_dropout.py::test_dropout_bwd_zero_probability",
+            "tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_mhc_apis_match_native_exactly",
+            "tests/pytorch/test_numerics.py::test_linear_accuracy_delay_wgrad_compute",
+        ):
+            self.assertIn(node, platforms["musa"]["ignored_tests"])
         self.assertEqual(platforms["cuda"]["ignored_tests"], [compiled, reverted_source_case])
         enflame_ignored = platforms["enflame"]["ignored_tests"]
         for node in (
@@ -664,11 +673,14 @@ class PlannerTests(unittest.TestCase):
             "tests/plugin/backend/npu/",
             by_platform["ascend"]["exec"]["ignored_test_targets"],
         )
-        for platform in ("ascend", "cuda"):
-            self.assertNotIn(
-                "tests/plugin/accuracy/test_compute_scale.py",
-                by_platform[platform]["exec"]["ignored_test_targets"],
-            )
+        self.assertIn(
+            "tests/plugin/accuracy/test_compute_scale.py",
+            by_platform["ascend"]["exec"]["ignored_test_targets"],
+        )
+        self.assertNotIn(
+            "tests/plugin/accuracy/test_compute_scale.py",
+            by_platform["cuda"]["exec"]["ignored_test_targets"],
+        )
         self.assertIn(
             "tests/pytorch/test_float8_blockwise_gemm_exact.py",
             by_platform["cuda"]["exec"]["ignored_group_test_targets"]["gemm"],
@@ -678,10 +690,11 @@ class PlannerTests(unittest.TestCase):
             by_platform["kunlun"]["exec"].get("ignored_group_test_targets", {}).get("gemm", [])
         )
         self.assertNotIn("tests/plugin/backend/flagos/test_gemm.py", kunlun_gemm_ignored)
-        # Ascend's reopened optimizer group no longer suppresses reference tests.
-        self.assertNotIn(
-            "reference_backend",
-            by_platform["ascend"]["exec"].get("ignored_group_test_targets", {}),
+        # Ascend's vendor-owned compute-scale quarantine is scoped to the
+        # reference-backend group; unrelated groups remain enabled.
+        self.assertEqual(
+            by_platform["ascend"]["exec"]["ignored_group_test_targets"]["reference_backend"],
+            ["tests/plugin/accuracy/test_compute_scale.py"],
         )
         with tempfile.TemporaryDirectory() as directory:
             summary = Path(directory, "summary.md")
