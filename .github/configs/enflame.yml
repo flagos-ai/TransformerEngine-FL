@@ -118,3 +118,26 @@ ignored_tests:
   # (TOPSATEN_STATUS_NOT_SUPPORT) and aborts the process while the test builds its FP8
   # parameter, before the FlagOS FP8 Adam runs. Restore when torch_gcu supports float8 copies.
   - tests/plugin/backend/flagos/test_optimizer_extended.py::test_fp8_adam_updates_master_and_metadata
+  # S60 GCU loader/runtime limitations; restore after the affected cases pass
+  # on the vendor stack without exhausting the driver or rejecting FP8 copies.
+  - tests/pytorch/test_fused_optimizer.py::TestFusedAdam::test_float
+  - tests/pytorch/test_fused_optimizer.py::TestFusedAdam::test_half
+  - tests/pytorch/test_fused_optimizer.py::TestAdamTest::test_grad_scaler_capturable
+  - tests/pytorch/test_fused_optimizer.py::TestAdamTest::test_grad_scaler_capturable_master
+  - tests/pytorch/test_fused_optimizer.py::TestFusedAdam::test_multi_params
+  - tests/pytorch/test_hf_integration.py::test_save_and_load_hf_model
+  - tests/pytorch/test_jit.py
+  # Enflame distributed numerics/graph cases are currently unavailable in the
+  # vendor runtime; restore after isolated multi-device runs pass.
+  - tests/pytorch/distributed/test_numerics.py
+  - tests/pytorch/distributed/test_numerics_exact.py
+  - tests/pytorch/distributed/test_torch_fsdp2.py
+  # The existing Enflame ONNX baseline excludes these export families until
+  # the corresponding vendor kernels and graph conversions are supported.
+  - tests/pytorch/test_onnx_export.py::test_export_linear*
+  - tests/pytorch/test_onnx_export.py::test_export_layernorm_linear*
+  - tests/pytorch/test_onnx_export.py::test_export_layernorm_mlp*
+  - tests/pytorch/test_onnx_export.py::test_export_core_attention*
+  - tests/pytorch/test_onnx_export.py::test_export_transformer_layer*
+  - tests/pytorch/test_onnx_export.py::test_export_multihead_attention*
+  - tests/pytorch/test_onnx_export.py::test_export_gpt_generation*

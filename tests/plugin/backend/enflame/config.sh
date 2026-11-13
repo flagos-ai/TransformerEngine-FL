@@ -19,36 +19,4 @@ readonly PLATFORM_INTEGRATION_TEST_SCRIPT="qa/L1_pytorch_mcore_integration/test.
 readonly PLATFORM_PYTEST_UNIT_MARKERS="not slow and not integration"
 readonly PLATFORM_PYTEST_INTEGRATION_MARKERS="integration"
 readonly PLATFORM_PYTEST_EXTRA_ARGS="--tb=short --verbose"
-readonly PLATFORM_PYTEST_DESELECT=""
 readonly PLATFORM_COVERAGE_ENABLED=true
-
-readonly -a ENFLAME_UNITTEST_IGNORE_FUSED_OPTIMIZER=(
-    "test_float"
-    "test_half"
-    "test_grad_scaler_capturable"
-    "test_grad_scaler_capturable_master"
-    # This case exhausts/overruns the S60 GCU kernel loader and can crash the
-    # vendor driver (loadSegments failed in alloc mem), rather than reporting
-    # a test failure that Transformer Engine can handle.
-    "test_multi_params"
-)
-
-readonly -a ENFLAME_UNITTEST_IGNORE_HF_INTEGRATION=(
-    "test_save_and_load_hf_model"
-)
-
-readonly -a ENFLAME_DISTRIBUTED_IGNORE_FILES=(
-    "tests/pytorch/distributed/test_numerics.py"
-    "tests/pytorch/distributed/test_numerics_exact.py"
-    "tests/pytorch/distributed/test_torch_fsdp2.py"
-)
-
-readonly -a ENFLAME_ONNX_IGNORE_GROUPS=(
-    "test_export_linear"
-    "test_export_layernorm_linear"
-    "test_export_layernorm_mlp"
-    "test_export_core_attention"
-    "test_export_transformer_layer"
-    "test_export_multihead_attention"
-    "test_export_gpt_generation"
-)

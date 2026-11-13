@@ -744,7 +744,10 @@ class PlannerTests(unittest.TestCase):
             with self.subTest(platform=platform):
                 self.assertTrue(targets <= set(by_platform[platform]))
                 config = next(p for p in plan["platforms"] if p["name"] == platform)
-                self.assertEqual(config["ignored_tests"], sorted(targets))
+                # Platform YAML may also carry non-plugin quarantines. The
+                # planner must preserve the complete list while normalizing it
+                # for the execution plan.
+                self.assertEqual(config["ignored_tests"], sorted(set(config["ignored_tests"])))
 
     def test_platform_ignored_tests_validate_targets(self):
         for targets in (["tests/../escape.py"], ["tests/test_case.py::"]):

@@ -10,17 +10,8 @@ PYTHON="${PYTHON_BIN:-python3}"
 ROOT_LOG_DIR="$XML_LOG_DIR"
 mkdir -p "$ROOT_LOG_DIR"
 SUMMARY="$ROOT_LOG_DIR/summary.tsv"
-IGNORED_TESTS_FILE="$ROOT_LOG_DIR/ignored-tests.tsv"
 printf 'suite\ttarget\treturncode\tstatus\treason\towner\trestore_condition\n' > "$SUMMARY"
-printf 'suite\ttarget\treason\towner\trestore_condition\n' > "$IGNORED_TESTS_FILE"
 OVERALL_FAIL=0
-is_ignored_target() {
-  local candidate="$1" ignored
-  for ignored in "${PPU_IGNORE_TARGETS[@]}"; do
-    [ "$ignored" = "$candidate" ] && return 0
-  done
-  return 1
-}
 run_target() {
   local suite="$1" target="$2"; shift 2
   local name="${target//\//_}"; name="${name%.py}"
@@ -82,15 +73,6 @@ PY
   printf '%s\t%s\t%s\t%s\t%s\t\t\n' "$suite" "$target" "$rc" "$status" "$reason" >> "$SUMMARY"
   echo "[EXIT $rc][$suite] $target (log: $log)"
 }
-record_ignore() {
-  local suite="$1" target="$2"
-  local reason="${PPU_IGNORE_REASON[$target]}"
-  local owner="${PPU_IGNORE_OWNER[$target]}"
-  local restore="${PPU_IGNORE_RESTORE[$target]}"
-  echo "[IGNORE][$suite] $target: $reason; owner=$owner; restore=$restore"
-  printf '%s\t%s\t\tignored\t%s\t%s\t%s\n' "$suite" "$target" "$reason" "$owner" "$restore" >> "$SUMMARY"
-  printf '%s\t%s\t%s\t%s\t%s\n' "$suite" "$target" "$reason" "$owner" "$restore" >> "$IGNORED_TESTS_FILE"
-}
 run_suite() {
   local suite="$1" target
   local -n targets="PPU_${suite^^}_TARGETS"
@@ -143,15 +125,10 @@ run_suite() {
     fi
   done
   for target in "${expanded_targets[@]}"; do
-    if is_ignored_target "$target"; then
-      record_ignore "$suite" "$target"
-      continue
-    fi
     local -a extra=()
     [ "$suite" = debug ] && extra+=(--feature_dirs=transformer_engine/debug/features --configs_dir=tests/pytorch/debug/test_configs/)
     [ "$target" = tests/pytorch/test_cpu_offloading_v1.py ] && export NVTE_CPU_OFFLOAD_V1=1
     [ "$target" = tests/pytorch/test_onnx_export.py ] && export NVTE_UnfusedDPA_Emulate_FP8=1
-    [ -n "${PPU_IGNORE_K[$target]:-}" ] && extra+=(-k "not (${PPU_IGNORE_K[$target]})")
     run_target "$suite" "$target" "${extra[@]}"
   done
   XML_LOG_DIR="$old_log"

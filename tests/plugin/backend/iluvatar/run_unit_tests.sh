@@ -33,59 +33,10 @@ run_pytest() {
         done <<< "$plugin_targets"
         return
     fi
-    local ignore_rule
-    for ignore_rule in "${ILUVATAR_IGNORE_TEST_TARGETS[@]}"; do
-        if [ "$target" = "${ignore_rule%%|*}" ]; then
-            echo "[IGNORE][$suite] $target: ${ignore_rule#*|}"
-            return 0
-        fi
-    done
-    local rule scope details expression reason
-    local combined_filter=""
-    local expressions=()
-    for rule in "${ILUVATAR_IGNORE_TEST_FILTERS[@]}"; do
-        scope=${rule%%|*}
-        details=${rule#*|}
-        if [ "$suite" = "$scope" ] && [ "$target" = "${details%%|*}" ]; then
-            details=${details#*|}
-            expression=${details%%|*}
-            reason=${details#*|}
-            echo "[IGNORE][$suite] $target: $reason"
-            echo "[IGNORE][$suite] -k not ($expression)"
-            expressions+=("$expression")
-            combined_filter="${combined_filter:+$combined_filter and }not ($expression)"
-        fi
-    done
-    if [ -n "$combined_filter" ]; then
-        set -- "$@" -k "$combined_filter"
-    fi
     echo "[RUN][$suite] $target"
-    # Use an inline plugin so each rule is checked before pytest applies -k.
     if ! TE_TEST_GROUP_PRESET=plugin-unit "$PYTHON_BIN" "$TE_PATH/tests/test_utils/run_ci_test_group.py" \
-        --target-env "$target" "$PYTHON_BIN" - "${#expressions[@]}" "${expressions[@]}" \
-        -v -s --tb=short "$TE_PATH/$target" "$@" --junitxml="$XML_LOG_DIR/$name.xml" <<'CHECK'
-import sys
-import pytest
-from _pytest.mark import KeywordMatcher
-from _pytest.mark.expression import Expression
-
-count = int(sys.argv[1])
-rules = sys.argv[2:2 + count]
-
-class IgnoreAudit:
-    @pytest.hookimpl(tryfirst=True)
-    def pytest_collection_modifyitems(self, items):
-        for rule in rules:
-            expression = Expression.compile(rule)
-            matched = [item.nodeid for item in items if expression.evaluate(KeywordMatcher.from_item(item))]
-            print(f"[IGNORE] {len(matched)}/{len(items)} matched: {rule}")
-            for nodeid in matched:
-                print(f"[IGNORE-NODE] {nodeid}")
-            if not matched or len(matched) == len(items):
-                raise pytest.UsageError(f"Ignore selector drift (zero or all tests matched): {rule}")
-
-raise SystemExit(pytest.main(sys.argv[2 + count:], plugins=[IgnoreAudit()]))
-CHECK
+        --target-env "$target" "$PYTHON_BIN" -v -s --tb=short \
+        "$TE_PATH/$target" "$@" --junitxml="$XML_LOG_DIR/$name.xml"
     then
         FAILED=1
         FAILED_TESTS+=("$suite:$name")
@@ -113,26 +64,12 @@ run_suite() {
                 run_pytest debug_numerics_regular "tests/pytorch/test_numerics.py"
             ;;
         unittest)
-            local ignore_rule
-            for ignore_rule in "${ILUVATAR_IGNORE_TEST_TARGETS[@]}"; do
-                echo "[IGNORE][$suite] ${ignore_rule%%|*}: ${ignore_rule#*|}"
-            done
             for target in "${ILUVATAR_UNIT_TEST_TARGETS[@]}"; do
                 index=$((index + 1))
                 run_pytest "unit_$index" "$target"
             done
             ;;
         distributed)
-            # The ordinary numerics target is omitted from the list; the debug
-            # invocation below is guarded by the same whole-file ignore_rule.
-            local ignore_rule
-            for ignore_rule in "${ILUVATAR_IGNORE_TEST_TARGETS[@]}"; do
-                case "${ignore_rule%%|*}" in
-                    tests/pytorch/distributed/*)
-                        echo "[IGNORE][$suite] ${ignore_rule%%|*}: ${ignore_rule#*|}"
-                        ;;
-                esac
-            done
             "$PYTHON_BIN" - <<'CHECK'
 import os
 import torch

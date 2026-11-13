@@ -80,6 +80,42 @@ ignored_tests:
   - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_dispatch_entry_does_not_shrink_the_compiled_graph
   # Repeated Adam numerical mismatch; restore after fresh-process numerics pass.
   - tests/plugin/backend/flagos/test_optimizer_numerical.py::test_multi_tensor_adam_matches_formula[False-0.0-0-0]
+  # PPU backend gaps migrated from the launcher configuration.
+  - tests/pytorch/test_permutation.py
+  - tests/pytorch/attention/test_attention.py
+  - tests/pytorch/attention/test_kv_cache.py
+  - tests/pytorch/debug/test_sanity.py::test_sanity_debug[fake_quant-False-mha_attention]
+  - tests/pytorch/debug/test_sanity.py::test_sanity_debug[fake_quant-False-transformer_layer]
+  - tests/pytorch/debug/test_api_features.py::test_per_tensor_scaling
+  - tests/pytorch/debug/test_api_features.py::test_fake_quant
+  - tests/pytorch/debug/test_api_features.py::test_statistics_collection
+  - tests/pytorch/debug/test_api_features.py::test_statistics_multi_run
+  - tests/pytorch/test_sanity.py::test_sanity_grouped_linear
+  - tests/pytorch/test_numerics.py::test_gpt_cuda_graph
+  - tests/pytorch/test_numerics.py::test_layernorm_accuracy
+  - tests/pytorch/test_numerics.py::test_transformer_layer_hidden_states_format
+  - tests/pytorch/test_cuda_graphs.py::test_make_graphed_callables_with_kwargs
+  - tests/pytorch/test_cuda_graphs.py::test_make_graphed_callables
+  - tests/pytorch/test_cuda_graphs.py::test_make_graphed_callables_with_dot_product_attention
+  - tests/pytorch/test_fused_optimizer.py::TestFusedSGD
+  - tests/pytorch/test_fused_optimizer.py::TestFusedAdam::test_bf16_exp_avg_and_exp_avg_sq
+  - tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_grouped_linear
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_backward_add_rmsnorm
+  - tests/pytorch/test_fusible_ops.py::TestSequentialModules::test_grouped_mlp
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_basic_linear
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_layer_norm
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_rmsnorm
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_activation
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_clamped_swiglu
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_dropout
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_forward_linear_bias_activation
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_forward_linear_bias_add
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_forward_linear_scale_add
+  - tests/pytorch/test_fusible_ops.py::TestCheckpointing::test_linear
+  - tests/pytorch/test_cpu_offloading.py::TestTELayers::test_memory
+  - tests/pytorch/test_cpu_offloading.py::TestTELayers::test_numerics
+  - tests/pytorch/test_cpu_offloading_v1.py::test_cpu_offload
 
 # Current QA coverage gap, recorded in the plan instead of claimed as passing.
 ignored_test_groups:

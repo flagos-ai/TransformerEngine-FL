@@ -89,3 +89,12 @@ ignored_tests:
   - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_cross_entropy_forward_and_backward_match_native_exactly
   # FlagTree/FlagTune: compiled graph tracing currently produces an invalid grid.
   - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_dispatch_entry_does_not_shrink_the_compiled_graph
+  # Hygon DTK launch/runtime limitations; restore after the affected paths pass.
+  - tests/pytorch/test_jit.py::test_torch_dynamo
+  - tests/pytorch/test_onnx_export.py::test_export_linear*
+  - tests/pytorch/test_onnx_export.py::test_export_layernorm_linear*
+  - tests/pytorch/test_onnx_export.py::test_export_layernorm_mlp*
+  - tests/pytorch/test_onnx_export.py::test_export_core_attention*
+  - tests/pytorch/test_onnx_export.py::test_export_transformer_layer*
+  - tests/pytorch/test_onnx_export.py::test_export_multihead_attention*
+  - tests/pytorch/test_onnx_export.py::test_export_gpt_generation*

@@ -19,15 +19,4 @@ readonly PLATFORM_INTEGRATION_TEST_SCRIPT="tests/plugin/backend/hygon/integratio
 readonly PLATFORM_PYTEST_UNIT_MARKERS="not slow and not integration"
 readonly PLATFORM_PYTEST_INTEGRATION_MARKERS="integration"
 readonly PLATFORM_PYTEST_EXTRA_ARGS="--tb=short --verbose"
-readonly PLATFORM_PYTEST_DESELECT=""
 readonly PLATFORM_COVERAGE_ENABLED=true
-
-readonly -a HYGON_ONNX_IGNORE_GROUPS=(
-    "test_export_linear"
-    "test_export_layernorm_linear"
-    "test_export_layernorm_mlp"
-    "test_export_core_attention"
-    "test_export_transformer_layer"
-    "test_export_multihead_attention"
-    "test_export_gpt_generation"
-)
