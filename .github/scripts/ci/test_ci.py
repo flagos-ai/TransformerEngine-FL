@@ -808,8 +808,7 @@ class PytestSelectionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "test_mixed.py").write_text(
-                "def test_ignored(): assert False\n"
-                "def test_kept(): assert True\n"
+                "def test_ignored(): assert False\ndef test_kept(): assert True\n"
             )
             result = self.run_pytest(
                 root,

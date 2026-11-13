@@ -115,7 +115,9 @@ def _selection_env(env: dict[str, str], group: dict[str, Any]) -> None:
         ):
             raise SystemExit("ignored_test_targets must be a list of repository-relative paths")
         env["TE_CI_IGNORE_TEST_TARGETS_JSON"] = json.dumps(ignored)
-        plugins = [name.strip() for name in env.get("PYTEST_PLUGINS", "").split(",") if name.strip()]
+        plugins = [
+            name.strip() for name in env.get("PYTEST_PLUGINS", "").split(",") if name.strip()
+        ]
         if "ci_pytest_selection" not in plugins:
             plugins.append("ci_pytest_selection")
         env["PYTEST_PLUGINS"] = ",".join(plugins)
