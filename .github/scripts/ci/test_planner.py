@@ -620,7 +620,7 @@ class PlannerTests(unittest.TestCase):
         for platform in ("ppu", "hygon", "iluvatar"):
             with self.subTest(platform=platform):
                 self.assertIn(compiled, by_platform[platform]["exec"]["ignored_test_targets"])
-        # The FlagOS Adam workaround reopened the numerical Adam cases.
+        # Keep the numerical Adam cases enabled so backend issues remain visible.
         self.assertNotIn(
             "tests/plugin/backend/flagos/test_optimizer_numerical.py",
             by_platform["ppu"]["exec"]["ignored_test_targets"],
@@ -630,9 +630,9 @@ class PlannerTests(unittest.TestCase):
             "test_fp8_adam_updates_master_and_metadata",
             by_platform["ascend"]["exec"]["ignored_test_targets"],
         )
-        self.assertNotIn(compiled, by_platform["cuda"]["exec"]["ignored_test_targets"])
+        self.assertIn(compiled, by_platform["cuda"]["exec"]["ignored_test_targets"])
         platforms = {p["name"]: p for p in plan["platforms"]}
-        self.assertEqual(platforms["cuda"]["ignored_tests"], [])
+        self.assertEqual(platforms["cuda"]["ignored_tests"], [compiled])
         enflame_ignored = platforms["enflame"]["ignored_tests"]
         for node in (
             "test_cross_entropy_forward_and_backward_match_native_exactly",

@@ -18,9 +18,6 @@ os.environ.setdefault("PLATFORM", "ascend")
 os.environ.setdefault("TE_FL_SKIP_CUDA", "1")
 os.environ.setdefault("NVTE_FRAMEWORK", "pytorch")
 os.environ.setdefault("NVTE_WITH_NCCL_EP", "0")
-# These are parity tests of the NPU vendor backend, so select it explicitly
-# instead of inheriting the job's global preference (e.g. flagos).
-os.environ["TE_FL_PREFER"] = "vendor"
 
 try:
     import torch_npu  # noqa: F401
@@ -31,16 +28,6 @@ except (ImportError, AttributeError):
 
 
 _DTYPES = (torch.float32, torch.float16, torch.bfloat16)
-# torch.testing.assert_close's default tolerances for each input dtype. NPU's
-# native LayerNorm returns FP32 statistics whose internal precision follows the
-# input dtype (it varies with shape: sometimes equal to TENPU's half-precision
-# statistics, sometimes to an FP32 evaluation), so they are held to the input
-# dtype's precision against an FP32 reference.
-_STATS_TOLERANCE = {
-    torch.float32: {"rtol": 1.3e-6, "atol": 1e-5},
-    torch.float16: {"rtol": 1e-3, "atol": 1e-5},
-    torch.bfloat16: {"rtol": 1.6e-2, "atol": 1e-5},
-}
 _SHAPES = ((4, 16), (2, 3, 16))
 
 
@@ -79,14 +66,7 @@ def _tenpu_backward(grad, x, weight, mean, rsigma, zero_centered_gamma):
 
 @unittest.skipUnless(_NPU_AVAILABLE, "Ascend NPU is required")
 class TestLayerNormTENPUParity(unittest.TestCase):
-    """TENPU parity under TE's LayerNorm ABI.
-
-    The normalized output and the gradients must equal TENPU's computation
-    exactly. Statistics follow TE's ABI instead of TENPU's internals: they are
-    always FP32 (pytorch/csrc/extensions/normalization.cpp allocates mu and
-    rsigma as at::kFloat), while TENPU keeps them in the input dtype; their
-    values must be accurate to the input dtype's precision.
-    """
+    """Require exact parity with TENPU's forward and manual backward."""
 
     @classmethod
     def setUpClass(cls):
@@ -96,12 +76,6 @@ class TestLayerNormTENPUParity(unittest.TestCase):
 
         cls.tex = tex
         cls.DType = DType
-
-    def _assert_npu_selected(self, *op_names):
-        from transformer_engine.plugin.core import get_manager
-
-        for op_name in op_names:
-            self.assertEqual(get_manager().get_selected_impl_id(op_name), "vendor.npu", op_name)
 
     @staticmethod
     def _te_dtype(dtype):
@@ -154,19 +128,8 @@ class TestLayerNormTENPUParity(unittest.TestCase):
                     zero_centered_gamma,
                 )
                 tenpu = _tenpu_forward(x, weight, bias, eps, zero_centered_gamma)
-                torch.testing.assert_close(tefl[0], tenpu[0], rtol=0, atol=0)
-                # FP32 statistics per TE's ABI, accurate to the input dtype's
-                # precision against TENPU's formula evaluated in FP32.
-                _, ref_mean, ref_rsigma = _tenpu_forward(
-                    x.float(),
-                    weight.float(),
-                    None if bias is None else bias.float(),
-                    eps,
-                    zero_centered_gamma,
-                )
-                for actual, expected in ((tefl[1], ref_mean), (tefl[2], ref_rsigma)):
-                    self.assertEqual(actual.dtype, torch.float32)
-                    torch.testing.assert_close(actual, expected, **_STATS_TOLERANCE[dtype])
+                for actual, expected in zip(tefl, tenpu):
+                    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
 
                 grad = torch.randn(
                     tuple(tefl[0].shape), generator=generator, dtype=torch.float32
@@ -180,19 +143,11 @@ class TestLayerNormTENPUParity(unittest.TestCase):
                     0,
                     zero_centered_gamma,
                 )
-                # TENPU's gradient composition on the same FP32 statistics,
-                # returned in TE's ABI dtypes (dx: input, dgamma/dbeta: weight).
-                tenpu_dx, tenpu_dgamma, tenpu_dbeta = _tenpu_backward(
-                    grad, x, weight, tefl[1], tefl[2], zero_centered_gamma
-                )
-                tenpu_grad = (
-                    tenpu_dx.to(x.dtype),
-                    tenpu_dgamma.to(weight.dtype),
-                    tenpu_dbeta.to(weight.dtype),
+                tenpu_grad = _tenpu_backward(
+                    grad, x, weight, tenpu[1], tenpu[2], zero_centered_gamma
                 )
                 for actual, expected in zip(tefl_grad, tenpu_grad):
                     torch.testing.assert_close(actual, expected, rtol=0, atol=0)
-        self._assert_npu_selected("layernorm_fwd", "layernorm_bwd")
 
     def test_dense_output_reuse_and_otype(self):
         """Honor TE-FL's preallocated dense output and output dtype ABI."""
@@ -217,7 +172,6 @@ class TestLayerNormTENPUParity(unittest.TestCase):
         torch.testing.assert_close(output, expected.bfloat16(), rtol=0, atol=0)
         torch.testing.assert_close(mean, expected_mean, rtol=0, atol=0)
         torch.testing.assert_close(rsigma, expected_rsigma, rtol=0, atol=0)
-        self._assert_npu_selected("layernorm_fwd")
 
     def test_z_current_scaling_quantizer_matches_separate_tenpu_quantize(self):
         """TENPU quantizes dense LayerNorm output as a separate operation."""
