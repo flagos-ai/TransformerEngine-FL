@@ -278,10 +278,10 @@ class mHCProjectionOp(torch.autograd.Function):
         )
 
         _mhc_projection_fwd_fused[grid](
-            x,  # x_ptr (M, K)
-            phi,  # phi_ptr (N, K)
-            H,  # h_ptr (M, 32)
-            ms,  # ms_ptr (M,)
+            x_ptr=x,  # (M, K)
+            phi_ptr=phi,  # (N, K)
+            h_ptr=H,  # (M, 32)
+            ms_ptr=ms,  # (M,)
             M=M,
             N=N,
             K=K,
@@ -478,13 +478,13 @@ class mHCScaleFusedOp(torch.autograd.Function):
         grid = lambda META: (triton.cdiv(M, META["BLOCK_SIZE_M"]),)
 
         _mhc_scale_bwd_fused[grid](
-            grad_out,  # grad_out_ptr
-            out,  # out_ptr
-            grad_h,  # grad_h_ptr
-            H,  # h_ptr
-            grad_alpha,  # grad_a_ptr
-            alpha,  # a_ptr
-            grad_beta,  # grad_b_ptr
+            grad_out_ptr=grad_out,
+            out_ptr=out,
+            grad_h_ptr=grad_h,
+            h_ptr=H,
+            grad_a_ptr=grad_alpha,
+            a_ptr=alpha,
+            grad_b_ptr=grad_beta,
             grad_ms_ptr=grad_ms,
             ms_ptr=ms,
             M=M,
@@ -775,9 +775,9 @@ class mHCAggregateOp(torch.autograd.Function):
         )
 
         _mhc_aggregate_bwd[grid](
-            grad_output,  # grad_output_ptr
-            H_pre,  # H_pre_ptr
-            grad_H_pre,  # grad_H_pre_ptr
+            grad_output_ptr=grad_output,
+            H_pre_ptr=H_pre,
+            grad_H_pre_ptr=grad_H_pre,
             x_ptr=x,
             grad_x_ptr=grad_x,
             M=M,
@@ -936,14 +936,14 @@ class mHCExpandCombineOp(torch.autograd.Function):
 
         if bias is None:
             _mhc_expand_combine_bwd[grid](
-                grad_output,  # grad_output_ptr
-                f,  # f_ptr
-                H_post,  # H_post_ptr
-                x,  # x_ptr
-                H_res,  # H_res_ptr
-                grad_H_post,  # grad_H_post_ptr
-                grad_f,  # grad_f_ptr
-                grad_H_res,  # grad_H_res_ptr
+                grad_output_ptr=grad_output,
+                f_ptr=f,
+                H_post_ptr=H_post,
+                x_ptr=x,
+                H_res_ptr=H_res,
+                grad_H_post_ptr=grad_H_post,
+                grad_f_ptr=grad_f,
+                grad_H_res_ptr=grad_H_res,
                 grad_x_ptr=grad_x,
                 M=M,
                 C=C,
@@ -962,16 +962,16 @@ class mHCExpandCombineOp(torch.autograd.Function):
             )
         else:
             _mhc_expand_combine_with_bias_bwd[grid](
-                grad_output,  # grad_output_ptr
-                f,  # f_ptr
-                bias,  # bias_ptr
-                H_post,  # H_post_ptr
-                x,  # x_ptr
-                H_res,  # H_res_ptr
-                grad_H_post,  # grad_H_post_ptr
-                grad_f,  # grad_f_ptr
-                grad_bias,  # grad_bias_ptr
-                grad_H_res,  # grad_H_res_ptr
+                grad_output_ptr=grad_output,
+                f_ptr=f,
+                bias_ptr=bias,
+                H_post_ptr=H_post,
+                x_ptr=x,
+                H_res_ptr=H_res,
+                grad_H_post_ptr=grad_H_post,
+                grad_f_ptr=grad_f,
+                grad_bias_ptr=grad_bias,
+                grad_H_res_ptr=grad_H_res,
                 grad_x_ptr=grad_x,
                 M=M,
                 C=C,

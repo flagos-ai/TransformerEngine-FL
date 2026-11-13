@@ -22,20 +22,6 @@ from transformer_engine.common.triton.cross_entropy import (
 # The optimal maximum block size depends on your hardware, your kernel, and your dtype
 MAX_FUSED_SIZE = 65536 // 2
 
-# Threads per block that every supported backend accepts.
-_MAX_THREADS_PER_BLOCK = 1024
-
-
-def _num_warps(device: torch.device) -> int:
-    """32 warps on 32-thread-warp GPUs, capped at the thread limit on wider warps.
-
-    The kernels were tuned for 32 x 32 = 1024 threads. On 64-thread
-    wavefronts (e.g. Hygon DCU) 32 warps would request 2048 threads and
-    fail to launch, so keep the same 1024-thread block instead.
-    """
-    warp_size = getattr(torch.cuda.get_device_properties(device), "warp_size", 32) or 32
-    return max(1, min(32, _MAX_THREADS_PER_BLOCK // warp_size))
-
 
 def cross_entropy_forward(
     _input: torch.Tensor,
@@ -82,7 +68,7 @@ def cross_entropy_forward(
         ignore_idx=ignore_idx,
         n_non_ignore=n_non_ignore,
         BLOCK_SIZE=BLOCK_SIZE,
-        num_warps=_num_warps(_input.device),
+        num_warps=32,
     )
 
     n_non_ignore = torch.clamp(n_non_ignore, min=1)
@@ -115,7 +101,7 @@ def cross_entropy_forward(
         reduce_loss=reduce_loss,
         label_smoothing=label_smoothing,
         BLOCK_SIZE=BLOCK_SIZE,
-        num_warps=_num_warps(_input.device),
+        num_warps=32,
     )
 
     loss = (
@@ -148,7 +134,7 @@ def cross_entropy_backward(
             1 if grad_output.numel() > 1 else 0,
             V,
             BLOCK_SIZE=BLOCK_SIZE,
-            num_warps=_num_warps(_input.device),
+            num_warps=32,
         )
 
     return _input

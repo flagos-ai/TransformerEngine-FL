@@ -35,7 +35,7 @@ run_pytest() {
     fi
     echo "[RUN][$suite] $target"
     if ! TE_TEST_GROUP_PRESET=plugin-unit "$PYTHON_BIN" "$TE_PATH/tests/test_utils/run_ci_test_group.py" \
-        --target-env "$target" "$PYTHON_BIN" -v -s --tb=short \
+        --target-env "$target" "$PYTHON_BIN" -m pytest -v -s --tb=short \
         "$TE_PATH/$target" "$@" --junitxml="$XML_LOG_DIR/$name.xml"
     then
         FAILED=1

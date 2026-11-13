@@ -617,6 +617,10 @@ class PlannerTests(unittest.TestCase):
             "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
             "test_dispatch_entry_does_not_shrink_the_compiled_graph"
         )
+        reverted_source_case = (
+            "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
+            "test_pad_covers_every_output_tile_for_wide_inputs"
+        )
         for platform in ("ppu", "hygon", "iluvatar"):
             with self.subTest(platform=platform):
                 self.assertIn(compiled, by_platform[platform]["exec"]["ignored_test_targets"])
@@ -632,7 +636,7 @@ class PlannerTests(unittest.TestCase):
         )
         self.assertIn(compiled, by_platform["cuda"]["exec"]["ignored_test_targets"])
         platforms = {p["name"]: p for p in plan["platforms"]}
-        self.assertEqual(platforms["cuda"]["ignored_tests"], [compiled])
+        self.assertEqual(platforms["cuda"]["ignored_tests"], [compiled, reverted_source_case])
         enflame_ignored = platforms["enflame"]["ignored_tests"]
         for node in (
             "test_cross_entropy_forward_and_backward_match_native_exactly",
