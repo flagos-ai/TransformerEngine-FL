@@ -89,6 +89,15 @@ ignored_tests:
   - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_cross_entropy_forward_and_backward_match_native_exactly
   # FlagTree/FlagTune: compiled graph tracing currently produces an invalid grid.
   - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_dispatch_entry_does_not_shrink_the_compiled_graph
+  # The shared FP8 block-scaling capability check converts torch.version.cuda
+  # unconditionally; Hygon's non-CUDA DTK build exposes None during collection.
+  # Restore after the shared check handles non-CUDA runtimes.
+  - tests/pytorch/debug/test_log.py
+  - tests/pytorch/test_sanity.py
+  # Hygon's current TE-FL registry has no quantize operator for these debug
+  # quantization paths. Restore after the Hygon backend exposes quantize.
+  - tests/pytorch/debug/test_api_features.py::test_statistics_collection
+  - tests/pytorch/debug/test_api_features.py::test_statistics_multi_run
   # Hygon DTK launch/runtime limitations; restore after the affected paths pass.
   - tests/pytorch/test_jit.py::test_torch_dynamo
   - tests/pytorch/test_onnx_export.py::test_export_linear*

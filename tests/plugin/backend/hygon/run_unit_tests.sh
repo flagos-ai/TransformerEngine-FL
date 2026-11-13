@@ -107,7 +107,7 @@ run_debug_suite() {
     fi
 
     local feature_dirs="${NVTE_TEST_NVINSPECT_FEATURE_DIRS:-$TE_PATH/transformer_engine/debug/features}"
-    local configs_dir="${NVTE_TEST_NVINSPECT_CONFIGS_DIR:-$TE_PATH/tests/pytorch/debug/test_configs}"
+    local configs_dir="${NVTE_TEST_NVINSPECT_CONFIGS_DIR:-$TE_PATH/tests/pytorch/debug/test_configs}/"
     local dummy_config="${NVTE_TEST_NVINSPECT_DUMMY_CONFIG_FILE:-$TE_PATH/tests/pytorch/debug/test_configs/dummy_feature.yaml}"
 
     run_cmd "debug" "debug/test_config.py" "test_config.xml" \
