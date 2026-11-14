@@ -39,6 +39,7 @@ container_options: >-
   --ulimit nofile=65535:65535
   --group-add video
   -e PLATFORM=metax
+  -e DISTRIBUTED_BACKEND=mccl
   -e TORCH_DISTRIBUTED_BACKEND=mccl
 
 # Platform-specific environment setup script
