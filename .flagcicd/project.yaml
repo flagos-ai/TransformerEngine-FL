@@ -179,6 +179,9 @@ test_groups:
     - core
     paths:
     - transformer_engine/plugin/core/*.py
+    - transformer_engine/plugin/core/triton_dispatch/
+    - transformer_engine/plugin/core/backends/__init__.py
+    - transformer_engine/pytorch/triton/
     - transformer_engine/plugin/*.py
     - tests/plugin/plugin/
     test_targets:
@@ -201,8 +204,10 @@ test_groups:
     paths:
     - transformer_engine/plugin/core/backends/reference/
     - tests/plugin/backend/reference/
+    - tests/plugin/accuracy/
     test_targets:
     - tests/plugin/backend/reference/
+    - tests/plugin/accuracy/
     kind: unit
     required: true
     evidence: junit

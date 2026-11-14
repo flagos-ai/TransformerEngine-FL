@@ -45,7 +45,7 @@ detect_platform() {
 : "${TE_PATH:=$(cd -- "${SCRIPT_DIR}/../.." && pwd)}"
 : "${MCORE_PATH:=/workspace/Megatron-LM-FL}"
 : "${MCORE_REPO_URL:=https://github.com/flagos-ai/Megatron-LM-FL.git}"
-: "${MCORE_REF:=175ae90ec92a9e6fea2d74ccd24d6a1835d3ae82}"
+: "${MCORE_REF:=main}"
 : "${MCORE_ENTRYPOINT:=${MCORE_PATH}/pretrain_gpt.py}"
 : "${MCORE_USE_CUDA_ENV_DEFAULTS:=1}"
 : "${OUTPUT_DIR:=${TE_PATH}/qa/L1_pytorch_mcore_integration/output}"
@@ -83,7 +83,7 @@ export MICRO_BATCH_SIZE GLOBAL_BATCH_SIZE ENABLE_DIAGNOSTICS
 if [ "${MCORE_USE_CUDA_ENV_DEFAULTS}" = "1" ] && [ -n "${CUDA_DEVICE_MAX_CONNECTIONS:-}" ]; then
     export CUDA_DEVICE_MAX_CONNECTIONS
 fi
-if [ "${MCORE_USE_CUDA_ENV_DEFAULTS}" = "1" ] && [ -n "${CUBLAS_WORKSPACE_CONFIG:-}" ]; then
+if [ -n "${CUBLAS_WORKSPACE_CONFIG:-}" ]; then
     export CUBLAS_WORKSPACE_CONFIG
 fi
 
@@ -137,6 +137,13 @@ if [ -n "${MCORE_PREPARE_SCRIPT:-}" ]; then
     python3 "${MCORE_PREPARE_SCRIPT}" "${MCORE_PATH}"
 fi
 
+# Ensure the checked-out Megatron-LM-FL precedes any preinstalled megatron
+# package in Python's import path (including image-level startup hooks).
+case ":${PYTHONPATH:-}:" in
+    ":${MCORE_PATH}:"*) ;;
+    *) export PYTHONPATH="${MCORE_PATH}${PYTHONPATH:+:${PYTHONPATH}}" ;;
+esac
+
 # Megatron-LM-FL tokenizer imports happen at module import time, so direct
 # source execution needs these Python deps available before pretrain_gpt.py
 # starts.
@@ -149,8 +156,7 @@ PY
 
 # Megatron's mock dataset requires its pybind11 helper extension. Source-only
 # checkouts do not provide the compiled module.
-if ! PYTHONPATH="${MCORE_PATH}:${PYTHONPATH:-}" python3 -c \
-    "import megatron.core.datasets.helpers_cpp" 2>/dev/null; then
+if ! python3 -c "import megatron.core.datasets.helpers_cpp" 2>/dev/null; then
     (cd "${MCORE_PATH}" && python3 setup.py build_ext --inplace)
 fi
 
@@ -183,7 +189,7 @@ if [ "${MCORE_USE_CUDA_ENV_DEFAULTS}" = "1" ] && [ -n "${CUDA_DEVICE_MAX_CONNECT
     DEVICE_ENV="${DEVICE_ENV}
 CUDA_DEVICE_MAX_CONNECTIONS=${CUDA_DEVICE_MAX_CONNECTIONS}"
 fi
-if [ "${MCORE_USE_CUDA_ENV_DEFAULTS}" = "1" ] && [ -n "${CUBLAS_WORKSPACE_CONFIG:-}" ]; then
+if [ -n "${CUBLAS_WORKSPACE_CONFIG:-}" ]; then
     DEVICE_ENV="${DEVICE_ENV}
 CUBLAS_WORKSPACE_CONFIG=${CUBLAS_WORKSPACE_CONFIG}"
 fi

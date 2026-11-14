@@ -105,4 +105,4 @@ compat_test_matrix:
 
 # Optional test group -> reason map for targets not wired into this platform QA.
 # A selected unsupported module is reported explicitly, never silently passed.
-unsupported_test_groups: {}
+ignored_test_groups: {}

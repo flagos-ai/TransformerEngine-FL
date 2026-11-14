@@ -4,7 +4,7 @@ hardware_name: hygon
 display_name: 'Hygon DCU (DTK)'
 checkout_submodules: 'false'
 
-ci_image: harbor.baai.ac.cn/flagos-dev/transformerengine-fl:manual-20260717-hygon-dev
+ci_image: harbor.baai.ac.cn/flagos-dev/transformer-engine-fl:v2.17.0-hygon-ci
 
 runner_labels:
   - hg-8g-cicd-te
@@ -77,10 +77,36 @@ paths_watch:
   - transformer_engine/plugin/core/backends/vendor/hygon/
 
 # Missing test-group coverage is explicit; these entries do not claim hardware incapability.
-unsupported_test_groups:
-  debug: The current DTK reference backend lacks quantize and FP8 debug feature support; the full nvinspect debug suite is not adapted to Hygon.
-  normalization: Hygon unit QA runs deferred-init/JIT, plugin policy and reference lifecycle/activation/dropout/GEMM only; no normalization target is wired.
+ignored_test_groups:
   attention: Hygon unit QA does not run attention, RoPE, GQA or HF attention targets; CP utilities belong to the separate distributed group.
+  distributed: Current Hygon unit QA filters every configured distributed target, leaving no runnable distributed testcase or evidence. Restore after a Hygon distributed target executes and produces a passing report.
   quantization: Hygon unit QA has no recipe, quantized-tensor, FP8 or NVFP4 target.
-  optimizer: Hygon unit QA does not run fused optimizer, multi-tensor or reference optimizer targets.
-  vendor_backend: Hygon unit QA has no vendor backend or FlagOS backend targets; plugin manager tests only validate dispatch infrastructure.
+
+# These tests will be skipped when running pytest (file or file::node).
+# Only defects owned outside this repository belong here; give the reason,
+# owner and restore condition in a comment above each group.
+ignored_tests:
+  # Hygon DCU launch limit: num_warps=32 exceeds the device thread limit.
+  - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_cross_entropy_forward_and_backward_match_native_exactly
+  # FlagTree/FlagTune: compiled graph tracing currently produces an invalid grid.
+  - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_dispatch_entry_does_not_shrink_the_compiled_graph
+  # The shared FP8 block-scaling capability check converts torch.version.cuda
+  # unconditionally; Hygon's non-CUDA DTK build exposes None during collection.
+  # Restore after the shared check handles non-CUDA runtimes.
+  - tests/pytorch/debug/test_log.py
+  - tests/pytorch/test_sanity.py
+  # Hygon's current TE-FL registry has no quantize operator. These debug
+  # quantization paths call tex.quantize; restore after the backend exposes it.
+  - tests/pytorch/debug/test_api_features.py::test_per_tensor_scaling
+  - tests/pytorch/debug/test_api_features.py::test_fake_quant
+  - tests/pytorch/debug/test_api_features.py::test_statistics_collection
+  - tests/pytorch/debug/test_api_features.py::test_statistics_multi_run
+  # Hygon DTK launch/runtime limitations; restore after the affected paths pass.
+  - tests/pytorch/test_jit.py::test_torch_dynamo
+  - tests/pytorch/test_onnx_export.py::test_export_linear*
+  - tests/pytorch/test_onnx_export.py::test_export_layernorm_linear*
+  - tests/pytorch/test_onnx_export.py::test_export_layernorm_mlp*
+  - tests/pytorch/test_onnx_export.py::test_export_core_attention*
+  - tests/pytorch/test_onnx_export.py::test_export_transformer_layer*
+  - tests/pytorch/test_onnx_export.py::test_export_multihead_attention*
+  - tests/pytorch/test_onnx_export.py::test_export_gpt_generation*

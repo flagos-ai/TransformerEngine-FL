@@ -7,18 +7,33 @@
 
 from __future__ import annotations
 
+import argparse
 import importlib
 import json
+import fnmatch
 import os
 from pathlib import Path
 import shlex
+import signal
 import subprocess
 import sys
 import time
 from typing import Any
+import xml.etree.ElementTree as ET
 
 
-REPO_ROOT = Path(os.environ.get("GITHUB_WORKSPACE", Path(__file__).resolve().parents[2]))
+# A test process that dies from one of these crashed by itself; other files of an
+# isolated step still run. Any other signal (SIGINT/SIGTERM/SIGKILL from job
+# cancellation, timeouts or OOM) stops the group as before.
+_CRASH_SIGNALS = frozenset(
+    {signal.SIGSEGV, signal.SIGABRT, signal.SIGBUS, signal.SIGFPE, signal.SIGILL}
+)
+
+REPO_ROOT = Path(
+    os.environ.get("GITHUB_WORKSPACE")
+    or os.environ.get("TE_PATH")
+    or Path(__file__).resolve().parents[2]
+)
 
 
 def _expand(value: str) -> str:
@@ -26,6 +41,44 @@ def _expand(value: str) -> str:
 
 
 def _load_group() -> dict[str, Any]:
+    preset = os.environ.get("TE_TEST_GROUP_PRESET")
+    if preset:
+        if preset != "plugin-unit":
+            raise SystemExit(f"Unknown test group preset: {preset}")
+        return {
+            "name": "plugin-unit",
+            "runner": "pytest",
+            "max_retries": 0,
+            "pytest_args": ["-v", "-s", "--tb=short"],
+            "steps": [
+                {
+                    "name": "plugin",
+                    "targets": ["tests/plugin/"],
+                    "isolate_files": True,
+                    "use_platform_runner": False,
+                    # CI records the same exclusion in the platform plan. This
+                    # fallback also keeps standalone QA off Ascend-only tests.
+                    "ignore": (
+                        []
+                        if os.environ.get("PLATFORM") in ("ascend", "npu")
+                        else ["tests/plugin/backend/npu/"]
+                    ),
+                    "env_by_path": {
+                        "tests/plugin/backend/npu/": {
+                            "TE_FL_PREFER": "vendor",
+                        }
+                    },
+                    "unset_env_by_path": {
+                        "tests/plugin/plugin/": [
+                            "TE_FL_ALLOW_VENDORS",
+                            "TE_FL_PREFER",
+                            "TE_FL_PER_OP",
+                            "TE_FL_STRICT",
+                        ]
+                    },
+                }
+            ],
+        }
     raw_group = os.environ.get("TE_TEST_GROUP_JSON")
     if not raw_group:
         raise SystemExit("TE_TEST_GROUP_JSON is required")
@@ -35,9 +88,43 @@ def _load_group() -> dict[str, Any]:
     return group
 
 
+def _selection_plugin_path(env: dict[str, str]) -> None:
+    """Make the selection plugin importable whenever PYTEST_PLUGINS requests it.
+
+    An intermediate shell can replace PYTHONPATH (the Ascend CI image's
+    BASH_ENV assigns it absolutely in /etc/profile.d/vendor.sh), so a nested
+    runner restores the plugin directories itself before launching pytest.
+    """
+    plugins = [name.strip() for name in env.get("PYTEST_PLUGINS", "").split(",") if name.strip()]
+    if "ci_pytest_selection" not in plugins:
+        return
+    plugin_dir = str(Path(__file__).resolve().parent)
+    contract_dir = str(Path(__file__).resolve().parents[2] / ".github/scripts/ci")
+    parts = [part for part in env.get("PYTHONPATH", "").split(os.pathsep) if part]
+    env["PYTHONPATH"] = os.pathsep.join(
+        [path for path in (plugin_dir, contract_dir) if path not in parts] + parts
+    )
+
+
 def _selection_env(env: dict[str, str], group: dict[str, Any]) -> None:
     """Carry the plan's file selection into every child pytest invocation."""
+    ignored = group.get("ignored_test_targets")
+    if ignored is not None:
+        if not isinstance(ignored, list) or any(
+            not isinstance(target, str) or not target.strip() for target in ignored
+        ):
+            raise SystemExit("ignored_test_targets must be a list of repository-relative paths")
+        env["TE_CI_IGNORE_TEST_TARGETS_JSON"] = json.dumps(ignored)
+        plugins = [
+            name.strip() for name in env.get("PYTEST_PLUGINS", "").split(",") if name.strip()
+        ]
+        if "ci_pytest_selection" not in plugins:
+            plugins.append("ci_pytest_selection")
+        env["PYTEST_PLUGINS"] = ",".join(plugins)
     if "test_targets" not in group:
+        # Nested presets inherit the outer plan's selection through the
+        # environment; only the plugin path may need restoring.
+        _selection_plugin_path(env)
         return
     targets = group["test_targets"]
     if (
@@ -47,15 +134,17 @@ def _selection_env(env: dict[str, str], group: dict[str, Any]) -> None:
     ):
         raise SystemExit("test_targets must be a non-empty list of repository-relative paths")
     env["TE_CI_TEST_TARGETS_JSON"] = json.dumps(targets)
-    plugin_dir = str(Path(__file__).resolve().parent)
-    contract_dir = str(Path(__file__).resolve().parents[2] / ".github/scripts/ci")
-    env["PYTHONPATH"] = os.pathsep.join(
-        part for part in (plugin_dir, contract_dir, env.get("PYTHONPATH", "")) if part
-    )
+    ignored = group.get("ignored_test_targets", [])
+    if not isinstance(ignored, list) or any(
+        not isinstance(target, str) or not target.strip() for target in ignored
+    ):
+        raise SystemExit("ignored_test_targets must be a list of repository-relative paths")
+    env["TE_CI_IGNORE_TEST_TARGETS_JSON"] = json.dumps(ignored)
     plugins = [name.strip() for name in env.get("PYTEST_PLUGINS", "").split(",") if name.strip()]
     if "ci_pytest_selection" not in plugins:
         plugins.append("ci_pytest_selection")
     env["PYTEST_PLUGINS"] = ",".join(plugins)
+    _selection_plugin_path(env)
 
 
 def _run_script(group: dict[str, Any]) -> int:
@@ -83,12 +172,72 @@ def _pytest_command(use_platform_runner: bool) -> list[str]:
     return [sys.executable, "-m", "pytest"]
 
 
+def _isolated_targets(step: dict[str, Any], *, log_ignored: bool = False) -> list[str]:
+    files = set()
+    for target in step["targets"]:
+        path = REPO_ROOT / _expand(target)
+        if path.is_dir():
+            files.update(file for file in path.rglob("test_*.py") if file.is_file())
+        elif path.is_file():
+            files.add(path)
+        else:
+            raise SystemExit(f"Test target does not exist: {target}")
+    if not files:
+        raise SystemExit(f"No test files found for step {step['name']}")
+    selected = []
+    for file in sorted(files):
+        relative = file.relative_to(REPO_ROOT).as_posix()
+        if _ignored_target(relative, step):
+            if log_ignored:
+                print(f"[IGNORE] {relative}", flush=True)
+            continue
+        selected.append(relative)
+    return selected
+
+
+def _ignored_target(relative: str, step: dict[str, Any]) -> bool:
+    return any(
+        (
+            relative.startswith(pattern)
+            if pattern.endswith("/")
+            else fnmatch.fnmatchcase(relative, pattern)
+        )
+        for pattern in step.get("ignore", [])
+    )
+
+
+def _target_env(env: dict[str, str], step: dict[str, Any], relative: str) -> None:
+    for prefix, keys in step.get("unset_env_by_path", {}).items():
+        if relative.startswith(prefix):
+            for key in keys:
+                env.pop(key, None)
+    for prefix, values in step.get("env_by_path", {}).items():
+        if relative.startswith(prefix):
+            for key, value in values.items():
+                env[str(key)] = _expand(str(value))
+
+
+def _all_reported_cases_skipped(report: Path) -> bool:
+    """Accept module-level importorskip, but never a genuine empty collection."""
+    try:
+        root = ET.parse(report).getroot()
+    except (OSError, ET.ParseError):
+        return False
+    cases = root.findall(".//testcase")
+    return (
+        bool(cases)
+        and not root.findall(".//failure")
+        and not root.findall(".//error")
+        and all(case.find("skipped") is not None for case in cases)
+    )
+
+
 def _run_pytest(group: dict[str, Any]) -> int:
     steps = group.get("steps")
     if not isinstance(steps, list) or not steps:
         raise SystemExit(f"Pytest group {group['name']} has no steps")
 
-    log_dir = REPO_ROOT / _expand(str(group.get("log_dir", "logs")))
+    log_dir = REPO_ROOT / _expand(str(group.get("log_dir", os.environ.get("XML_LOG_DIR", "logs"))))
     log_dir.mkdir(parents=True, exist_ok=True)
     group_args = [_expand(str(arg)) for arg in group.get("pytest_args", [])]
     group_env = {str(key): _expand(str(value)) for key, value in group.get("env", {}).items()}
@@ -115,24 +264,65 @@ def _run_pytest(group: dict[str, Any]) -> int:
             failed = True
             continue
 
-        command = _pytest_command(bool(step.get("use_platform_runner", True)))
-        command.extend(group_args)
-        command.extend(_expand(str(arg)) for arg in step.get("args", []))
-        if step.get("junit"):
-            command.append(f"--junitxml={log_dir / str(step['junit'])}")
-        command.extend(targets)
+        invocations = [targets]
+        if step.get("isolate_files"):
+            invocations = [
+                [str(REPO_ROOT / target)] for target in _isolated_targets(step, log_ignored=True)
+            ]
 
-        step_env = os.environ.copy()
-        step_env.update(group_env)
-        step_env.update(
-            {str(key): _expand(str(value)) for key, value in step.get("env", {}).items()}
-        )
-        _selection_env(step_env, group)
-        print(f"[RUN] {step['name']}: {shlex.join(command)}", flush=True)
-        result = subprocess.run(command, cwd=REPO_ROOT, env=step_env, check=False)
-        if result.returncode < 0 or result.returncode >= 128:
-            return result.returncode
-        failed = failed or result.returncode != 0
+        for invocation in invocations:
+            relative = (
+                Path(invocation[0]).relative_to(REPO_ROOT).as_posix()
+                if step.get("isolate_files")
+                else ""
+            )
+            command = _pytest_command(bool(step.get("use_platform_runner", True)))
+            command.extend(group_args)
+            command.extend(_expand(str(arg)) for arg in step.get("args", []))
+            report_path = None
+            if step.get("isolate_files"):
+                report = relative.removesuffix(".py").replace("/", "_") + ".xml"
+                report_path = log_dir / report
+                report_path.unlink(missing_ok=True)
+                command.append(f"--junitxml={report_path}")
+            elif step.get("junit"):
+                command.append(f"--junitxml={log_dir / str(step['junit'])}")
+            command.extend(invocation)
+
+            step_env = os.environ.copy()
+            step_env.update(group_env)
+            step_env.update(
+                {str(key): _expand(str(value)) for key, value in step.get("env", {}).items()}
+            )
+            _target_env(step_env, step, relative)
+            _selection_env(step_env, group)
+            print(f"[RUN] {step['name']}: {shlex.join(command)}", flush=True)
+            started = time.monotonic()
+            result = subprocess.run(command, cwd=REPO_ROOT, env=step_env, check=False)
+            print(
+                f"[DONE] {relative or step['name']}: exit={result.returncode} "
+                f"elapsed={time.monotonic() - started:.1f}s",
+                flush=True,
+            )
+            if (
+                result.returncode == 5
+                and report_path is not None
+                and _all_reported_cases_skipped(report_path)
+            ):
+                print(f"[SKIP] {relative}: all reported cases skipped", flush=True)
+                continue
+            if result.returncode < 0 or result.returncode >= 128:
+                signum = -result.returncode if result.returncode < 0 else result.returncode - 128
+                if step.get("isolate_files") and signum in _CRASH_SIGNALS:
+                    print(
+                        f"[CRASH] {relative}: {signal.Signals(signum).name}; "
+                        "continuing with the remaining files",
+                        flush=True,
+                    )
+                    failed = True
+                    continue
+                return result.returncode
+            failed = failed or result.returncode != 0
 
     return 1 if failed else 0
 
@@ -161,5 +351,26 @@ def main() -> int:
     raise AssertionError("Unreachable retry state")
 
 
+def cli() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--list-targets", action="store_true")
+    parser.add_argument("--target-env", metavar="TARGET")
+    parser.add_argument("command", nargs=argparse.REMAINDER)
+    args = parser.parse_args()
+    if args.list_targets or args.target_env:
+        group = _load_group()
+        if args.list_targets:
+            for step in group["steps"]:
+                print("\n".join(_isolated_targets(step)))
+            return 0
+        if not args.command:
+            parser.error("--target-env requires a command")
+        env = os.environ.copy()
+        for step in group["steps"]:
+            _target_env(env, step, args.target_env)
+        os.execvpe(args.command[0], args.command, env)
+    return main()
+
+
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(cli())

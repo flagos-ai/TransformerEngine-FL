@@ -27,7 +27,7 @@ METAX_IGNORED_TESTS=(
     "$TE_PATH/tests/pytorch/debug/test_sanity.py"
 )
 
-should_skip_on_metax() {
+should_ignore_on_metax() {
     local test_path=$1
 
     [ "$PLATFORM" = "metax" ] || return 1
@@ -35,7 +35,7 @@ should_skip_on_metax() {
     local ignored_test
     for ignored_test in "${METAX_IGNORED_TESTS[@]}"; do
         if [ "$test_path" = "$ignored_test" ]; then
-            echo "[SKIP] Platform MetaX: Ignoring $test_path"
+            echo "[IGNORE] Platform MetaX: Ignoring $test_path"
             return 0
         fi
     done
@@ -49,7 +49,7 @@ run_test_step() {
     local test_path=$2
     local cmd=$3
 
-    if should_skip_on_metax "$test_path"; then
+    if should_ignore_on_metax "$test_path"; then
         return 0
     fi
 

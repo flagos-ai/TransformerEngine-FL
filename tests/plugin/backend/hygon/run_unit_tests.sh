@@ -20,19 +20,6 @@ If no suite is specified, all suites are run.
 EOF
 }
 
-join_with_or() {
-    local result=""
-    local item
-    for item in "$@"; do
-        if [ -z "$result" ]; then
-            result="$item"
-        else
-            result="$result or $item"
-        fi
-    done
-    printf '%s' "$result"
-}
-
 python_has_module() {
     "$PYTHON" - "$1" <<'PY'
 import importlib
@@ -59,14 +46,6 @@ install_python_package() {
     fi
 
     "$PYTHON" -m pip install "$package_spec"
-}
-
-skip_step() {
-    local label=$1
-    local reason=$2
-    echo "-------------------------------------------------------"
-    echo "[SKIP] Hygon/DTK: $label ($reason)"
-    echo "-------------------------------------------------------"
 }
 
 run_cmd() {
@@ -128,7 +107,7 @@ run_debug_suite() {
     fi
 
     local feature_dirs="${NVTE_TEST_NVINSPECT_FEATURE_DIRS:-$TE_PATH/transformer_engine/debug/features}"
-    local configs_dir="${NVTE_TEST_NVINSPECT_CONFIGS_DIR:-$TE_PATH/tests/pytorch/debug/test_configs}"
+    local configs_dir="${NVTE_TEST_NVINSPECT_CONFIGS_DIR:-$TE_PATH/tests/pytorch/debug/test_configs}/"
     local dummy_config="${NVTE_TEST_NVINSPECT_DUMMY_CONFIG_FILE:-$TE_PATH/tests/pytorch/debug/test_configs/dummy_feature.yaml}"
 
     run_cmd "debug" "debug/test_config.py" "test_config.xml" \
@@ -159,24 +138,12 @@ run_unittest_suite() {
     run_pytest_step "test_deferred_init.py" "pytest_test_deferred_init.xml" \
         "$PYTHON" -m pytest -s -v --tb=auto "$TE_PATH/tests/pytorch/test_deferred_init.py"
     run_pytest_step "test_jit.py" "pytest_test_jit.xml" \
-        "$PYTHON" -m pytest -s -v --tb=auto "$TE_PATH/tests/pytorch/test_jit.py" -k "not (test_torch_dynamo)"
+        "$PYTHON" -m pytest -s -v --tb=auto "$TE_PATH/tests/pytorch/test_jit.py"
 
-    local plugin_root="$TE_PATH/tests/plugin"
-    run_pytest_step "plugin/test_policy.py" "pytest_test_plugin_policy.xml" \
-        "$PYTHON" -m pytest -s -v --tb=auto "$plugin_root/plugin/test_policy.py"
-    run_pytest_step "plugin/test_manager.py" "pytest_test_plugin_manager.xml" \
-        "$PYTHON" -m pytest -s -v --tb=auto "$plugin_root/plugin/test_manager.py"
-    run_pytest_step "plugin/test_policy_selection.py" "pytest_test_plugin_policy_selection.xml" \
-        "$PYTHON" -m pytest -s -v --tb=auto "$plugin_root/plugin/test_policy_selection.py"
-    run_pytest_step "reference/test_lifecycle.py" "pytest_test_backend_reference.xml" \
-        "$PYTHON" -m pytest -s -v --tb=auto "$plugin_root/backend/reference/test_lifecycle.py"
-    run_pytest_step "reference/test_activation.py" "pytest_test_backend_reference_activation.xml" \
-        "$PYTHON" -m pytest -s -v --tb=auto "$plugin_root/backend/reference/test_activation.py"
-    run_pytest_step "reference/test_dropout.py" "pytest_test_backend_reference_dropout.xml" \
-        "$PYTHON" -m pytest -s -v --tb=auto "$plugin_root/backend/reference/test_dropout.py"
-    run_pytest_step "reference/test_gemm.py" "pytest_test_backend_reference_gemm.xml" \
-        "$PYTHON" -m pytest -s -v --tb=auto "$plugin_root/backend/reference/test_gemm.py"
-
+    if ! TE_TEST_GROUP_PRESET=plugin-unit "$PYTHON" "$TE_PATH/tests/test_utils/run_ci_test_group.py"; then
+        FAIL=1
+        FAILED_CASES+=("unittest:plugin_core")
+    fi
     echo "===== END unittest rc=$FAIL $(date '+%F %T') ====="
 }
 
@@ -194,13 +161,9 @@ run_onnx_suite() {
     echo "===== START onnx $(date '+%F %T') ====="
     install_onnx_deps
 
-    local skip_expr
-    skip_expr="$(join_with_or "${HYGON_ONNX_SKIP_GROUPS[@]}")"
-    skip_expr="not ($skip_expr)"
-    echo "[SKIP] Hygon/DTK ONNX groups: $skip_expr"
     run_cmd "onnx" "test_onnx_export.py" "test_onnx_export.xml" \
         env NVTE_UnfusedDPA_Emulate_FP8=1 \
-        "$PYTHON" -m pytest --tb=auto "$TE_PATH/tests/pytorch/test_onnx_export.py" -k "$skip_expr"
+        "$PYTHON" -m pytest --tb=auto "$TE_PATH/tests/pytorch/test_onnx_export.py"
 
     echo "===== END onnx rc=$FAIL $(date '+%F %T') ====="
 }
@@ -239,4 +202,4 @@ if [ "$OVERALL_FAIL" -ne 0 ]; then
     exit 1
 fi
 
-echo "Selected Hygon/DTK reference-baseline tests passed (some optional groups might have been skipped)."
+echo "All selected Hygon/DTK reference-baseline test suites passed."

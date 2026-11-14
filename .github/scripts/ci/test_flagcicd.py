@@ -12,6 +12,7 @@ import argparse
 import copy
 import hashlib
 import importlib.util
+import io
 import json
 import os
 import subprocess
@@ -69,7 +70,7 @@ def make_plan(platforms=(), test_groups=(), blocked=(), stage="pr", execution_gr
         "platforms": list(platforms),
         "test_groups": logical_groups,
         "execution_groups": execution_groups,
-        "excluded": [],
+        "ignored": [],
         "blocked": list(blocked),
         "reasons": [],
         "coverage_policy": {"method": "absolute"},
@@ -164,6 +165,20 @@ def execution_report(plan, execution, **overrides):
 
 
 class ContractSchemaTests(unittest.TestCase):
+    def test_plan_file_precedence_validation_and_missing_file(self):
+        plan = make_plan()
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory, "plan.json")
+            path.write_text(contract.canonical_json(plan))
+            with patch.dict(os.environ, FLAGCICD_PLAN_FILE=str(path), FLAGCICD_PLAN="bad JSON"):
+                self.assertEqual(contract.load_plan_from_env(), plan)
+                path.write_text(contract.canonical_json({**plan, "source_sha": "b" * 40}))
+                with self.assertRaisesRegex(ValueError, "hash"):
+                    contract.load_plan_from_env()
+                path.unlink()
+                with self.assertRaisesRegex(ValueError, "Cannot read plan file"):
+                    contract.load_plan_from_env()
+
     """Test contract schema constants and validation."""
 
     def test_all_catalog_kinds_are_valid(self):
@@ -719,7 +734,7 @@ Path(xml).write_text('<testsuite tests="1"><testcase name="probe"><properties><p
             ] = ["probe_target"]
             platforms = planner.load_platforms(ROOT / ".github/configs")
             # The probe uses a synthetic catalog containing only preflight/core.
-            platforms["cuda"]["config"]["unsupported_test_groups"] = {}
+            platforms["cuda"]["config"]["ignored_test_groups"] = {}
             pytest_entry = {
                 "name": "pytorch_unit",
                 "runner": "pytest",
@@ -1191,7 +1206,9 @@ class GroupReportEvidenceTests(unittest.TestCase):
             '<testsuite tests="1"/>',
             '<testsuite tests="-1"/>',
             '<testsuite tests="oops"/>',
-            '<testsuite tests="2"><testcase/></testsuite>',
+            '<testsuite tests="0"><testcase/></testsuite>',
+            '<testsuite tests="1" failures="1"><testcase/></testsuite>',
+            '<testsuite tests="2" skipped="1"><testcase/><testcase/></testsuite>',
             "<testsuite><testcase><skipped/><error/></testcase></testsuite>",
             "<unknown><testcase/></unknown>",
             "<testsuite>",
@@ -1211,6 +1228,28 @@ class GroupReportEvidenceTests(unittest.TestCase):
             self.parse("<testsuite><testcase><skipped/></testcase></testsuite>"),
             ("skipped", "all_skipped"),
         )
+
+    def test_pytest_subtests_counted_in_summary_are_accepted(self):
+        # pytest>=9 writes unittest subTest/subtests reports into the parent
+        # testcase element but counts each one in the suite summary: this is
+        # tests/plugin/backend/metax/test_overlap_compatibility.py on pytest 9.2
+        # ("10 passed, 8 subtests passed" -> tests="18", 10 testcases).
+        passed = '<testsuite tests="3" failures="0"><testcase/></testsuite>'
+        self.assertEqual(self.parse(passed), ("passed", None))
+        failed = (
+            '<testsuite tests="3" failures="2">'
+            "<testcase><failure/><failure/></testcase></testsuite>"
+        )
+        self.assertEqual(self.parse(failed), ("test_failed", "test_execution"))
+
+    def test_unusable_report_names_the_file_and_reason(self):
+        with patch("sys.stderr", new_callable=io.StringIO) as stderr:
+            self.assertEqual(
+                self.parse('<testsuite tests="0"><testcase/></testsuite>'),
+                ("report_error", "junit_parsing"),
+            )
+        self.assertIn("report.xml", stderr.getvalue())
+        self.assertIn("Inconsistent JUnit tests: summary 0, actual 1", stderr.getvalue())
 
     def test_nested_namespaced_suites_are_counted_once(self):
         xml = """<testsuites xmlns="urn:junit" tests="2" skipped="1">
@@ -1319,7 +1358,7 @@ class GatePlatformReportTests(unittest.TestCase):
             ],
             "test_groups": [],
             "execution_groups": [],
-            "excluded": [],
+            "ignored": [],
             "blocked": [],
             "reasons": [],
             "coverage_policy": {"method": "absolute"},

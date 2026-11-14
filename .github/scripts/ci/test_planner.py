@@ -71,7 +71,41 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual({entry["name"] for entry in plan["platforms"]}, expected)
 
     def supported_suites(self, platform):
-        return set(UNIT_SUITES) - ({"pytorch_debug"} if platform == "hygon" else set())
+        config = yaml.safe_load((ROOT / ".github/configs" / f"{platform}.yml").read_text())
+        ignored_groups = set(config.get("ignored_test_groups", {}))
+        suite_groups = {
+            "pytorch_debug": "debug",
+            "pytorch_unit": "core",
+            "pytorch_distributed": "distributed",
+            "pytorch_onnx": "onnx",
+        }
+        matrix = {
+            entry["name"]: entry
+            for entry in config.get("unit_test_matrix", [])
+            if isinstance(entry, dict) and entry.get("name")
+        }
+        return {
+            suite
+            for suite, logical_group in suite_groups.items()
+            if logical_group not in ignored_groups
+            and not matrix.get(suite, {}).get("blocked", False)
+        }
+
+    def supports_mcore(self, platform):
+        config = yaml.safe_load((ROOT / ".github/configs" / f"{platform}.yml").read_text())
+        if "mcore" in set(config.get("ignored_test_groups", {})):
+            return False
+        return any(
+            entry.get("name") == "pytorch_mcore_integration" and not entry.get("blocked", False)
+            for entry in config.get("integration_test_matrix", [])
+            if isinstance(entry, dict)
+        )
+
+    def expected_platform_groups(self, platform):
+        expected = {"preflight", *self.supported_suites(platform)}
+        if self.supports_mcore(platform):
+            expected.add("pytorch_mcore_integration")
+        return expected
 
     def run_planner(self, stage: str, **kwargs) -> dict:
         """Run planner and return parsed plan."""
@@ -100,6 +134,59 @@ class PlannerTests(unittest.TestCase):
             return json.loads(Path(output_path).read_text())
         finally:
             Path(output_path).unlink(missing_ok=True)
+
+    def test_large_nine_platform_plan_slices_from_file(self):
+        import flagcicd_contract as contract
+
+        plan = self.run_planner("pr", changed_files=json.dumps([".github/workflows/ci.yml"]))
+        self.assertEqual(len(plan["platforms"]), 9)
+        # Exercise a plan beyond Linux's per-environment-string limit even if
+        # future catalog changes happen to reduce the real plan's serialized size.
+        plan["transport_test_padding"] = "x" * max(
+            0, 140000 - len(contract.canonical_json(plan).encode())
+        )
+        plan["plan_hash"] = contract.compute_plan_hash(plan)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory, "plan.json")
+            path.write_text(contract.canonical_json(plan))
+            self.assertGreater(path.stat().st_size, 128 * 1024)
+            env = dict(os.environ, FLAGCICD_PLAN_FILE=str(path))
+            env.pop("FLAGCICD_PLAN", None)
+            for platform in plan["platforms"]:
+                with self.subTest(platform=platform["name"]):
+                    output = Path(directory, platform["name"] + ".outputs")
+                    env["GITHUB_OUTPUT"] = str(output)
+                    result = subprocess.run(
+                        [
+                            sys.executable,
+                            str(ROOT / ".github/scripts/ci/flagcicd_gate.py"),
+                            "slice",
+                            "--platform",
+                            platform["name"],
+                            "--github-output",
+                        ],
+                        cwd=ROOT,
+                        env=env,
+                        capture_output=True,
+                        text=True,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    values = dict(line.split("=", 1) for line in output.read_text().splitlines())
+                    self.assertEqual(values["plan_hash"], plan["plan_hash"])
+                    self.assertEqual(
+                        sum(
+                            len(json.loads(values[lane + "_matrix"])["include"])
+                            for lane in (
+                                "preflight",
+                                "parallel",
+                                "serial",
+                                "integration",
+                            )
+                        ),
+                        sum(
+                            job["platform"] == platform["name"] for job in plan["execution_groups"]
+                        ),
+                    )
 
     def test_project_has_one_functional_test_group_catalog(self):
         """Routing, dependencies and execution mapping live in the same catalog."""
@@ -131,6 +218,25 @@ class PlannerTests(unittest.TestCase):
             {"matrix": "unit_test_matrix", "entry": "pytorch_unit"},
         )
         self.assertEqual(project["levels"]["L1"]["required_groups"], ["core"])
+
+    def test_triton_dispatch_changes_select_plugin_core(self):
+        paths = sorted(
+            path.relative_to(ROOT).as_posix()
+            for pattern in (
+                "transformer_engine/plugin/core/triton_dispatch/*.py",
+                "tests/plugin/plugin/test_triton_dispatch_*.py",
+                "tests/plugin/plugin/triton_dispatch_numerics_cases.py",
+            )
+            for path in ROOT.glob(pattern)
+        )
+        self.assertTrue(paths)
+        for path in paths:
+            with self.subTest(path=path):
+                plan = self.run_planner("pr", changed_files=json.dumps([path]))
+                self.assertEqual(
+                    set(plan["group_selection"]["groups"]),
+                    {"preflight", "core", "plugin_core"},
+                )
 
     def test_logical_groups_share_an_execution_job_without_losing_evidence(self):
         plan = self.run_planner(
@@ -280,7 +386,8 @@ class PlannerTests(unittest.TestCase):
         # Splitting reports must preserve each platform's supported suite coverage.
         for platform in plan["platforms"]:
             self.assertEqual(
-                set(platform["coverage_groups"]), self.supported_suites(platform["name"])
+                set(platform["coverage_groups"]),
+                self.supported_suites(platform["name"]),
             )
             for device in platform["device_types"]:
                 actual = {
@@ -290,11 +397,7 @@ class PlannerTests(unittest.TestCase):
                 }
                 self.assertEqual(
                     actual,
-                    {
-                        "preflight",
-                        *self.supported_suites(platform["name"]),
-                        "pytorch_mcore_integration",
-                    },
+                    self.expected_platform_groups(platform["name"]),
                 )
         for group in plan["execution_groups"]:
             if group["group"] in UNIT_SUITES:
@@ -385,7 +488,8 @@ class PlannerTests(unittest.TestCase):
                 for platform in plan["platforms"]:
                     # The full baseline scope must survive partial PR selection.
                     self.assertEqual(
-                        set(platform["coverage_groups"]), self.supported_suites(platform["name"])
+                        set(platform["coverage_groups"]),
+                        self.supported_suites(platform["name"]),
                     )
                     actual = {
                         g["group"]
@@ -425,11 +529,7 @@ class PlannerTests(unittest.TestCase):
             }
             self.assertEqual(
                 actual,
-                {
-                    "preflight",
-                    *self.supported_suites(platform["name"]),
-                    "pytorch_mcore_integration",
-                },
+                self.expected_platform_groups(platform["name"]),
             )
 
     def test_unit_launcher_change_selects_all_four_suites_on_its_platform(self):
@@ -464,8 +564,8 @@ class PlannerTests(unittest.TestCase):
                 {"preflight", "pytorch_unit"},
             )
             modules = group["exec"]["group_test_targets"]
-            unsupported = {g["group"] for g in platform["unsupported_test_groups"]}
-            self.assertEqual("optimizer" in modules, "optimizer" not in unsupported)
+            ignored = {g["group"] for g in platform["ignored_test_groups"]}
+            self.assertEqual("optimizer" in modules, "optimizer" not in ignored)
             self.assertIn("core", modules)
             self.assertNotIn("tests/", group["exec"]["test_targets"])
             self.assertNotIn("tests/pytorch/test_onnx_export.py", group["exec"]["test_targets"])
@@ -485,7 +585,7 @@ class PlannerTests(unittest.TestCase):
             ["core", "debug", "plugin_core", "preflight", "reference_backend"],
         )
         cuda = next(p for p in plan["platforms"] if p["name"] == "cuda")
-        self.assertEqual(cuda["unsupported_test_groups"], [])
+        self.assertEqual(cuda["ignored_test_groups"], [])
         self.assertEqual(
             set(cuda["selected_test_groups"]),
             {"core", "debug", "plugin_core", "preflight", "reference_backend"},
@@ -511,17 +611,26 @@ class PlannerTests(unittest.TestCase):
                     {g["group"] for g in plan["execution_groups"]},
                     {"preflight", *UNIT_SUITES, "pytorch_mcore_integration"},
                 )
+                for platform in plan["platforms"]:
+                    self.assertEqual(
+                        {
+                            g["group"]
+                            for g in plan["execution_groups"]
+                            if g["platform"] == platform["name"]
+                        },
+                        self.expected_platform_groups(platform["name"]),
+                    )
                 for group in plan["execution_groups"]:
                     if group["group"] == "pytorch_unit":
                         self.assertEqual(group["exec"]["test_targets"], ["tests/"])
 
-    def test_platform_unsupported_modules_are_not_claimed_as_tested(self):
+    def test_platform_ignored_modules_are_not_claimed_as_tested(self):
         plan = self.run_planner("nightly")
         for platform in plan["platforms"]:
             supported = set(platform["selected_test_groups"])
-            unsupported = platform["unsupported_test_groups"]
-            self.assertTrue(all(entry["reason"] for entry in unsupported))
-            self.assertFalse(supported & {entry["group"] for entry in unsupported})
+            ignored = platform["ignored_test_groups"]
+            self.assertTrue(all(entry["reason"] for entry in ignored))
+            self.assertFalse(supported & {entry["group"] for entry in ignored})
             unit = next(
                 g
                 for g in plan["execution_groups"]
@@ -529,10 +638,198 @@ class PlannerTests(unittest.TestCase):
             )
             self.assertTrue(set(unit["exec"]["group_test_targets"]) <= supported)
         hygon = next(p for p in plan["platforms"] if p["name"] == "hygon")
-        self.assertIn(
-            "optimizer",
-            {entry["group"] for entry in hygon["unsupported_test_groups"]},
+        hygon_ignored = {entry["group"] for entry in hygon["ignored_test_groups"]}
+        self.assertNotIn("debug", hygon_ignored)
+        # Reopened once Hygon's unit QA ran the plugin-unit preset (FlagOS tests).
+        self.assertNotIn("optimizer", hygon_ignored)
+
+    def test_platform_ignored_tests_reach_the_plan(self):
+        plan = self.run_planner("nightly")
+        by_platform = {
+            g["platform"]: g for g in plan["execution_groups"] if g["group"] == "pytorch_unit"
+        }
+        compiled = (
+            "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
+            "test_dispatch_entry_does_not_shrink_the_compiled_graph"
         )
+        reverted_source_case = (
+            "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
+            "test_pad_covers_every_output_tile_for_wide_inputs"
+        )
+        for platform in ("ppu", "hygon", "iluvatar"):
+            with self.subTest(platform=platform):
+                self.assertIn(compiled, by_platform[platform]["exec"]["ignored_test_targets"])
+        # Keep the numerical Adam cases enabled so backend issues remain visible.
+        self.assertNotIn(
+            "tests/plugin/backend/flagos/test_optimizer_numerical.py",
+            by_platform["ppu"]["exec"]["ignored_test_targets"],
+        )
+        self.assertIn(
+            "tests/plugin/backend/flagos/test_optimizer_extended.py::"
+            "test_fp8_adam_updates_master_and_metadata",
+            by_platform["ascend"]["exec"]["ignored_test_targets"],
+        )
+        self.assertIn(compiled, by_platform["cuda"]["exec"]["ignored_test_targets"])
+        platforms = {p["name"]: p for p in plan["platforms"]}
+        for node in (
+            "tests/plugin/accuracy/test_compute_scale.py::test_compute_scale_saturates_fp32_overflow",
+            "tests/plugin/backend/flagos/test_gemm.py::test_generic_gemm_lifecycle_matrix",
+            "tests/plugin/backend/reference/test_dropout.py::test_dropout_fwd_zero_probability",
+            "tests/plugin/backend/reference/test_dropout.py::test_dropout_bwd_zero_probability",
+            "tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_mhc_apis_match_native_exactly",
+            "tests/pytorch/test_numerics.py::test_linear_accuracy_delay_wgrad_compute",
+        ):
+            self.assertIn(node, platforms["musa"]["ignored_tests"])
+        self.assertEqual(platforms["cuda"]["ignored_tests"], [compiled, reverted_source_case])
+        enflame_ignored = platforms["enflame"]["ignored_tests"]
+        for node in (
+            "test_cross_entropy_forward_and_backward_match_native_exactly",
+            "test_mhc_apis_match_native_exactly",
+        ):
+            self.assertIn(
+                f"tests/plugin/plugin/triton_dispatch_numerics_cases.py::{node}", enflame_ignored
+            )
+        self.assertEqual(enflame_ignored, sorted(set(enflame_ignored)))
+        for bad in (["tests/plugin/x.py", " "], ["tests/../x.py"], {"tests/x.py": "reason"}):
+            with self.subTest(config=bad):
+                with self.assertRaises(ValueError):
+                    planner.platform_ignored_tests({"ignored_tests": bad})
+
+    def test_cross_group_ignored_target_overlaps_and_npu_ignore_are_recorded(self):
+        plan = self.run_planner("nightly")
+        by_platform = {
+            g["platform"]: g for g in plan["execution_groups"] if g["group"] == "pytorch_unit"
+        }
+        self.assertIn(
+            "tests/plugin/backend/npu/",
+            by_platform["cuda"]["exec"]["ignored_test_targets"],
+        )
+        self.assertNotIn(
+            "tests/plugin/backend/npu/",
+            by_platform["ascend"]["exec"]["ignored_test_targets"],
+        )
+        self.assertIn(
+            "tests/plugin/accuracy/test_compute_scale.py",
+            by_platform["ascend"]["exec"]["ignored_test_targets"],
+        )
+        self.assertNotIn(
+            "tests/plugin/accuracy/test_compute_scale.py",
+            by_platform["cuda"]["exec"]["ignored_test_targets"],
+        )
+        self.assertIn(
+            "tests/pytorch/test_float8_blockwise_gemm_exact.py",
+            by_platform["cuda"]["exec"]["ignored_group_test_targets"]["gemm"],
+        )
+        # Kunlun's vendor_backend remains enabled for coverage.
+        kunlun_gemm_ignored = (
+            by_platform["kunlun"]["exec"].get("ignored_group_test_targets", {}).get("gemm", [])
+        )
+        self.assertNotIn("tests/plugin/backend/flagos/test_gemm.py", kunlun_gemm_ignored)
+        # Ascend's vendor-owned compute-scale quarantine is scoped to the
+        # reference-backend group; unrelated groups remain enabled.
+        self.assertEqual(
+            by_platform["ascend"]["exec"]["ignored_group_test_targets"]["reference_backend"],
+            ["tests/plugin/accuracy/test_compute_scale.py"],
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            summary = Path(directory, "summary.md")
+            planner.write_summary(summary, plan)
+            text = summary.read_text()
+            self.assertIn(
+                "cuda/gemm ignored targets:"
+                " tests/plugin/backend/npu/test_backend_npu.py::TestNPU*GEMMAccuracy,"
+                " tests/pytorch/test_float8_blockwise_gemm_exact.py",
+                text,
+            )
+
+    def test_plugin_node_ignores_are_loaded_from_platform_yaml(self):
+        plan = self.run_planner("nightly")
+        by_platform = {
+            group["platform"]: group["exec"]["ignored_test_targets"]
+            for group in plan["execution_groups"]
+            if group["group"] == "pytorch_unit"
+        }
+        expected = {
+            "hygon": {
+                (
+                    "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
+                    "test_cross_entropy_forward_and_backward_match_native_exactly"
+                ),
+                (
+                    "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
+                    "test_dispatch_entry_does_not_shrink_the_compiled_graph"
+                ),
+            },
+            "metax": {
+                (
+                    "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
+                    "test_cross_entropy_forward_and_backward_match_native_exactly"
+                ),
+                (
+                    "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
+                    "test_mhc_apis_match_native_exactly"
+                ),
+                (
+                    "tests/pytorch/test_fusible_ops.py::TestBasicOps::"
+                    "test_dropout[dtype0-shape2-None-True-0.5]"
+                ),
+            },
+            "iluvatar": {
+                "tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_mhc_apis_match_native_exactly",
+                (
+                    "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
+                    "test_dispatch_entry_does_not_shrink_the_compiled_graph"
+                ),
+            },
+            "ppu": {
+                (
+                    "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
+                    "test_dispatch_entry_does_not_shrink_the_compiled_graph"
+                ),
+                (
+                    "tests/plugin/backend/flagos/test_optimizer_numerical.py::"
+                    "test_multi_tensor_adam_matches_formula[False-0.0-0-0]"
+                ),
+            },
+        }
+        for platform, targets in expected.items():
+            with self.subTest(platform=platform):
+                self.assertTrue(targets <= set(by_platform[platform]))
+                config = next(p for p in plan["platforms"] if p["name"] == platform)
+                # Platform YAML may also carry non-plugin quarantines. The
+                # planner must preserve the complete list while normalizing it
+                # for the execution plan.
+                self.assertEqual(config["ignored_tests"], sorted(set(config["ignored_tests"])))
+
+    def test_platform_ignored_tests_validate_targets(self):
+        for targets in (["tests/../escape.py"], ["tests/test_case.py::"]):
+            with self.subTest(targets=targets):
+                with self.assertRaises(ValueError):
+                    planner.platform_ignored_tests({"ignored_tests": targets})
+        with self.assertRaises(ValueError):
+            planner.platform_ignored_tests({"ignored_tests": "tests/test_case.py"})
+
+    def test_overlap_expansion_uses_the_requested_source_tree(self):
+        project = planner.load_project(ROOT / ".flagcicd/project.yaml")
+        platforms = planner.load_platforms(ROOT / ".github/configs")
+        selection = planner.select_test_groups(project, [], "L1", "nightly")
+        logical = planner.build_test_groups(
+            project, platforms, ["cuda"], "L1", [], selection=selection
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = "tests/pytorch/test_float8_source_tree_probe.py"
+            (root / target).parent.mkdir(parents=True)
+            (root / target).write_text("def test_probe(): pass\n")
+            # The GEMM target intentionally overlaps the ignored quantization glob.
+            next(g for g in project["test_groups"] if g["name"] == "gemm")["test_targets"] = [
+                target
+            ]
+            jobs = planner.build_execution_groups(
+                project, platforms, logical, True, source_root=root
+            )
+            unit = next(job for job in jobs if job["group"] == "pytorch_unit")
+            self.assertEqual(unit["exec"]["ignored_group_test_targets"]["gemm"], [target])
 
     def test_coverage_gaps_are_explicit_in_full_and_partial_plans(self):
         gaps = {
@@ -541,12 +838,14 @@ class PlannerTests(unittest.TestCase):
             "metax": {"quantization", "attention"},
             "musa": {"quantization"},
             "ppu": {"quantization"},
-            "hygon": {"debug"},
         }
         for stage, options in (
             ("nightly", {}),
             ("pr", {"changed_files": json.dumps(["tests/pytorch/test_recipe.py"])}),
-            ("pr", {"changed_files": json.dumps(["tests/pytorch/debug/test_config.py"])}),
+            (
+                "pr",
+                {"changed_files": json.dumps(["tests/pytorch/debug/test_config.py"])},
+            ),
         ):
             plan = self.run_planner(stage, **options)
             for platform in plan["platforms"]:
@@ -554,8 +853,7 @@ class PlannerTests(unittest.TestCase):
                 with self.subTest(stage=stage, options=options, platform=name):
                     selected = set(platform["selected_test_groups"])
                     unavailable = {
-                        group["group"]: group["reason"]
-                        for group in platform["unsupported_test_groups"]
+                        group["group"]: group["reason"] for group in platform["ignored_test_groups"]
                     }
                     for gap in gaps.get(name, set()) & set(plan["group_selection"]["groups"]):
                         self.assertNotIn(gap, selected)
@@ -563,15 +861,7 @@ class PlannerTests(unittest.TestCase):
                         self.assertTrue(
                             any(
                                 group["platform"] == name and group["group"] == gap
-                                for group in plan["excluded"]
-                            )
-                        )
-                    if name == "hygon":
-                        self.assertNotIn("pytorch_debug", platform["coverage_groups"])
-                        self.assertFalse(
-                            any(
-                                group["platform"] == name and group["group"] == "pytorch_debug"
-                                for group in plan["execution_groups"]
+                                for group in plan["ignored"]
                             )
                         )
 
@@ -589,7 +879,7 @@ class PlannerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "required.*baseline"):
             planner.platform_test_groups(
                 project,
-                {"unsupported_test_groups": {"core": "not wired"}},
+                {"ignored_test_groups": {"core": "not wired"}},
                 selection,
             )
 
@@ -745,6 +1035,12 @@ class PlannerTests(unittest.TestCase):
                     suites = suites - {"pytorch_debug"}
                 plan = self.run_planner("pr", changed_files=json.dumps([path]))
                 selected = {g["group"] for g in plan["execution_groups"]}
+                suites = {
+                    suite
+                    for suite in suites
+                    if (suite not in UNIT_SUITES or suite in self.supported_suites(config.stem))
+                    and (suite != "pytorch_mcore_integration" or self.supports_mcore(config.stem))
+                }
                 self.assertTrue(suites <= selected, path)
                 self.assertEqual([p["name"] for p in plan["platforms"]], [config.stem])
                 keys = [(g["platform"], g["device"], g["group"]) for g in plan["execution_groups"]]
@@ -769,7 +1065,7 @@ class PlannerTests(unittest.TestCase):
             any(group["group"] == "pytorch_mcore_integration" for group in plan["execution_groups"])
         )
 
-    def test_routing_reasons_and_excluded_ledger(self):
+    def test_routing_reasons_and_ignored_ledger(self):
         plan = self.run_planner(
             "pr",
             base_ref="main",
@@ -782,14 +1078,14 @@ class PlannerTests(unittest.TestCase):
             "common path: tests/pytorch/test_fused_optimizer.py",
             plan["platforms"][0]["reasons"],
         )
-        excluded = {(item["platform"], item["group"], item["reason"]) for item in plan["excluded"]}
+        ignored = {(item["platform"], item["group"], item["reason"]) for item in plan["ignored"]}
         self.assertIn(
             (
                 "cuda",
                 "mcore",
                 "test group not selected",
             ),
-            excluded,
+            ignored,
         )
         self.assertFalse(
             any(group["group"] == "pytorch_mcore_integration" for group in plan["execution_groups"])

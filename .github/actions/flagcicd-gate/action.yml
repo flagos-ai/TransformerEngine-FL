@@ -2,8 +2,8 @@ name: FlagCICD Gate
 description: Validate platform reports and enforce gate
 
 inputs:
-  plan:
-    description: 'Plan JSON from plan job output'
+  plan_artifact:
+    description: 'Artifact name containing plan.json'
     required: true
   needs-json:
     description: 'toJson(needs) from caller'
@@ -25,6 +25,13 @@ outputs:
 runs:
   using: composite
   steps:
+    - name: Download execution plan
+      if: inputs.plan_artifact != ''
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.plan_artifact }}
+        path: .flagcicd-plan
+
     - name: Download platform reports
       uses: actions/download-artifact@v4
       with:
@@ -36,7 +43,7 @@ runs:
       id: gate
       shell: bash
       env:
-        FLAGCICD_PLAN: ${{ inputs.plan }}
+        FLAGCICD_PLAN_FILE: ${{ github.workspace }}/.flagcicd-plan/plan.json
         FLAGCICD_NEEDS: ${{ inputs.needs-json }}
       run: |
         python3 "${GITHUB_ACTION_PATH}/../../scripts/ci/flagcicd_gate.py" gate \

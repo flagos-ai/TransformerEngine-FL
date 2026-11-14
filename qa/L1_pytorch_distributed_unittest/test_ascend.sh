@@ -63,7 +63,7 @@ if [ -n "${TE_TEST_PYTEST_COMMAND:-}" ]; then
             "$TE_PATH/tests/pytorch/distributed/test_numerics.py::test_ascend_distributed_smoke"
 else
     echo "-------------------------------------------------------"
-    echo "[SKIP] distributed non-FP8 numerics: Ascend shared PyTorch tests require the NPU pytest runner"
+    echo "[IGNORE] distributed non-FP8 numerics: Ascend shared PyTorch tests require the NPU pytest runner"
 fi
 
 echo "Skipping Ascend HCCL communication tests."

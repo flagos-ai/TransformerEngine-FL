@@ -28,7 +28,6 @@ run_test_step() {
         case "$test_path" in
             *"test_numerics.py" | \
             *"test_sanity.py" | \
-            *"test_parallel_cross_entropy.py" | \
             *"test_fused_rope.py" | \
             *"test_gqa.py" | \
             *"test_fused_optimizer.py" | \
@@ -42,7 +41,7 @@ run_test_step() {
             *"test_cuda_graphs.py" | \
             *"test_hf_integration.py") # transformers library may not be available in CI
                 echo "-------------------------------------------------------"
-                echo "[SKIP] Platform MetaX: Ignoring $label"
+                echo "[IGNORE] Platform MetaX: Ignoring $label"
                 echo "-------------------------------------------------------"
                 return 0
                 ;;
@@ -53,7 +52,7 @@ run_test_step() {
         # transformers library may not be available in CI
         if [[ "$test_path" == *"test_checkpoint.py" || "$test_path" == *"test_cpu_offloading.py" || "$test_path" == *"test_cpu_offloading_v1.py" || "$test_path" == *"test_attention.py" || "$test_path" == *"attention/test_kv_cache.py" || "$test_path" == *"test_hf_integration.py" ]]; then
             echo "-------------------------------------------------------"
-            echo "[SKIP] CUDA Backend detected: Ignoring $label"
+            echo "[IGNORE] CUDA Backend detected: Ignoring $label"
             echo "-------------------------------------------------------"
             return 0
         fi
@@ -182,66 +181,8 @@ run_test_step "pytest_test_checkpoint.xml" "$TE_PATH/tests/pytorch/test_checkpoi
 # ==============================================================================
 # New Step: Plugin Core
 # ==============================================================================
-PLUGIN_TEST_ROOT="$TE_PATH/tests/plugin"
-
-# Step: Plugin Policy
-run_test_step "pytest_test_plugin_policy.xml" "$PLUGIN_TEST_ROOT/plugin/test_policy.py" \
-"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_plugin_policy.xml $PLUGIN_TEST_ROOT/plugin/test_policy.py" "test_policy.py"
-
-# Step: Plugin manager
-run_test_step "pytest_test_plugin_manager.xml" "$PLUGIN_TEST_ROOT/plugin/test_manager.py" \
-"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_plugin_manager.xml $PLUGIN_TEST_ROOT/plugin/test_manager.py" "test_manager.py"
-
-# Step: Plugin policy selection
-run_test_step "pytest_test_plugin_policy_selection.xml" "$PLUGIN_TEST_ROOT/plugin/test_policy_selection.py" \
-"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_plugin_policy_selection.xml $PLUGIN_TEST_ROOT/plugin/test_policy_selection.py" "test_policy_selection.py"
-
-
-# ==============================================================================
-# New Step: Plugin Core backend
-# ==============================================================================
-
-# Step: Backend flagos =========================================================
-run_test_step "pytest_test_backend_flagos.xml" "$PLUGIN_TEST_ROOT/backend/flagos/test_lifecycle.py" \
-"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_backend_flagos.xml $PLUGIN_TEST_ROOT/backend/flagos/test_lifecycle.py" "test_lifecycle.py"
-
-# Step: Backend impl fused rope
-run_test_step "pytest_test_backend_flagos_fused_rope.xml" "$PLUGIN_TEST_ROOT/backend/flagos/test_fused_rope.py" \
-"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_backend_flagos_fused_rope.xml $PLUGIN_TEST_ROOT/backend/flagos/test_fused_rope.py" "test_fused_rope.py"
-
-# Step: Backend impl fused adam
-run_test_step "pytest_test_backend_flagos_fused_adam.xml" "$PLUGIN_TEST_ROOT/backend/flagos/test_optimizer.py" \
-"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_backend_flagos_fused_adam.xml $PLUGIN_TEST_ROOT/backend/flagos/test_optimizer.py" "test_optimizer.py"
-
-# Step: Backend impl gemm
-run_test_step "pytest_test_backend_flagos_gemm.xml" "$PLUGIN_TEST_ROOT/backend/flagos/test_gemm.py" \
-"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_backend_flagos_gemm.xml $PLUGIN_TEST_ROOT/backend/flagos/test_gemm.py" "test_gemm.py"
-
-# Step: Backend impl multi_tensor
-run_test_step "pytest_test_backend_flagos_multi_tensor.xml" "$PLUGIN_TEST_ROOT/backend/flagos/test_multi_tensor.py" \
-"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_backend_flagos_multi_tensor.xml $PLUGIN_TEST_ROOT/backend/flagos/test_multi_tensor.py" "test_multi_tensor.py"
-
-# Step: Backend impl rmsnorm
-run_test_step "pytest_test_backend_flagos_rmsnorm.xml" "$PLUGIN_TEST_ROOT/backend/flagos/test_rmsnorm.py" \
-"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_backend_flagos_rmsnorm.xml $PLUGIN_TEST_ROOT/backend/flagos/test_rmsnorm.py" "test_rmsnorm.py"
-
-# Step: Backend impl softmax
-run_test_step "pytest_test_backend_flagos_softmax.xml" "$PLUGIN_TEST_ROOT/backend/flagos/test_softmax.py" \
-"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_backend_flagos_softmax.xml $PLUGIN_TEST_ROOT/backend/flagos/test_softmax.py" "test_softmax.py"
-
-
-# Step: Backend reference =========================================================
-run_test_step "pytest_test_backend_reference.xml" "$PLUGIN_TEST_ROOT/backend/reference/test_lifecycle.py" \
-"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_backend_reference.xml $PLUGIN_TEST_ROOT/backend/reference/test_lifecycle.py" "test_lifecycle.py"
-
-run_test_step "pytest_test_backend_reference_activation.xml" "$PLUGIN_TEST_ROOT/backend/reference/test_activation.py" \
-"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_backend_reference_activation.xml $PLUGIN_TEST_ROOT/backend/reference/test_activation.py" "test_activation.py"
-
-run_test_step "pytest_test_backend_reference_dropout.xml" "$PLUGIN_TEST_ROOT/backend/reference/test_dropout.py" \
-"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_backend_reference_dropout.xml $PLUGIN_TEST_ROOT/backend/reference/test_dropout.py" "test_dropout.py"
-
-run_test_step "pytest_test_backend_reference_gemm.xml" "$PLUGIN_TEST_ROOT/backend/reference/test_gemm.py" \
-"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_backend_reference_gemm.xml $PLUGIN_TEST_ROOT/backend/reference/test_gemm.py" "test_gemm.py"
+# The unified unit job owns core, backend and cross-backend accuracy tests.
+TE_TEST_GROUP_PRESET=plugin-unit python3 "$TE_PATH/tests/test_utils/run_ci_test_group.py" || test_fail "plugin"
 
 if [ "$FAIL" -ne 0 ]; then
     echo "Some tests failed."

@@ -27,7 +27,7 @@ run_suite() {
         debug | pytorch_debug)
         run_test_step "test_sanity.xml" \
             "python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/test_sanity.xml \
-            $TE_PATH/tests/pytorch/debug/test_sanity.py -k 'not fake_quant' \
+            $TE_PATH/tests/pytorch/debug/test_sanity.py \
             --feature_dirs=$NVTE_TEST_NVINSPECT_FEATURE_DIRS"
 
         run_test_step "test_config.xml" \
@@ -49,7 +49,6 @@ run_suite() {
         run_test_step "test_api_features.xml" \
             "NVTE_TORCH_COMPILE=0 python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/test_api_features.xml \
             $TE_PATH/tests/pytorch/debug/test_api_features.py \
-            -k 'not (per_tensor_scaling or fake_quant or statistics)' \
             --no-header \
             --feature_dirs=$NVTE_TEST_NVINSPECT_FEATURE_DIRS \
             --configs_dir=$NVTE_TEST_NVINSPECT_CONFIGS_DIR"
@@ -78,6 +77,10 @@ run_suite() {
             "python3 -m pytest -s -v --tb=auto \
             --junitxml=$XML_LOG_DIR/pytest_test_deferred_init.xml \
             $TE_PATH/tests/pytorch/test_deferred_init.py"
+
+        run_test_step "plugin-unit" \
+            "TE_TEST_GROUP_PRESET=plugin-unit python3 \
+            $TE_PATH/tests/test_utils/run_ci_test_group.py"
             ;;
         distributed | pytorch_distributed_unittest)
         run_test_step "pytest_test_numerics.xml" \
@@ -91,8 +94,7 @@ run_suite() {
         run_test_step "pytest_test_torch_fsdp2.xml" \
             "PYTEST_ADDOPTS= COVERAGE_PROCESS_START= python3 -m pytest -v -s \
             --junitxml=$XML_LOG_DIR/pytest_test_torch_fsdp2.xml \
-            $TE_PATH/tests/pytorch/distributed/test_torch_fsdp2.py \
-            -k 'not test_distributed and not test_fsdp2_mem_leak_tests'"
+            $TE_PATH/tests/pytorch/distributed/test_torch_fsdp2.py"
         run_test_step "pytest_test_cp_utils.xml" \
             "python3 -m pytest -v -s \
             --junitxml=$XML_LOG_DIR/pytest_test_cp_utils.xml \

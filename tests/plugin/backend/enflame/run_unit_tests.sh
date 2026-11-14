@@ -20,31 +20,6 @@ If no suite is specified, all suites are run.
 EOF
 }
 
-join_with_or() {
-    local result=""
-    local item
-    for item in "$@"; do
-        if [ -z "$result" ]; then
-            result="$item"
-        else
-            result="$result or $item"
-        fi
-    done
-    printf '%s' "$result"
-}
-
-contains_item() {
-    local needle=$1
-    shift
-    local item
-    for item in "$@"; do
-        if [ "$item" = "$needle" ]; then
-            return 0
-        fi
-    done
-    return 1
-}
-
 run_cmd() {
     local suite=$1
     local label=$2
@@ -88,40 +63,22 @@ run_debug_suite() {
 
 run_unittest_suite() {
     echo "===== START unittest ====="
-    local fused_optimizer_skip_expr
-    fused_optimizer_skip_expr="$(join_with_or "${ENFLAME_UNITTEST_SKIP_FUSED_OPTIMIZER[@]}")"
     run_pytest_step unittest test_deferred_init.py \
         -s -v --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_deferred_init.xml" \
         "$TE_PATH/tests/pytorch/test_deferred_init.py"
-    echo "[SKIP] Enflame: test_jit.py requires unsupported Torch JIT/TorchDynamo paths"
+    run_pytest_step unittest test_jit.py \
+        -s -v --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_jit.xml" \
+        "$TE_PATH/tests/pytorch/test_jit.py"
     run_pytest_step unittest test_fused_optimizer.py \
         -s -v --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_fused_optimizer.xml" \
-        "$TE_PATH/tests/pytorch/test_fused_optimizer.py" \
-        -k "not ($fused_optimizer_skip_expr)"
-    local hf_integration_skip_expr
-    hf_integration_skip_expr="$(join_with_or "${ENFLAME_UNITTEST_SKIP_HF_INTEGRATION[@]}")"
+        "$TE_PATH/tests/pytorch/test_fused_optimizer.py"
     run_pytest_step unittest test_hf_integration.py \
         -s -v --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_hf_integration.xml" \
-        "$TE_PATH/tests/pytorch/test_hf_integration.py" \
-        -k "not ($hf_integration_skip_expr)"
-    run_pytest_step unittest plugin_policy.py \
-        -s -v --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_plugin_policy.xml" \
-        "$TE_PATH/tests/plugin/plugin/test_policy.py"
-    run_pytest_step unittest plugin_manager.py \
-        -s -v --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_plugin_manager.xml" \
-        "$TE_PATH/tests/plugin/plugin/test_manager.py"
-    run_pytest_step unittest backend_reference_lifecycle.py \
-        -s -v --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_backend_reference.xml" \
-        "$TE_PATH/tests/plugin/backend/reference/test_lifecycle.py"
-    run_pytest_step unittest backend_reference_activation.py \
-        -s -v --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_backend_reference_activation.xml" \
-        "$TE_PATH/tests/plugin/backend/reference/test_activation.py"
-    run_pytest_step unittest backend_reference_dropout.py \
-        -s -v --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_backend_reference_dropout.xml" \
-        "$TE_PATH/tests/plugin/backend/reference/test_dropout.py"
-    run_pytest_step unittest backend_reference_gemm.py \
-        -s -v --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_backend_reference_gemm.xml" \
-        "$TE_PATH/tests/plugin/backend/reference/test_gemm.py"
+        "$TE_PATH/tests/pytorch/test_hf_integration.py"
+    if ! TE_TEST_GROUP_PRESET=plugin-unit "$PYTHON" "$TE_PATH/tests/test_utils/run_ci_test_group.py"; then
+        FAIL=1
+        FAILED_CASES+=("unittest:plugin_core")
+    fi
     echo "===== END unittest rc=$FAIL ====="
 }
 
@@ -133,25 +90,23 @@ run_distributed_suite() {
     run_pytest_step distributed test_cp_utils.py \
         -v -s --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_cp_utils.xml" \
         "$TE_PATH/tests/pytorch/attention/test_cp_utils.py"
-    if contains_item "tests/pytorch/distributed/test_numerics.py" "${ENFLAME_DISTRIBUTED_SKIP_FILES[@]}"; then
-        echo "[SKIP][distributed] test_numerics.py via ENFLAME_DISTRIBUTED_SKIP_FILES"
-    else
-        run_pytest_step distributed test_numerics.py \
-            -v -s --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_numerics.xml" \
-            "$TE_PATH/tests/pytorch/distributed/test_numerics.py"
-    fi
+    run_pytest_step distributed test_numerics.py \
+        -v -s --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_numerics.xml" \
+        "$TE_PATH/tests/pytorch/distributed/test_numerics.py"
+    run_pytest_step distributed test_numerics_exact.py \
+        -v -s --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_numerics_exact.xml" \
+        "$TE_PATH/tests/pytorch/distributed/test_numerics_exact.py"
+    run_pytest_step distributed test_torch_fsdp2.py \
+        -v -s --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_torch_fsdp2.xml" \
+        "$TE_PATH/tests/pytorch/distributed/test_torch_fsdp2.py"
     echo "===== END distributed rc=$FAIL ====="
 }
 
 run_onnx_suite() {
     echo "===== START onnx ====="
-    local skip_expr
-    skip_expr="$(join_with_or "${ENFLAME_ONNX_SKIP_GROUPS[@]}")"
-    skip_expr="not ($skip_expr)"
     run_pytest_step onnx test_onnx_export.py \
         --tb=auto --junitxml="$XML_LOG_DIR/test_onnx_export.xml" \
-        "$TE_PATH/tests/pytorch/test_onnx_export.py" \
-        -k "$skip_expr"
+        "$TE_PATH/tests/pytorch/test_onnx_export.py"
     echo "===== END onnx rc=$FAIL ====="
 }
 
@@ -189,4 +144,4 @@ if [ "$OVERALL_FAIL" -ne 0 ]; then
     exit 1
 fi
 
-echo "Selected Enflame/GCU tests passed (some optional groups might have been skipped)."
+echo "All selected Enflame/GCU test suites passed."

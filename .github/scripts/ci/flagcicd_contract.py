@@ -6,7 +6,8 @@ from __future__ import annotations
 import hashlib
 import fnmatch
 import json
-from pathlib import PurePosixPath
+import os
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 # Schema version constants
@@ -164,3 +165,15 @@ def load_plan(plan_json: str) -> dict[str, Any]:
     if errors:
         raise ValueError(f"Invalid plan: {'; '.join(errors)}")
     return plan
+
+
+def load_plan_from_env() -> dict[str, Any]:
+    """Read a workflow plan file, retaining JSON-env compatibility for callers."""
+    path = os.environ.get("FLAGCICD_PLAN_FILE")
+    if path:
+        try:
+            raw = Path(path).read_text(encoding="utf-8")
+        except OSError as exc:
+            raise ValueError(f"Cannot read plan file {path}: {exc}") from exc
+        return load_plan(raw)
+    return load_plan(os.environ.get("FLAGCICD_PLAN", ""))

@@ -310,15 +310,34 @@ def select_test_groups(project: dict, changed: list[str], test_level: str, stage
     }
 
 
+def platform_ignored_tests(config: dict) -> list[str]:
+    """Return the platform's explicitly ignored test files or nodes.
+
+    Same convention as Megatron-LM-FL's `ignored_tests`: a list of
+    `path` or `path::node` entries, with the reason in a YAML comment above
+    each group. The plan records every entry so it never counts as a pass.
+    """
+    targets = config.get("ignored_tests", [])
+    if not isinstance(targets, list) or any(
+        not isinstance(target, str) or not target.strip() for target in targets
+    ):
+        raise ValueError("ignored_tests must be a list of test files or nodes")
+    for target in targets:
+        contract.split_test_target(target)
+    return sorted(set(targets))
+
+
 def platform_test_groups(project: dict, config: dict, selection: dict) -> tuple[list, list]:
     """Record unavailable platform test groups and propagate dependency gaps."""
-    unsupported = config.get("unsupported_test_groups", {})
+    if "unsupported_test_groups" in config:
+        raise ValueError("unsupported_test_groups was renamed to ignored_test_groups")
+    ignored = config.get("ignored_test_groups", {})
     catalog = {group["name"]: group for group in project["test_groups"]}
-    if not isinstance(unsupported, dict) or set(unsupported) - catalog.keys():
-        raise ValueError("Invalid unsupported_test_groups in platform config")
-    if any(not isinstance(reason, str) or not reason.strip() for reason in unsupported.values()):
-        raise ValueError("Every unsupported test group requires a reason")
-    unavailable = dict(unsupported)
+    if not isinstance(ignored, dict) or set(ignored) - catalog.keys():
+        raise ValueError("Invalid ignored_test_groups in platform config")
+    if any(not isinstance(reason, str) or not reason.strip() for reason in ignored.values()):
+        raise ValueError("Every ignored test group requires a reason")
+    unavailable = dict(ignored)
     while True:
         previous = len(unavailable)
         for name in selection["groups"]:
@@ -376,7 +395,7 @@ def build_test_groups(
     test_level: str,
     changed: list[str],
     blocked: list[dict[str, Any]] | None = None,
-    excluded: list[dict[str, Any]] | None = None,
+    ignored: list[dict[str, Any]] | None = None,
     selection: dict | None = None,
 ) -> list[dict]:
     """Resolve selected logical groups, retaining platform exclusions and blockers."""
@@ -419,8 +438,8 @@ def build_test_groups(
                     "required": definition.get("required", False),
                 }
                 if reason:
-                    if excluded is not None:
-                        excluded.append({**ledger, "reason": reason})
+                    if ignored is not None:
+                        ignored.append({**ledger, "reason": reason})
                     continue
                 if blocker:
                     if blocked is not None:
@@ -434,7 +453,8 @@ def build_test_groups(
                     else class_def["devices"]
                 )
                 timeout = adapter.get(
-                    "timeout_minutes", definition["resources"].get("timeout_minutes", 90)
+                    "timeout_minutes",
+                    definition["resources"].get("timeout_minutes", 90),
                 )
                 if isinstance(timeout, bool) or not isinstance(timeout, int) or timeout <= 0:
                     raise ValueError(
@@ -465,8 +485,52 @@ def build_test_groups(
     return groups
 
 
+def _expand_target_candidates(root: Path, target: str) -> list[str]:
+    """Expand a directory or file glob target to concrete repository-relative targets."""
+    target_path, target_node = contract.split_test_target(target)
+    path = root / target_path
+    if target_path.endswith("/") and path.is_dir():
+        files = [
+            candidate.relative_to(root).as_posix()
+            for candidate in sorted(path.rglob("test_*.py"))
+            if candidate.is_file()
+        ]
+        if files:
+            return [f"{file}::{target_node}" if target_node else file for file in files]
+    matched = [
+        candidate.relative_to(root).as_posix()
+        for candidate in sorted(root.glob(target_path))
+        if candidate.is_file()
+    ]
+    if matched:
+        return [f"{file}::{target_node}" if target_node else file for file in matched]
+    return [target]
+
+
+def _target_suppressed_by_ignore(candidate: str, ignored_target: str) -> bool:
+    """Return True when ignored_target suppresses candidate during pytest collection."""
+    cand_path, cand_node = contract.split_test_target(candidate)
+    ig_path, ig_node = contract.split_test_target(ignored_target)
+    path_matches = (
+        cand_path.startswith(ig_path)
+        if ig_path.endswith("/")
+        else fnmatch.fnmatchcase(cand_path, ig_path)
+    )
+    if not path_matches:
+        return False
+    if not ig_node:
+        return True
+    if not cand_node:
+        return False
+    return contract.test_target_matches(candidate, ignored_target)
+
+
 def build_execution_groups(
-    project: dict, platforms: dict, logical_groups: list[dict], full_scope: bool
+    project: dict,
+    platforms: dict,
+    logical_groups: list[dict],
+    full_scope: bool,
+    source_root: Path | None = None,
 ) -> list[dict]:
     """Coalesce selected groups sharing one platform adapter into one job."""
     definitions = {group["name"]: group for group in project["test_groups"]}
@@ -517,7 +581,8 @@ def build_execution_groups(
         execution["coverage"] |= logical["coverage"]
         execution["level"] = max(execution["level"], logical["level"], key=LEVEL_ORDER.__getitem__)
         execution["resources"]["timeout_minutes"] = max(
-            execution["resources"]["timeout_minutes"], logical["resources"]["timeout_minutes"]
+            execution["resources"]["timeout_minutes"],
+            logical["resources"]["timeout_minutes"],
         )
     for execution in executions.values():
         targets = {
@@ -536,6 +601,48 @@ def build_execution_groups(
                 if full_scope
                 else sorted({target for entries in targets.values() for target in entries})
             )
+    catalog_targets = {
+        target for group in definitions.values() for target in group.get("test_targets", [])
+    }
+    root = source_root if source_root is not None else Path(__file__).resolve().parents[3]
+    for execution in executions.values():
+        if not execution["exec"]:
+            continue
+        # Full directory discovery must not re-enable a platform's ignored
+        # groups through another group's overlapping test_targets.
+        _, ignored_groups = platform_test_groups(
+            project,
+            platforms[execution["platform"]]["config"],
+            {"groups": list(definitions), "required_groups": []},
+        )
+        ignored_targets = {
+            target
+            for group in ignored_groups
+            for target in definitions[group["group"]].get("test_targets", [])
+        }
+        if execution["platform"] != "ascend" and "tests/plugin/backend/npu/" in catalog_targets:
+            ignored_targets.add("tests/plugin/backend/npu/")
+        ignored_targets.update(platform_ignored_tests(platforms[execution["platform"]]["config"]))
+        execution["exec"]["ignored_test_targets"] = sorted(ignored_targets)
+        group_targets = execution["exec"].get("group_test_targets", {})
+        if group_targets and ignored_targets:
+            overlaps = {}
+            for group_name, entries in group_targets.items():
+                suppressed = sorted(
+                    {
+                        candidate
+                        for entry in entries
+                        for candidate in _expand_target_candidates(root, entry)
+                        if any(
+                            _target_suppressed_by_ignore(candidate, ignored_target)
+                            for ignored_target in execution["exec"]["ignored_test_targets"]
+                        )
+                    }
+                )
+                if suppressed:
+                    overlaps[group_name] = suppressed
+            if overlaps:
+                execution["exec"]["ignored_group_test_targets"] = overlaps
     return list(executions.values())
 
 
@@ -621,27 +728,41 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             reasons=["documentation-only: no hardware tests"],
         )
     blocked: list[dict[str, Any]] = []
-    excluded: list[dict[str, Any]] = []
+    ignored: list[dict[str, Any]] = []
     test_groups = (
         build_test_groups(
-            project, platforms, selected, test_level, changed, blocked, excluded, group_selection
+            project,
+            platforms,
+            selected,
+            test_level,
+            changed,
+            blocked,
+            ignored,
+            group_selection,
         )
         if not lint_only
         else []
     )
     execution_groups = build_execution_groups(
-        project, platforms, test_groups, group_selection["full_scope"]
+        project,
+        platforms,
+        test_groups,
+        group_selection["full_scope"],
+        source_root=source_root,
     )
     platform_entries = []
     for pname in selected:
         p = platforms[pname]
-        _, unsupported = platform_test_groups(project, p["config"], group_selection)
+        _, ignored_groups = platform_test_groups(project, p["config"], group_selection)
         # Coverage completeness is measured against the platform's supported
         # catalog, independent of a PR's partial group selection.
         coverage_supported, _ = platform_test_groups(
             project,
             p["config"],
-            {"groups": [group["name"] for group in project["test_groups"]], "required_groups": []},
+            {
+                "groups": [group["name"] for group in project["test_groups"]],
+                "required_groups": [],
+            },
         )
         platform_entries.append(
             {
@@ -659,7 +780,8 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
                     if group["platform"] == pname
                     and group["device"] == p["config"].get("device_types", [None])[0]
                 ),
-                "unsupported_test_groups": unsupported,
+                "ignored_test_groups": ignored_groups,
+                "ignored_tests": platform_ignored_tests(p["config"]),
                 "coverage_groups": sorted(
                     {
                         group["execution"]["entry"]
@@ -713,7 +835,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
         "group_selection": group_selection,
         "test_groups": test_groups,
         "execution_groups": execution_groups,
-        "excluded": excluded,
+        "ignored": ignored,
         "blocked": blocked,
         "reasons": [
             f"{stage_name} stage with {len(selected)} platforms, level {test_level}",
@@ -747,7 +869,17 @@ def write_summary(path: Path, plan: dict) -> None:
     gaps = [
         f"{p['name']}/{gap['group']}: {gap['reason']}"
         for p in platforms
-        for gap in p["unsupported_test_groups"]
+        for gap in p["ignored_test_groups"]
+    ]
+    gaps += [
+        f"{p['name']}/{target}: ignored by platform config"
+        for p in platforms
+        for target in p.get("ignored_tests", [])
+    ]
+    gaps += [
+        f"{job['platform']}/{group} ignored targets: {', '.join(targets)}"
+        for job in executions
+        for group, targets in (job.get("exec") or {}).get("ignored_group_test_targets", {}).items()
     ]
     lines = [
         "### Platform selection",
@@ -776,7 +908,7 @@ def write_summary(path: Path, plan: dict) -> None:
             f"- Selected logical groups: {len(plan['test_groups'])} platform/device entries",
             f"- Selected execution groups: {len(executions)} jobs",
             f"- Changed files: {plan['changed_files']['count']}",
-            f"- Excluded entries: {len(plan['excluded'])}; blocked entries: {len(plan['blocked'])}",
+            f"- Ignored entries: {len(plan['ignored'])}; blocked entries: {len(plan['blocked'])}",
             "- Selected test groups: " + (", ".join(selection["groups"]) or "none"),
             f"- Plan hash: `{plan['plan_hash']}`",
             "",
@@ -790,9 +922,9 @@ def write_summary(path: Path, plan: dict) -> None:
         integrations = sum(g["kind"] == "integration" for g in groups)
         lines.append(
             f"| {escape(platform['name'])} | {units} | {integrations} |"
-            f" {len(groups)-units-integrations} | {len(platform['unsupported_test_groups'])} |"
+            f" {len(groups)-units-integrations} | {len(platform['ignored_test_groups'])} |"
         )
-    lines.extend(["", "Coverage gaps and excluded targets are not passing-test evidence.", ""])
+    lines.extend(["", "Coverage gaps and ignored targets are not passing-test evidence.", ""])
     if gaps:
         lines.extend(["<details><summary>Declared platform coverage gaps</summary>", ""])
         lines.extend(f"- {escape(gap)}" for gap in gaps)

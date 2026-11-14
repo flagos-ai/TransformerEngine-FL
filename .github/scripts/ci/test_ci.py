@@ -27,6 +27,34 @@ ROOT = Path(__file__).resolve().parents[3]
 
 
 class PlatformRoutingTests(unittest.TestCase):
+    def test_workflow_plan_consumers_download_files_before_loading(self):
+        for relative in (
+            ".github/workflows/all_tests_common.yml",
+            ".github/workflows/test_groups_common.yml",
+            ".github/actions/flagcicd-gate/action.yml",
+        ):
+            config = yaml.safe_load((ROOT / relative).read_text())
+            jobs = config.get("jobs", {"composite": config.get("runs", {})})
+            for name, job in jobs.items():
+                downloaded = False
+                for step in job.get("steps", []):
+                    if (
+                        step.get("uses", "").startswith("actions/download-artifact@")
+                        and step.get("with", {}).get("path") == ".flagcicd-plan"
+                    ):
+                        self.assertEqual(step["with"]["name"], "${{ inputs.plan_artifact }}")
+                        downloaded = True
+                    env = step.get("env", {})
+                    self.assertNotIn("FLAGCICD_PLAN", env, (relative, name))
+                    if "FLAGCICD_PLAN_FILE" in env:
+                        self.assertTrue(downloaded, (relative, name))
+        for name in ("ci", "nightly", "ci-requested", "release-acceptance"):
+            workflow = yaml.safe_load((ROOT / f".github/workflows/{name}.yml").read_text())
+            # toJson(needs) also includes these outputs: never export the full
+            # plan, or the final gate would exceed the limit through NEEDS.
+            self.assertNotIn("plan", workflow["jobs"]["plan"]["outputs"])
+            self.assertIn("plan_artifact", workflow["jobs"]["plan"]["outputs"])
+
     @classmethod
     def setUpClass(cls):
         cls.rules = matrix._load_watch_rules(ROOT / ".github/configs")
@@ -198,7 +226,8 @@ class WorkflowGateTests(unittest.TestCase):
             with self.subTest(workflow=name):
                 workflow = yaml.safe_load((ROOT / f".github/workflows/{name}.yml").read_text())
                 self.assertEqual(
-                    workflow["jobs"][job]["uses"], "./.github/workflows/all_tests_common.yml"
+                    workflow["jobs"][job]["uses"],
+                    "./.github/workflows/all_tests_common.yml",
                 )
 
     def test_no_always_conditions_in_flagcicd_workflows(self):
@@ -444,7 +473,11 @@ sys.exit(2)
                 "${{ needs.plan.outputs.source_sha }}",
                 name,
             )
-            self.assertEqual(pipeline["with"]["plan"], "${{ needs.plan.outputs.plan }}", name)
+            self.assertEqual(
+                pipeline["with"]["plan_artifact"],
+                "${{ needs.plan.outputs.plan_artifact }}",
+                name,
+            )
             plan_step = next(
                 step
                 for step in jobs["plan"]["steps"]
@@ -608,7 +641,7 @@ sys.exit(2)
 class PytestSelectionTests(unittest.TestCase):
     """Exercise real pytest processes, without importing accelerator libraries."""
 
-    def run_pytest(self, root, arguments, targets=None, *, raw=None):
+    def run_pytest(self, root, arguments, targets=None, *, raw=None, ignored=None):
         env = dict(os.environ)
         env.pop("TE_CI_TEST_TARGETS_JSON", None)
         env.update(
@@ -628,6 +661,8 @@ class PytestSelectionTests(unittest.TestCase):
         )
         if targets is not None or raw is not None:
             env["TE_CI_TEST_TARGETS_JSON"] = raw if raw is not None else json.dumps(targets)
+        if ignored is not None:
+            env["TE_CI_IGNORE_TEST_TARGETS_JSON"] = json.dumps(ignored)
         return subprocess.run(
             [sys.executable, "-m", "pytest", "-q", *arguments],
             cwd=root,
@@ -693,7 +728,9 @@ class PytestSelectionTests(unittest.TestCase):
             self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
             self.assertIn("1 failed", result.stdout)
 
-    def test_node_selection_preserves_parameters_class_targets_and_platform_filters(self):
+    def test_node_selection_preserves_parameters_class_targets_and_platform_filters(
+        self,
+    ):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "test_mixed.py").write_text(
@@ -705,7 +742,9 @@ class PytestSelectionTests(unittest.TestCase):
                 "def test_attention(): assert False\n"
             )
             result = self.run_pytest(
-                root, ["test_mixed.py", "--junitxml=selected.xml"], ["test_mixed.py::test_linear"]
+                root,
+                ["test_mixed.py", "--junitxml=selected.xml"],
+                ["test_mixed.py::test_linear"],
             )
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             cases = ET.parse(root / "selected.xml").findall(".//testcase")
@@ -717,7 +756,10 @@ class PytestSelectionTests(unittest.TestCase):
                     for p in case.findall("properties/property")
                     if p.get("name") == "flagcicd_test_nodeid"
                 },
-                {"test_mixed.py::test_linear[small[case]]", "test_mixed.py::test_linear[other]"},
+                {
+                    "test_mixed.py::test_linear[small[case]]",
+                    "test_mixed.py::test_linear[other]",
+                },
             )
             for target, arguments in (
                 ("test_mixed.py::TestNorm*", ["test_mixed.py", "-k", "norm"]),
@@ -743,6 +785,13 @@ class PytestSelectionTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertEqual(ET.parse(root / "empty.xml").findall(".//testcase"), [])
             result = self.run_pytest(
+                root,
+                ["test_mixed.py", "-k", "not (test_linear)", "--junitxml=filtered.xml"],
+                ["test_mixed.py::test_linear"],
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(ET.parse(root / "filtered.xml").findall(".//testcase"), [])
+            result = self.run_pytest(
                 root, ["test_mixed.py::missing_node"], ["test_mixed.py::test_norm"]
             )
             self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -754,6 +803,36 @@ class PytestSelectionTests(unittest.TestCase):
             result = self.run_pytest(root, ["test_failure.py"])
             self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
             self.assertIn("1 failed", result.stdout)
+
+    def test_ignore_only_selection_filters_files_and_nodes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "test_mixed.py").write_text(
+                "def test_ignored(): assert False\ndef test_kept(): assert True\n"
+            )
+            result = self.run_pytest(
+                root,
+                ["test_mixed.py", "--junitxml=nodes.xml"],
+                ignored=["test_mixed.py::test_ignored"],
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("1 passed, 1 deselected", result.stdout)
+            (root / "test_all_ignored.py").write_text("def test_fail(): assert False\n")
+            result = self.run_pytest(
+                root,
+                ["test_all_ignored.py::test_fail"],
+                ignored=["test_all_ignored.py::test_fail"],
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("No selected FlagCICD test nodes remain", result.stdout)
+            (root / "test_excluded.py").write_text("raise RuntimeError('must not import')\n")
+            result = self.run_pytest(
+                root,
+                ["test_excluded.py", "--junitxml=file.xml"],
+                ignored=["test_excluded.py"],
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertNotIn("must not import", result.stdout + result.stderr)
 
     def test_invalid_selection_cannot_disable_filtering(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -773,6 +852,226 @@ class PytestSelectionTests(unittest.TestCase):
                     result = self.run_pytest(root, ["test_selected.py"], raw=raw)
                     self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
                     self.assertNotIn("1 passed", result.stdout)
+
+    def test_shared_plugin_preset_discovery_and_environment(self):
+        runner = ROOT / "tests/test_utils/run_ci_test_group.py"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            targets = [
+                "tests/plugin/plugin/test_policy.py",
+                "tests/plugin/backend/flagos/test_policy.py",
+                "tests/plugin/backend/npu/test_backend.py",
+                "tests/plugin/accuracy/test_compute_scale.py",
+            ]
+            for target in targets:
+                path = root / target
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("def test_pass(): pass\n")
+            env = dict(
+                os.environ,
+                TE_TEST_GROUP_PRESET="plugin-unit",
+                GITHUB_WORKSPACE=str(root),
+                TE_FL_PREFER="flagos",
+            )
+            for platform, expected in (
+                ("cuda", [targets[0], targets[1], targets[3]]),
+                ("ascend", targets),
+            ):
+                env["PLATFORM"] = platform
+                result = subprocess.run(
+                    [sys.executable, str(runner), "--list-targets"],
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(set(result.stdout.splitlines()), set(expected))
+            for target, expected in (
+                (targets[0], "unset"),
+                (targets[1], "flagos"),
+                (targets[2], "vendor"),
+            ):
+                result = subprocess.run(
+                    [
+                        sys.executable,
+                        str(runner),
+                        "--target-env",
+                        target,
+                        sys.executable,
+                        "-c",
+                        "import os; print(os.environ.get('TE_FL_PREFER', 'unset'))",
+                    ],
+                    env=env,
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.strip(), expected)
+            # Equal basenames must get distinct reports and independent modules.
+            (root / targets[0]).write_text(
+                "import os, sys\n"
+                "sys.modules['preset_isolation_probe'] = object()\n"
+                "def test_pass(): assert 'TE_FL_PREFER' not in os.environ\n"
+            )
+            (root / targets[1]).write_text(
+                "import os, sys\n"
+                "def test_pass():\n"
+                "    assert 'preset_isolation_probe' not in sys.modules\n"
+                "    assert os.environ['TE_FL_PREFER'] == 'flagos'\n"
+            )
+            env.update(PLATFORM="cuda", PYTEST_DISABLE_PLUGIN_AUTOLOAD="1")
+            env.pop("PYTEST_PLUGINS", None)
+            result = subprocess.run(
+                [sys.executable, str(runner)], env=env, capture_output=True, text=True
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            reports = list((root / "logs").glob("*.xml"))
+            self.assertEqual(len(reports), 3)
+            self.assertEqual(sum(len(ET.parse(p).findall(".//testcase")) for p in reports), 3)
+            env["GITHUB_WORKSPACE"] = str(root / "missing")
+            result = subprocess.run(
+                [sys.executable, str(runner), "--list-targets"],
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(result.returncode, 0)
+
+    def test_isolated_optional_module_skip_does_not_hide_empty_or_failed_tests(self):
+        runner = ROOT / "tests/test_utils/run_ci_test_group.py"
+        scenarios = (
+            ("import pytest\npytest.importorskip('ci_probe_dependency_that_does_not_exist')\n", 0),
+            ("# genuinely empty file\n", 1),
+            ("def test_failure(): assert False\n", 1),
+            ("raise RuntimeError('collection failed')\n", 1),
+            ("import pytest\npytest.skip('module unavailable', allow_module_level=True)\n", 0),
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "test_pass.py").write_text("def test_pass(): pass\n")
+            (root / "logs").mkdir()
+            env = {
+                key: value
+                for key, value in os.environ.items()
+                if not key.startswith("TE_CI_")
+                and key not in ("TE_TEST_GROUP_PRESET", "PYTEST_PLUGINS", "PYTEST_ADDOPTS")
+            }
+            env.update(
+                GITHUB_WORKSPACE=str(root),
+                PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
+                TE_TEST_GROUP_JSON=json.dumps(
+                    {
+                        "name": "probe",
+                        "runner": "pytest",
+                        "max_retries": 0,
+                        "steps": [
+                            {
+                                "name": "plugin",
+                                "targets": ["test_pass.py", "test_probe.py"],
+                                "isolate_files": True,
+                                "use_platform_runner": False,
+                            }
+                        ],
+                    }
+                ),
+            )
+            for source, expected in scenarios:
+                with self.subTest(source=source):
+                    (root / "test_probe.py").write_text(source)
+                    # A previous attempt's skip report must not mask an empty run.
+                    (root / "logs/test_probe.xml").write_text(
+                        "<testsuites><testsuite><testcase><skipped/></testcase></testsuite></testsuites>"
+                    )
+                    result = subprocess.run(
+                        [sys.executable, str(runner)], env=env, capture_output=True, text=True
+                    )
+                    self.assertEqual(result.returncode, expected, result.stdout + result.stderr)
+                    if expected == 0:
+                        self.assertIn("[SKIP] test_probe.py", result.stdout)
+                    else:
+                        self.assertNotIn("[SKIP] test_probe.py", result.stdout)
+
+    def test_nested_runner_restores_selection_plugin_after_pythonpath_reset(self):
+        # Ascend's CI image resets PYTHONPATH in every bash (BASH_ENV); a nested
+        # preset run must still be able to import ci_pytest_selection.
+        runner = ROOT / "tests/test_utils/run_ci_test_group.py"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "test_pass.py").write_text("def test_pass(): pass\n")
+            env = {
+                key: value
+                for key, value in os.environ.items()
+                if not key.startswith("TE_CI_")
+                and key not in ("TE_TEST_GROUP_PRESET", "PYTEST_ADDOPTS")
+            }
+            env.update(
+                GITHUB_WORKSPACE=str(root),
+                PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
+                PYTEST_PLUGINS="ci_pytest_selection",
+                PYTHONPATH="/opt/unrelated/site-packages:",
+                TE_TEST_GROUP_JSON=json.dumps(
+                    {
+                        "name": "nested",
+                        "runner": "pytest",
+                        "max_retries": 0,
+                        "steps": [
+                            {
+                                "name": "plugin",
+                                "targets": ["test_pass.py"],
+                                "isolate_files": True,
+                                "use_platform_runner": False,
+                            }
+                        ],
+                    }
+                ),
+            )
+            result = subprocess.run(
+                [sys.executable, str(runner)], env=env, capture_output=True, text=True
+            )
+            output = result.stdout + result.stderr
+            self.assertEqual(result.returncode, 0, output)
+            self.assertNotIn("Error importing plugin", output)
+            self.assertIn("1 passed", result.stdout)
+
+    def test_isolated_file_crash_fails_without_skipping_remaining_files(self):
+        runner = ROOT / "tests/test_utils/run_ci_test_group.py"
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "test_a_crash.py").write_text("import os\ndef test_crash(): os.abort()\n")
+            (root / "test_b_pass.py").write_text("def test_pass(): pass\n")
+            env = {
+                key: value
+                for key, value in os.environ.items()
+                if not key.startswith("TE_CI_")
+                and key not in ("TE_TEST_GROUP_PRESET", "PYTEST_PLUGINS", "PYTEST_ADDOPTS")
+            }
+            env.update(
+                GITHUB_WORKSPACE=str(root),
+                PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
+                TE_TEST_GROUP_JSON=json.dumps(
+                    {
+                        "name": "probe",
+                        "runner": "pytest",
+                        "max_retries": 0,
+                        "steps": [
+                            {
+                                "name": "plugin",
+                                "targets": ["test_a_crash.py", "test_b_pass.py"],
+                                "isolate_files": True,
+                                "use_platform_runner": False,
+                            }
+                        ],
+                    }
+                ),
+            )
+            result = subprocess.run(
+                [sys.executable, str(runner)], env=env, capture_output=True, text=True
+            )
+            output = result.stdout + result.stderr
+            # The crash fails the group but the next file still runs and passes.
+            self.assertEqual(result.returncode, 1, output)
+            self.assertIn("[CRASH] test_a_crash.py: SIGABRT", result.stdout)
+            self.assertIn("[DONE] test_b_pass.py: exit=0", result.stdout)
 
     def test_script_runner_passes_selection_to_child_pytest(self):
         spec = importlib.util.spec_from_file_location(
@@ -805,6 +1104,37 @@ class PytestSelectionTests(unittest.TestCase):
                 self.assertEqual(runner._run_script(group), 0)
             self.assertEqual(ET.parse(root / "excluded.xml").findall(".//testcase"), [])
             self.assertEqual(len(ET.parse(root / "selected.xml").findall(".//testcase")), 1)
+
+    def test_script_runner_passes_ignore_only_selection_to_child_pytest(self):
+        spec = importlib.util.spec_from_file_location(
+            "ci_ignore_selection_runner", ROOT / "tests/test_utils/run_ci_test_group.py"
+        )
+        runner = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(runner)
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "test_ignored.py").write_text("def test_fail(): assert False\n")
+            (root / "test_kept.py").write_text("def test_pass(): assert True\n")
+            script = root / "suite.sh"
+            script.write_text(
+                '"$PYTHON_BIN" -m pytest -q test_ignored.py --junitxml=ignored.xml\n'
+                '"$PYTHON_BIN" -m pytest -q test_kept.py --junitxml=kept.xml\n'
+            )
+            group = {
+                "name": "ignored-script",
+                "path": "suite.sh",
+                "ignored_test_targets": ["test_ignored.py"],
+                "env": {"PYTHON_BIN": sys.executable},
+            }
+            with patch.object(runner, "REPO_ROOT", root), patch.dict(
+                os.environ,
+                GITHUB_WORKSPACE=str(root),
+                PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
+                PYTEST_PLUGINS="",
+            ):
+                self.assertEqual(runner._run_script(group), 0)
+            self.assertEqual(ET.parse(root / "ignored.xml").findall(".//testcase"), [])
+            self.assertEqual(len(ET.parse(root / "kept.xml").findall(".//testcase")), 1)
 
 
 if __name__ == "__main__":

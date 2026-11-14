@@ -6,9 +6,8 @@ hardware_name: iluvatar
 display_name: 'Iluvatar BI-V150 (CoreX 4.5.0)'
 checkout_submodules: 'false'
 # Build with docker build --target ci -f docker/iluvatar/Dockerfile -t <ci_image> .
-# The published -dev tag was built using --target ci; the suffix is a tag name.
 # Preload the resulting image on the runner (pull policy: never).
-ci_image: harbor.baai.ac.cn/flagos-dev/transformerengine-fl:f886262-iluvatar-dev
+ci_image: harbor.baai.ac.cn/flagos-dev/transformer-engine-fl:v2.17.0-iluvatar-ci
 container_pull_policy: never
 runner_labels:
   - ts-8g-cicd-te
@@ -78,13 +77,108 @@ paths_watch:
   - .github/scripts/setup_iluvatar.sh
   - tests/plugin/backend/iluvatar/
   - transformer_engine/plugin/core/backends/vendor/iluvatar/
+
+# Plugin node quarantines. Remove each target when its restore condition holds.
+ignored_tests:
+  # CoreX Triton rejects this mHC transpose tuple; restore after compilation and numerics pass.
+  - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_mhc_apis_match_native_exactly
+  # FlagTree/FlagTune: compiled graph tracing currently produces an invalid grid.
+  - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_dispatch_entry_does_not_shrink_the_compiled_graph
+  # CoreX baseline: these files have no passing device evidence or have known
+  # hangs/runtime contract failures. Restore each file after isolated reruns pass.
+  # CoreX/FlagCX distributed initialization times out while broadcasting the
+  # communicator ID in the 2-rank cast-master harness; restore after the
+  # Iluvatar image and communication runtime pass this test.
+  - tests/pytorch/distributed/test_cast_master_weights_to_fp8.py
+  - tests/pytorch/test_numerics.py
+  - tests/pytorch/test_cuda_graphs.py
+  - tests/pytorch/test_cpu_offloading.py
+  - tests/pytorch/test_cpu_offloading_v1.py
+  - tests/pytorch/attention/test_attention.py
+  - tests/pytorch/attention/test_kv_cache.py
+  - tests/pytorch/test_checkpoint.py
+  - tests/pytorch/distributed/test_numerics.py
+  # Partial quarantines migrated from the old runner filters. Function/class
+  # targets intentionally include all parameters of the affected operation.
+  - tests/pytorch/test_sanity.py::test_sanity_grouped_linear
+  - tests/pytorch/test_sanity.py::test_sanity_layernorm_mlp
+  - tests/pytorch/test_fused_optimizer.py::TestFusedSGD
+  - tests/pytorch/test_fused_optimizer.py::TestAdamTest::test_grad_scaler_capturable
+  # CoreX FP16 Conv backward gradients miss the upstream AMP reference
+  # tolerance in the capturable-master harness; restore after image/runtime
+  # gradient parity is fixed. FusedAdam weights and formula tests pass.
+  - tests/pytorch/test_fused_optimizer.py::TestAdamTest::test_grad_scaler_capturable_master
+  - tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv
+  - tests/pytorch/test_fusible_ops.py::TestFuser::test_dtype_cast
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_identity
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_reshape
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_bias
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_quantize
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_basic_linear
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_linear
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_layer_norm
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_layer_norm_autocast
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_rmsnorm
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_l2normalization
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_add_extra_input
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_make_extra_output
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_activation
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_swiglu
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_interleaved_swiglu
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_clamped_swiglu
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_interleaved_clamped_swiglu
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_constant_scale
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_dropout
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_grouped_linear
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_scaled_swiglu
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_scaled_srelu
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_interleaved_scaled_swiglu
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_scaled_clamped_qgeglu
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_interleaved_scaled_clamped_qgeglu
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_forward_linear_bias_activation
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_forward_linear_bias_add
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_forward_linear_scale_add
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_backward_activation_bias
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_backward_add_rmsnorm
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_backward_linear_add
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_backward_linear_scale
+  - tests/pytorch/test_fusible_ops.py::TestCheckpointing::test_linear
+  - tests/pytorch/test_fusible_ops.py::TestSequentialModules::test_layernorm_mlp
+  - tests/pytorch/test_fusible_ops.py::TestSequentialModules::test_grouped_mlp
+  - tests/pytorch/test_fusible_ops.py::TestCustomOps
+  - tests/pytorch/test_fusible_ops.py::TestTrainingLoops::test_linear_training_loop
+  - tests/pytorch/test_fusible_ops.py::TestTrainingLoops::test_linear_inference_loop
+  - tests/pytorch/test_permutation.py::test_permutation_index_map
+  - tests/pytorch/test_permutation.py::test_permutation_mask_map
+  - tests/pytorch/test_permutation.py::test_permutation_and_padding_mask_map
+  - tests/pytorch/test_permutation.py::test_permutation_and_padding_with_merging_probs
+  - tests/pytorch/test_permutation.py::test_permutation_mask_map_empty_input
+  - tests/pytorch/test_permutation.py::test_permutation_mask_map_alongside_probs
+  - tests/pytorch/test_permutation.py::test_permutation_mask_map_alongside_probs_empty_input
+  - tests/pytorch/test_permutation.py::test_permutation_index_map_topk1_no_probs
+  - tests/pytorch/test_permutation.py::test_permutation_mask_map_topk1_no_probs
+  - tests/plugin/backend/flagos/test_gemm.py::test_generic_gemm_lifecycle_matrix
+  - tests/plugin/backend/flagos/test_gemm.py::test_grouped_gemm_standard_lifecycle
+  - tests/plugin/backend/flagos/test_multi_tensor.py::test_l2_norm_non_finite_tracking
+  - tests/plugin/backend/flagos/test_multi_tensor.py::test_scale_standard_lifecycle
+  - tests/plugin/backend/flagos/test_multi_tensor.py::test_scale_non_finite_tracking
+  - tests/plugin/backend/flagos/test_optimizer.py::test_multi_tensor_adam_lifecycle
+  - tests/plugin/backend/flagos/test_optimizer.py::test_param_remainder_bit_manipulation_lifecycle
+  # Debug and ONNX filters from the previous CoreX runner.
+  - tests/pytorch/debug/test_sanity.py::test_sanity_debug[fake_quant-False-mha_attention]
+  - tests/pytorch/debug/test_sanity.py::test_sanity_debug[fake_quant-False-transformer_layer]
+  - tests/pytorch/debug/test_api_features.py::test_disable_fp8_gemm
+  - tests/pytorch/debug/test_api_features.py::test_disable_fp8_layer
+  - tests/pytorch/debug/test_api_features.py::test_per_tensor_scaling
+  - tests/pytorch/debug/test_api_features.py::test_fake_quant
+  - tests/pytorch/debug/test_api_features.py::test_statistics_collection
+  - tests/pytorch/debug/test_api_features.py::test_statistics_multi_run
+  - tests/pytorch/test_onnx_export.py::test_export_layernorm_mlp_activation
+  - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_activation
+
 # RoPE uses the FlagOS backend tests, as on PPU; the common large-shape RoPE
-# matrix is not launched on this 32 GiB baseline (see the Iluvatar config.sh).
-# Whole-file exclusions and reproduction reasons are recorded in config.sh:
-# common numerics, CUDA Graphs, both CPU offload files, public attention/KV cache,
-# historical checkpoint tests, and distributed numerics (normal and debug).
-# These gaps are not passing tests; config.sh records restoration conditions.
-# Restore quantization when the selected targets produce passing JUnit evidence
-# on this CoreX baseline and the required-group evidence gate passes.
-unsupported_test_groups:
+# matrix is not launched on this 32 GiB baseline. Restore quantization when
+# the selected targets produce passing JUnit evidence and the required-group
+# evidence gate passes.
+ignored_test_groups:
   quantization: Current CoreX 4.5.0 CI skips all selected quantization targets (18674 skipped, zero passed in run 41381184040); no passing evidence is available. Restore after vendor/runtime adaptation yields passing quantization tests and the required-group evidence gate passes.

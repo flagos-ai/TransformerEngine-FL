@@ -111,7 +111,7 @@ run_test_step() {
             *"test_torch_fsdp2.py" | \
             *"test_cast_master_weights_to_fp8.py")
                 echo "-------------------------------------------------------"
-                echo "[SKIP] Platform MetaX: Ignoring $label"
+                echo "[IGNORE] Platform MetaX: Ignoring $label"
                 echo "-------------------------------------------------------"
                 return 0
                 ;;
