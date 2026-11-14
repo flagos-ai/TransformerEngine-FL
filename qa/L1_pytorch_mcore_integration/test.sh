@@ -45,7 +45,7 @@ detect_platform() {
 : "${TE_PATH:=$(cd -- "${SCRIPT_DIR}/../.." && pwd)}"
 : "${MCORE_PATH:=/workspace/Megatron-LM-FL}"
 : "${MCORE_REPO_URL:=https://github.com/flagos-ai/Megatron-LM-FL.git}"
-: "${MCORE_REF:=175ae90ec92a9e6fea2d74ccd24d6a1835d3ae82}"
+: "${MCORE_REF:=main}"
 : "${MCORE_ENTRYPOINT:=${MCORE_PATH}/pretrain_gpt.py}"
 : "${MCORE_USE_CUDA_ENV_DEFAULTS:=1}"
 : "${OUTPUT_DIR:=${TE_PATH}/qa/L1_pytorch_mcore_integration/output}"
