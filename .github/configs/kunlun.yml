@@ -118,6 +118,7 @@ ignored_tests:
 
 # Missing test-group coverage is explicit; these entries do not claim hardware incapability.
 ignored_test_groups:
+  distributed: Current KunlunXin XCCL/KCCL runtime times out on ALLGATHER in the distributed numerics and cast-master tests; restore after the KunlunXin image communication stack passes these multi-process tests.
   quantization: Current Kunlun QA runs recipe targets only and all are skipped by capability checks; no passing quantization evidence is available.
   optimizer: Kunlun unit QA does not run fused optimizer, multi-tensor or backend optimizer targets.
   attention: Kunlun unit QA selects normalization/linear sanity cases only; attention targets are not wired.

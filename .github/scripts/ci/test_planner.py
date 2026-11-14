@@ -91,6 +91,22 @@ class PlannerTests(unittest.TestCase):
             and not matrix.get(suite, {}).get("blocked", False)
         }
 
+    def supports_mcore(self, platform):
+        config = yaml.safe_load((ROOT / ".github/configs" / f"{platform}.yml").read_text())
+        if "mcore" in set(config.get("ignored_test_groups", {})):
+            return False
+        return any(
+            entry.get("name") == "pytorch_mcore_integration" and not entry.get("blocked", False)
+            for entry in config.get("integration_test_matrix", [])
+            if isinstance(entry, dict)
+        )
+
+    def expected_platform_groups(self, platform):
+        expected = {"preflight", *self.supported_suites(platform)}
+        if self.supports_mcore(platform):
+            expected.add("pytorch_mcore_integration")
+        return expected
+
     def run_planner(self, stage: str, **kwargs) -> dict:
         """Run planner and return parsed plan."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
@@ -381,11 +397,7 @@ class PlannerTests(unittest.TestCase):
                 }
                 self.assertEqual(
                     actual,
-                    {
-                        "preflight",
-                        *self.supported_suites(platform["name"]),
-                        "pytorch_mcore_integration",
-                    },
+                    self.expected_platform_groups(platform["name"]),
                 )
         for group in plan["execution_groups"]:
             if group["group"] in UNIT_SUITES:
@@ -517,11 +529,7 @@ class PlannerTests(unittest.TestCase):
             }
             self.assertEqual(
                 actual,
-                {
-                    "preflight",
-                    *self.supported_suites(platform["name"]),
-                    "pytorch_mcore_integration",
-                },
+                self.expected_platform_groups(platform["name"]),
             )
 
     def test_unit_launcher_change_selects_all_four_suites_on_its_platform(self):
@@ -610,11 +618,7 @@ class PlannerTests(unittest.TestCase):
                             for g in plan["execution_groups"]
                             if g["platform"] == platform["name"]
                         },
-                        {
-                            "preflight",
-                            *self.supported_suites(platform["name"]),
-                            "pytorch_mcore_integration",
-                        },
+                        self.expected_platform_groups(platform["name"]),
                     )
                 for group in plan["execution_groups"]:
                     if group["group"] == "pytorch_unit":
@@ -1034,7 +1038,8 @@ class PlannerTests(unittest.TestCase):
                 suites = {
                     suite
                     for suite in suites
-                    if suite not in UNIT_SUITES or suite in self.supported_suites(config.stem)
+                    if (suite not in UNIT_SUITES or suite in self.supported_suites(config.stem))
+                    and (suite != "pytorch_mcore_integration" or self.supports_mcore(config.stem))
                 }
                 self.assertTrue(suites <= selected, path)
                 self.assertEqual([p["name"] for p in plan["platforms"]], [config.stem])
