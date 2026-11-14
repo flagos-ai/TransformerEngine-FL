@@ -86,6 +86,10 @@ ignored_tests:
   - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_dispatch_entry_does_not_shrink_the_compiled_graph
   # CoreX baseline: these files have no passing device evidence or have known
   # hangs/runtime contract failures. Restore each file after isolated reruns pass.
+  # CoreX/FlagCX distributed initialization times out while broadcasting the
+  # communicator ID in the 2-rank cast-master harness; restore after the
+  # Iluvatar image and communication runtime pass this test.
+  - tests/pytorch/distributed/test_cast_master_weights_to_fp8.py
   - tests/pytorch/test_numerics.py
   - tests/pytorch/test_cuda_graphs.py
   - tests/pytorch/test_cpu_offloading.py

@@ -79,6 +79,7 @@ paths_watch:
 # Missing test-group coverage is explicit; these entries do not claim hardware incapability.
 ignored_test_groups:
   attention: Hygon unit QA does not run attention, RoPE, GQA or HF attention targets; CP utilities belong to the separate distributed group.
+  distributed: Current Hygon unit QA filters every configured distributed target, leaving no runnable distributed testcase or evidence. Restore after a Hygon distributed target executes and produces a passing report.
   quantization: Hygon unit QA has no recipe, quantized-tensor, FP8 or NVFP4 target.
 
 # These tests will be skipped when running pytest (file or file::node).
