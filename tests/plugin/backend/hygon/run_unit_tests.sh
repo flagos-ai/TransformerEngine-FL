@@ -140,6 +140,15 @@ run_unittest_suite() {
     run_pytest_step "test_jit.py" "pytest_test_jit.xml" \
         "$PYTHON" -m pytest -s -v --tb=auto "$TE_PATH/tests/pytorch/test_jit.py"
 
+    # Attention targets verified passing on BW1000 without touching shared
+    # source: GQA and HF integration. The fused-attention suite and the
+    # attention-accuracy numerics remain out of scope; see
+    # ignored_test_groups.attention.
+    run_pytest_step "test_gqa.py" "pytest_test_gqa.xml" \
+        "$PYTHON" -m pytest -s -v --tb=auto "$TE_PATH/tests/pytorch/test_gqa.py"
+    run_pytest_step "test_hf_integration.py" "pytest_test_hf_integration.xml" \
+        "$PYTHON" -m pytest -s -v --tb=auto "$TE_PATH/tests/pytorch/test_hf_integration.py"
+
     if ! TE_TEST_GROUP_PRESET=plugin-unit "$PYTHON" "$TE_PATH/tests/test_utils/run_ci_test_group.py"; then
         FAIL=1
         FAILED_CASES+=("unittest:plugin_core")
