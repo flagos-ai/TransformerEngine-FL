@@ -347,7 +347,12 @@ test_groups:
     - tests/pytorch/test_gqa.py
     - tests/pytorch/test_hf_integration.py
     test_targets:
-    - tests/pytorch/attention/
+    - tests/pytorch/attention/test_attention.py
+    - tests/pytorch/attention/test_attention_with_cp.py
+    - tests/pytorch/attention/test_cu_seqlens_cache.py
+    - tests/pytorch/attention/test_flex_attention.py
+    - tests/pytorch/attention/test_kv_cache.py
+    - tests/pytorch/attention/test_linear_mxfp8_attention.py
     - tests/pytorch/test_fused_rope.py
     - tests/pytorch/test_gqa.py
     - tests/pytorch/test_hf_integration.py
