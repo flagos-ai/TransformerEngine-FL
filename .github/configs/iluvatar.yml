@@ -117,13 +117,21 @@ ignored_tests:
   # PR #15). A bare function/class covers all of its parameters, a bracketed
   # ID is one exact case, and * inside the brackets matches part of the ID.
   # test_sanity_grouped_linear fails for bias-less first/last/middle layouts
-  # with 1 or 2 GEMMs; test_sanity_layernorm_mlp passes only gelu and swiglu.
-  - tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-first-False-True-*-1-dtype*]
-  - tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-first-False-True-*-2-dtype*]
-  - tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-last-False-True-*-1-dtype*]
-  - tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-last-False-True-*-2-dtype*]
-  - tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-middle-False-True-*-1-dtype*]
-  - tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-middle-False-True-*-2-dtype*]
+  # with 1 or 2 GEMMs in the unit job only (it passes under nvinspect in the
+  # debug job), so those entries are scoped with `jobs`.
+  # test_sanity_layernorm_mlp passes only gelu and swiglu, in every job.
+  - test: tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-first-False-True-*-1-dtype*]
+    jobs: [pytorch_unit]
+  - test: tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-first-False-True-*-2-dtype*]
+    jobs: [pytorch_unit]
+  - test: tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-last-False-True-*-1-dtype*]
+    jobs: [pytorch_unit]
+  - test: tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-last-False-True-*-2-dtype*]
+    jobs: [pytorch_unit]
+  - test: tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-middle-False-True-*-1-dtype*]
+    jobs: [pytorch_unit]
+  - test: tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-middle-False-True-*-2-dtype*]
+    jobs: [pytorch_unit]
   - tests/pytorch/test_sanity.py::test_sanity_layernorm_mlp[*-geglu-*]
   - tests/pytorch/test_sanity.py::test_sanity_layernorm_mlp[*-glu-*]
   - tests/pytorch/test_sanity.py::test_sanity_layernorm_mlp[*-qgelu-*]

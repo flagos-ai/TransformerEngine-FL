@@ -176,9 +176,19 @@ python3 -m pytest tests/pytorch/test_fusible_ops.py --collect-only -q | grep tes
 
 ### Scope and limits
 
-- An entry applies to every job of that platform (unit, debug, distributed,
-  onnx). A case that fails in one suite and passes in another is ignored in
-  both.
+- A plain entry applies to every job of that platform (unit, debug,
+  distributed, onnx). When a case fails in one job and passes in another, scope
+  the entry so the passing job keeps running it:
+
+  ```yaml
+  ignored_tests:
+    # Fails in the unit job only; passes under nvinspect in the debug job.
+    - test: tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-1-dtype*]
+      jobs: [pytorch_unit]
+  ```
+
+  `jobs` lists names from the platform's `unit_test_matrix` /
+  `integration_test_matrix`. `test` accepts every form from the table above.
 - A file or directory entry is applied before collection, so the file is not
   imported. A node entry is applied after collection.
 - `ignored_test_groups` is the coarse form: it removes a whole logical group

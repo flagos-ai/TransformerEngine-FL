@@ -310,21 +310,38 @@ def select_test_groups(project: dict, changed: list[str], test_level: str, stage
     }
 
 
-def platform_ignored_tests(config: dict) -> list[str]:
+def platform_ignored_tests(config: dict, job: str | None = None) -> list[str]:
     """Return the platform's explicitly ignored test files or nodes.
 
     Same convention as Megatron-LM-FL's `ignored_tests`: a list of
     `path` or `path::node` entries, with the reason in a YAML comment above
-    each group. The plan records every entry so it never counts as a pass.
+    each group. An entry may instead be a mapping `{test: <entry>, jobs:
+    [<job name>, ...]}` when the case fails in only some jobs of the platform.
+    With `job` set, only the entries that apply to that job are returned;
+    without it, every entry is, so the plan records them all.
     """
-    targets = config.get("ignored_tests", [])
-    if not isinstance(targets, list) or any(
-        not isinstance(target, str) or not target.strip() for target in targets
-    ):
+    entries = config.get("ignored_tests", [])
+    if not isinstance(entries, list):
         raise ValueError("ignored_tests must be a list of test files or nodes")
-    for target in targets:
-        contract.split_test_target(target)
-    return sorted(set(targets))
+    targets = set()
+    for entry in entries:
+        jobs = None
+        if isinstance(entry, dict):
+            if set(entry) != {"test", "jobs"}:
+                raise ValueError("A scoped ignored_tests entry needs exactly 'test' and 'jobs'")
+            entry, jobs = entry["test"], entry["jobs"]
+            if (
+                not isinstance(jobs, list)
+                or not jobs
+                or any(not isinstance(name, str) or not name.strip() for name in jobs)
+            ):
+                raise ValueError("ignored_tests 'jobs' must be a non-empty list of job names")
+        if not isinstance(entry, str) or not entry.strip():
+            raise ValueError("ignored_tests must be a list of test files or nodes")
+        contract.split_test_target(entry)
+        if job is None or jobs is None or job in jobs:
+            targets.add(entry)
+    return sorted(targets)
 
 
 def platform_test_groups(project: dict, config: dict, selection: dict) -> tuple[list, list]:
@@ -622,7 +639,9 @@ def build_execution_groups(
         }
         if execution["platform"] != "ascend" and "tests/plugin/backend/npu/" in catalog_targets:
             ignored_targets.add("tests/plugin/backend/npu/")
-        ignored_targets.update(platform_ignored_tests(platforms[execution["platform"]]["config"]))
+        ignored_targets.update(
+            platform_ignored_tests(platforms[execution["platform"]]["config"], execution["group"])
+        )
         execution["exec"]["ignored_test_targets"] = sorted(ignored_targets)
         group_targets = execution["exec"].get("group_test_targets", {})
         if group_targets and ignored_targets:

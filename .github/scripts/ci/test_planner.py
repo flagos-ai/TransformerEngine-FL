@@ -807,6 +807,41 @@ class PlannerTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             planner.platform_ignored_tests({"ignored_tests": "tests/test_case.py"})
 
+    def test_job_scoped_ignored_tests_apply_only_to_their_jobs(self):
+        config = {
+            "ignored_tests": [
+                "tests/a.py::test_everywhere",
+                {"test": "tests/a.py::test_unit_only[*x*]", "jobs": ["pytorch_unit"]},
+            ]
+        }
+        everywhere, scoped = "tests/a.py::test_everywhere", "tests/a.py::test_unit_only[*x*]"
+        self.assertEqual(planner.platform_ignored_tests(config), [everywhere, scoped])
+        self.assertEqual(
+            planner.platform_ignored_tests(config, "pytorch_unit"), [everywhere, scoped]
+        )
+        self.assertEqual(planner.platform_ignored_tests(config, "pytorch_debug"), [everywhere])
+        for bad in (
+            {"test": "tests/a.py"},
+            {"test": "tests/a.py", "jobs": []},
+            {"test": "tests/a.py", "jobs": "pytorch_unit"},
+            {"test": "tests/../a.py", "jobs": ["pytorch_unit"]},
+            {"test": "tests/a.py", "jobs": ["pytorch_unit"], "reason": "x"},
+        ):
+            with self.subTest(entry=bad):
+                with self.assertRaises(ValueError):
+                    planner.platform_ignored_tests({"ignored_tests": [bad]})
+        plan = self.run_planner("nightly")
+        grouped = "tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-first-False-True-*-1-dtype*]"
+        jobs = {
+            g["group"]: g["exec"]["ignored_test_targets"]
+            for g in plan["execution_groups"]
+            if g["platform"] == "iluvatar" and g["exec"]
+        }
+        self.assertIn(grouped, jobs["pytorch_unit"])
+        self.assertNotIn(grouped, jobs["pytorch_debug"])
+        iluvatar = next(p for p in plan["platforms"] if p["name"] == "iluvatar")
+        self.assertIn(grouped, iluvatar["ignored_tests"])
+
     def test_ignored_parameter_ids_are_literal_unless_wildcarded(self):
         match = planner.contract.test_target_matches
         function = "tests/pytorch/test_sanity.py::test_sanity_grouped_linear"
