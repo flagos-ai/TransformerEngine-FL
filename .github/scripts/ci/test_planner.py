@@ -786,10 +786,8 @@ class PlannerTests(unittest.TestCase):
                     "tests/plugin/plugin/triton_dispatch_numerics_cases.py::"
                     "test_dispatch_entry_does_not_shrink_the_compiled_graph"
                 ),
-                (
-                    "tests/plugin/backend/flagos/test_optimizer_numerical.py::"
-                    "test_multi_tensor_adam_matches_formula[False-0.0-0-0]"
-                ),
+                # Parameter-scoped quarantine: only the num_gemms=1 cases.
+                "tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-1-dtype*]",
             },
         }
         for platform, targets in expected.items():
@@ -808,6 +806,52 @@ class PlannerTests(unittest.TestCase):
                     planner.platform_ignored_tests({"ignored_tests": targets})
         with self.assertRaises(ValueError):
             planner.platform_ignored_tests({"ignored_tests": "tests/test_case.py"})
+
+    def test_ignored_parameter_ids_are_literal_unless_wildcarded(self):
+        match = planner.contract.test_target_matches
+        function = "tests/pytorch/test_sanity.py::test_sanity_grouped_linear"
+        node = function + "[4-first-False-True-small-1-dtype0]"
+        self.assertTrue(match(node, function))
+        self.assertTrue(match(node, function + "[4-first-False-True-small-1-dtype0]"))
+        self.assertTrue(match(node, function + "[*-1-dtype*]"))
+        self.assertTrue(match(node, function + "[4-first-False-True-small-?-dtype0]"))
+        self.assertFalse(match(node, function + "[*-2-dtype*]"))
+        # Without a wildcard the ID stays exact, not a prefix or substring.
+        self.assertFalse(match(node, function + "[4-first]"))
+        # The function name is not widened by a parameter wildcard.
+        self.assertFalse(match(node, "tests/pytorch/test_sanity.py::test_sanity_grouped[*]"))
+        self.assertFalse(match(function, function + "[*]"))
+        method = "tests/pytorch/test_fusible_ops.py::TestBasicOps::test_bias"
+        self.assertTrue(
+            match(method + "[None-device1-dtype0-in_shape0-1]", method + "[None-device1-*]")
+        )
+        self.assertFalse(
+            match(method + "[None-device0-dtype0-in_shape0-1]", method + "[None-device1-*]")
+        )
+        # "[" inside a wildcard pattern is literal instead of opening a character class.
+        self.assertTrue(match("tests/a.py::test_x[a[0]-b]", "tests/a.py::test_x[a[0]-*]"))
+        self.assertFalse(match("tests/a.py::test_x[a0-b]", "tests/a.py::test_x[a[0]-*]"))
+
+    def test_ignored_attention_group_keeps_the_distributed_cp_utils_target(self):
+        plan = self.run_planner("nightly")
+        cp_utils = "tests/pytorch/attention/test_cp_utils.py"
+        for platform in ("hygon", "kunlun", "metax"):
+            with self.subTest(platform=platform):
+                config = next(p for p in plan["platforms"] if p["name"] == platform)
+                ignored_groups = {entry["group"] for entry in config["ignored_test_groups"]}
+                self.assertIn("attention", ignored_groups)
+                self.assertNotIn("distributed", ignored_groups)
+                job = next(
+                    g
+                    for g in plan["execution_groups"]
+                    if g["platform"] == platform and g["group"] == "pytorch_distributed"
+                )
+                self.assertFalse(
+                    any(
+                        planner._target_suppressed_by_ignore(cp_utils, target)
+                        for target in job["exec"]["ignored_test_targets"]
+                    )
+                )
 
     def test_overlap_expansion_uses_the_requested_source_tree(self):
         project = planner.load_project(ROOT / ".flagcicd/project.yaml")

@@ -78,13 +78,10 @@ paths_watch:
 ignored_tests:
   # FlagTree torch.compile autotune grid compatibility; restore after compiled tracing passes.
   - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_dispatch_entry_does_not_shrink_the_compiled_graph
-  # Repeated Adam numerical mismatch; restore after fresh-process numerics pass.
-  - tests/plugin/backend/flagos/test_optimizer_numerical.py::test_multi_tensor_adam_matches_formula[False-0.0-0-0]
   # PPU backend gaps migrated from the launcher configuration.
-  # Parameter-matrix filters stay in tests/plugin/backend/ppu/config.sh
-  # (PPU_TARGET_EXCLUDE_K) because ignored_tests can only express whole
-  # functions or exact parameter ids; only targets that fail across every
-  # parameterization remain listed here.
+  # A bare function/class covers all of its parameters; * inside brackets
+  # matches part of the parameter ID (the old pytest -k substrings), so only
+  # the failing parameter combinations are quarantined (verified in PR #15).
   - tests/pytorch/test_permutation.py
   - tests/pytorch/attention/test_attention.py
   - tests/pytorch/attention/test_kv_cache.py
@@ -97,6 +94,50 @@ ignored_tests:
   - tests/pytorch/test_fused_optimizer.py::TestFusedSGD
   - tests/pytorch/test_fused_optimizer.py::TestFusedAdam::test_bf16_exp_avg_and_exp_avg_sq
   - tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv
+  - tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-1-dtype*]
+  - tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-2-dtype*]
+  - tests/pytorch/test_numerics.py::test_gpt_cuda_graph[*dtype1*]
+  - tests/pytorch/test_numerics.py::test_gpt_cuda_graph[*dtype2*]
+  - tests/pytorch/test_numerics.py::test_layernorm_accuracy[*dtype1*]
+  - tests/pytorch/test_numerics.py::test_layernorm_accuracy[*dtype2*]
+  - tests/pytorch/test_numerics.py::test_transformer_layer_hidden_states_format[*126m-2-dtype*]
+  - tests/pytorch/test_cuda_graphs.py::test_make_graphed_callables_with_kwargs
+  - tests/pytorch/test_cuda_graphs.py::test_make_graphed_callables[*-dtype1-mha*]
+  - tests/pytorch/test_cuda_graphs.py::test_make_graphed_callables[*-dtype2-mha*]
+  - tests/pytorch/test_cuda_graphs.py::test_make_graphed_callables[*-dtype1-transformer*]
+  - tests/pytorch/test_cuda_graphs.py::test_make_graphed_callables[*-dtype2-transformer*]
+  - tests/pytorch/test_cuda_graphs.py::test_make_graphed_callables_with_dot_product_attention[*dtype1*]
+  - tests/pytorch/test_cuda_graphs.py::test_make_graphed_callables_with_dot_product_attention[*dtype2*]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_grouped_linear
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_backward_add_rmsnorm
+  - tests/pytorch/test_fusible_ops.py::TestSequentialModules::test_grouped_mlp
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_basic_linear[*in_shape0*]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_basic_linear[*in_shape1*]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_basic_linear[*in_shape2*]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_layer_norm[*dtype1*]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_layer_norm[*dtype2*]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_rmsnorm[*-True-dtype1-*]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_rmsnorm[*-True-dtype2-*]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_activation[*-dtype1-*-glu]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_activation[*-dtype1-*-qgelu]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_activation[*-dtype1-*-qgeglu]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_clamped_swiglu[*dtype1*]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_dropout[dtype1-shape2-*-True-0.5]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_dropout[dtype2-shape2-*-True-0.5]
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_forward_linear_bias_activation[*dtype1*in_shape0*]
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_forward_linear_bias_activation[*dtype1*in_shape2*]
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_forward_linear_bias_activation[*dtype2*in_shape0*]
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_forward_linear_bias_activation[*dtype2*in_shape2*]
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_forward_linear_bias_add[*-dtype1-True]
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_forward_linear_scale_add[*dtype1*2.5*]
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_forward_linear_scale_add[*dtype1*3.5*]
+  - tests/pytorch/test_fusible_ops.py::TestCheckpointing::test_linear[*True*]
+  - tests/pytorch/test_cpu_offloading.py::TestTELayers::test_memory[*multihead_attention*]
+  - tests/pytorch/test_cpu_offloading.py::TestTELayers::test_memory[*transformer_layer*]
+  - tests/pytorch/test_cpu_offloading.py::TestTELayers::test_numerics[*transformer_layer*]
+  - tests/pytorch/test_cpu_offloading.py::TestTELayers::test_numerics[UnfusedAttention-*True-multihead_attention*]
+  - tests/pytorch/test_cpu_offloading_v1.py::test_cpu_offload[*multihead_attention*]
+  - tests/pytorch/test_cpu_offloading_v1.py::test_cpu_offload[*transformer_layer*]
 
 # Current QA coverage gap, recorded in the plan instead of claimed as passing.
 ignored_test_groups:

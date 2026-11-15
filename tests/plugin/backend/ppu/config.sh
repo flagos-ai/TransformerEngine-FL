@@ -28,15 +28,3 @@ PPU_DEBUG_TARGETS=(tests/pytorch/debug/test_sanity.py tests/pytorch/debug/test_c
 PPU_UNITTEST_TARGETS=(tests/pytorch/test_sanity.py tests/pytorch/test_recipe.py tests/pytorch/test_deferred_init.py tests/pytorch/test_numerics.py tests/pytorch/test_cuda_graphs.py tests/pytorch/test_jit.py tests/pytorch/nvfp4 tests/pytorch/test_quantized_tensor.py tests/pytorch/test_float8blockwisetensor.py tests/pytorch/test_float8_blockwise_scaling_exact.py tests/pytorch/test_float8_blockwise_gemm_exact.py tests/pytorch/test_gqa.py tests/pytorch/test_fused_optimizer.py tests/pytorch/test_multi_tensor.py tests/pytorch/test_fusible_ops.py tests/pytorch/test_permutation.py tests/pytorch/test_parallel_cross_entropy.py tests/pytorch/test_cpu_offloading.py tests/pytorch/test_cpu_offloading_v1.py tests/pytorch/attention/test_attention.py tests/pytorch/attention/test_kv_cache.py tests/pytorch/test_hf_integration.py tests/plugin)
 PPU_DISTRIBUTED_TARGETS=(tests/pytorch/distributed/test_numerics.py tests/pytorch/distributed/test_numerics_exact.py tests/pytorch/distributed/test_torch_fsdp2.py tests/pytorch/distributed/test_cast_master_weights_to_fp8.py tests/pytorch/attention/test_cp_utils.py)
 PPU_ONNX_TARGETS=(tests/pytorch/test_onnx_export.py)
-
-# Parameter-matrix exclusions. `ignored_tests` in ppu.yml only supports whole
-# functions or exact parameter ids, so the surviving `-k` filters from the
-# pre-centrization launcher live here and are applied as `-k "not (...)"`.
-declare -A PPU_TARGET_EXCLUDE_K=(
-  [tests/pytorch/test_sanity.py]='test_sanity_grouped_linear and (1-dtype or 2-dtype)'
-  [tests/pytorch/test_numerics.py]='(test_gpt_cuda_graph and (dtype1 or dtype2)) or (test_layernorm_accuracy and (dtype1 or dtype2)) or (test_transformer_layer_hidden_states_format and 126m-2-dtype)'
-  [tests/pytorch/test_cuda_graphs.py]='test_make_graphed_callables_with_kwargs or (test_make_graphed_callables and (transformer or mha) and (dtype1 or dtype2)) or (test_make_graphed_callables_with_dot_product_attention and (dtype1 or dtype2))'
-  [tests/pytorch/test_fusible_ops.py]='test_grouped_linear or test_backward_add_rmsnorm or test_grouped_mlp or (test_basic_linear and not test_basic_linear_quantized and (in_shape0 or in_shape1 or in_shape2)) or (test_layer_norm and not test_layer_norm_autocast and (dtype1 or dtype2)) or (test_rmsnorm and True and (dtype1 or dtype2)) or (test_activation and dtype1 and (qgelu or qgeglu or (glu and not (geglu or reglu or sreglu or swiglu)))) or (test_clamped_swiglu and dtype1) or (test_dropout and (dtype1 or dtype2) and shape2 and True and 0.5) or (test_forward_linear_bias_activation and (dtype1 or dtype2) and (in_shape0 or in_shape2)) or (test_forward_linear_bias_add and dtype1 and True) or (test_forward_linear_scale_add and dtype1 and (2.5 or 3.5)) or (TestCheckpointing and test_linear and True)'
-  [tests/pytorch/test_cpu_offloading.py]='(test_memory and (multihead_attention or transformer_layer)) or (test_numerics and transformer_layer) or (test_numerics and UnfusedAttention and True-multihead_attention)'
-  [tests/pytorch/test_cpu_offloading_v1.py]='test_cpu_offload and (multihead_attention or transformer_layer)'
-)

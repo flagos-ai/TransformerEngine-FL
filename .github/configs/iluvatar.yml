@@ -98,8 +98,7 @@ ignored_tests:
   - tests/pytorch/attention/test_kv_cache.py
   - tests/pytorch/test_checkpoint.py
   - tests/pytorch/distributed/test_numerics.py
-  # Partial quarantines migrated from the old runner filters. Function/class
-  # targets intentionally include all parameters of the affected operation.
+  # Whole functions migrated from the old runner filters.
   - tests/pytorch/test_fused_optimizer.py::TestFusedSGD
   - tests/pytorch/test_fused_optimizer.py::TestAdamTest::test_grad_scaler_capturable
   # CoreX FP16 Conv backward gradients miss the upstream AMP reference
@@ -114,6 +113,133 @@ ignored_tests:
   - tests/plugin/backend/flagos/test_multi_tensor.py::test_scale_non_finite_tracking
   - tests/plugin/backend/flagos/test_optimizer.py::test_multi_tensor_adam_lifecycle
   - tests/plugin/backend/flagos/test_optimizer.py::test_param_remainder_bit_manipulation_lifecycle
+  # Parameter-level quarantines from the CoreX baseline (hardware-verified in
+  # PR #15). A bare function/class covers all of its parameters, a bracketed
+  # ID is one exact case, and * inside the brackets matches part of the ID.
+  # test_sanity_grouped_linear fails for bias-less first/last/middle layouts
+  # with 1 or 2 GEMMs; test_sanity_layernorm_mlp passes only gelu and swiglu.
+  - tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-first-False-True-*-1-dtype*]
+  - tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-first-False-True-*-2-dtype*]
+  - tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-last-False-True-*-1-dtype*]
+  - tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-last-False-True-*-2-dtype*]
+  - tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-middle-False-True-*-1-dtype*]
+  - tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-middle-False-True-*-2-dtype*]
+  - tests/pytorch/test_sanity.py::test_sanity_layernorm_mlp[*-geglu-*]
+  - tests/pytorch/test_sanity.py::test_sanity_layernorm_mlp[*-glu-*]
+  - tests/pytorch/test_sanity.py::test_sanity_layernorm_mlp[*-qgelu-*]
+  - tests/pytorch/test_sanity.py::test_sanity_layernorm_mlp[*-qgeglu-*]
+  - tests/pytorch/test_sanity.py::test_sanity_layernorm_mlp[*-relu-*]
+  - tests/pytorch/test_sanity.py::test_sanity_layernorm_mlp[*-reglu-*]
+  - tests/pytorch/test_sanity.py::test_sanity_layernorm_mlp[*-srelu-*]
+  - tests/pytorch/test_sanity.py::test_sanity_layernorm_mlp[*-sreglu-*]
+  - tests/pytorch/test_sanity.py::test_sanity_layernorm_mlp[*-silu-*]
+  - tests/pytorch/test_sanity.py::test_sanity_layernorm_mlp[*-clamped_swiglu-*]
+  - tests/pytorch/test_fusible_ops.py::TestFuser::test_dtype_cast
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_identity[None-cuda-dtype0]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_identity[None-cuda-dtype1]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_reshape
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_bias[None-device1-*]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_quantize
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_basic_linear
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_linear
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_layer_norm
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_layer_norm_autocast
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_rmsnorm
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_l2normalization
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_add_extra_input[None-cuda-dtype0-True]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_add_extra_input[None-cuda-dtype0-False]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_add_extra_input[None-cuda-dtype1-True]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_add_extra_input[None-cuda-dtype1-False]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_make_extra_output[None-cuda-dtype0-True]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_make_extra_output[None-cuda-dtype0-False]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_make_extra_output[None-cuda-dtype1-True]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_make_extra_output[None-cuda-dtype1-False]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_activation
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_swiglu
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_interleaved_swiglu
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_clamped_swiglu
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_interleaved_clamped_swiglu
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_constant_scale[device1-dtype0-shape0-1]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_constant_scale[device1-dtype0-shape0--2.5]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_constant_scale[device1-dtype0-shape0-3.5]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_constant_scale[device1-dtype0-shape1-1]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_constant_scale[device1-dtype0-shape1--2.5]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_constant_scale[device1-dtype0-shape1-3.5]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_constant_scale[device1-dtype0-shape2-1]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_constant_scale[device1-dtype0-shape2--2.5]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_constant_scale[device1-dtype0-shape2-3.5]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_constant_scale[device1-dtype1-shape0-1]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_constant_scale[device1-dtype1-shape0--2.5]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_constant_scale[device1-dtype1-shape0-3.5]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_constant_scale[device1-dtype1-shape1-1]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_constant_scale[device1-dtype1-shape1--2.5]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_constant_scale[device1-dtype1-shape1-3.5]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_constant_scale[device1-dtype1-shape2-1]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_constant_scale[device1-dtype1-shape2--2.5]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_constant_scale[device1-dtype1-shape2-3.5]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_dropout
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_grouped_linear
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_scaled_swiglu
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_scaled_srelu
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_interleaved_scaled_swiglu
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_scaled_clamped_qgeglu
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_interleaved_scaled_clamped_qgeglu
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_forward_linear_bias_activation
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_forward_linear_bias_add
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_forward_linear_scale_add
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_backward_activation_bias
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_backward_add_rmsnorm
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_backward_linear_add
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_backward_linear_scale[None-dtype0-1]
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_backward_linear_scale[None-dtype0--2.5]
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_backward_linear_scale[None-dtype0-3.5]
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_backward_linear_scale[None-dtype1-1]
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_backward_linear_scale[None-dtype1--2.5]
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_backward_linear_scale[None-dtype1-3.5]
+  - tests/pytorch/test_fusible_ops.py::TestCheckpointing::test_linear[True-None]
+  - tests/pytorch/test_fusible_ops.py::TestSequentialModules::test_layernorm_mlp[None-dtype0-False-False-True-False]
+  - tests/pytorch/test_fusible_ops.py::TestSequentialModules::test_layernorm_mlp[None-dtype0-False-False-True-True]
+  - tests/pytorch/test_fusible_ops.py::TestSequentialModules::test_layernorm_mlp[None-dtype1-False-False-True-False]
+  - tests/pytorch/test_fusible_ops.py::TestSequentialModules::test_layernorm_mlp[None-dtype1-False-False-True-True]
+  - tests/pytorch/test_fusible_ops.py::TestSequentialModules::test_grouped_mlp
+  - tests/pytorch/test_fusible_ops.py::TestCustomOps::test_custom_basic_op
+  - tests/pytorch/test_fusible_ops.py::TestCustomOps::test_custom_forward_fused_op1
+  - tests/pytorch/test_fusible_ops.py::TestCustomOps::test_custom_forward_fused_op2
+  - tests/pytorch/test_fusible_ops.py::TestCustomOps::test_custom_backward_fused_op
+  - tests/pytorch/test_fusible_ops.py::TestCustomOps::test_custom_forward_backward_fused_op
+  - tests/pytorch/test_fusible_ops.py::TestTrainingLoops::test_linear_training_loop
+  - tests/pytorch/test_fusible_ops.py::TestTrainingLoops::test_linear_inference_loop
+  - tests/pytorch/test_permutation.py::test_permutation_index_map
+  - tests/pytorch/test_permutation.py::test_permutation_mask_map[False-2039-2-4096-7-4096-5]
+  - tests/pytorch/test_permutation.py::test_permutation_mask_map[False-2039-5-4096-7-4096-5]
+  - tests/pytorch/test_permutation.py::test_permutation_mask_map[False-2039-2-4096-16-4096-5]
+  - tests/pytorch/test_permutation.py::test_permutation_mask_map[False-2039-5-4096-16-4096-5]
+  - tests/pytorch/test_permutation.py::test_permutation_mask_map[True-2039-2-4096-7-4096-5]
+  - tests/pytorch/test_permutation.py::test_permutation_and_padding_mask_map
+  - tests/pytorch/test_permutation.py::test_permutation_and_padding_with_merging_probs
+  - tests/pytorch/test_permutation.py::test_permutation_mask_map_empty_input[False-5]
+  - tests/pytorch/test_permutation.py::test_permutation_mask_map_empty_input[True-5]
+  - tests/pytorch/test_permutation.py::test_permutation_mask_map_alongside_probs[False-1-2039-2-4096-7-4096-5]
+  - tests/pytorch/test_permutation.py::test_permutation_mask_map_alongside_probs[False-1-2039-2-4096-16-4096-5]
+  - tests/pytorch/test_permutation.py::test_permutation_mask_map_alongside_probs[False-1-2039-5-4096-7-4096-5]
+  - tests/pytorch/test_permutation.py::test_permutation_mask_map_alongside_probs[False-1-2039-5-4096-16-4096-5]
+  - tests/pytorch/test_permutation.py::test_permutation_mask_map_alongside_probs[False-2-2039-2-4096-7-4096-5]
+  - tests/pytorch/test_permutation.py::test_permutation_mask_map_alongside_probs[False-2-2039-5-4096-7-4096-5]
+  - tests/pytorch/test_permutation.py::test_permutation_mask_map_alongside_probs[False-2-2039-2-4096-16-4096-5]
+  - tests/pytorch/test_permutation.py::test_permutation_mask_map_alongside_probs[False-2-2039-5-4096-16-4096-5]
+  - tests/pytorch/test_permutation.py::test_permutation_mask_map_alongside_probs[True-1-2039-2-4096-7-4096-5]
+  - tests/pytorch/test_permutation.py::test_permutation_mask_map_alongside_probs_empty_input[False-5]
+  - tests/pytorch/test_permutation.py::test_permutation_mask_map_alongside_probs_empty_input[True-5]
+  - tests/pytorch/test_permutation.py::test_permutation_index_map_topk1_no_probs
+  - tests/pytorch/test_permutation.py::test_permutation_mask_map_topk1_no_probs[False-4096-16-4096-5]
+  - tests/pytorch/test_onnx_export.py::test_export_layernorm_mlp_activation[relu]
+  - tests/pytorch/test_onnx_export.py::test_export_layernorm_mlp_activation[reglu]
+  - tests/pytorch/test_onnx_export.py::test_export_layernorm_mlp_activation[geglu]
+  - tests/pytorch/test_onnx_export.py::test_export_layernorm_mlp_activation[clamped_swiglu]
+  - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_activation[relu]
+  - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_activation[reglu]
+  - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_activation[geglu]
+  - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_activation[clamped_swiglu]
   # Debug and ONNX filters from the previous CoreX runner.
   - tests/pytorch/debug/test_sanity.py::test_sanity_debug[fake_quant-False-mha_attention]
   - tests/pytorch/debug/test_sanity.py::test_sanity_debug[fake_quant-False-transformer_layer]

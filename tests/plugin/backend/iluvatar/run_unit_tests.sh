@@ -33,14 +33,6 @@ run_pytest() {
         done <<< "$plugin_targets"
         return
     fi
-    local exclude_key="$suite:$target"
-    local exclude_k="${ILUVATAR_TARGET_EXCLUDE_K[$exclude_key]:-}"
-    if [ -n "$exclude_k" ]; then
-        # Keep parameter-matrix filters at parameter granularity; ignored_tests
-        # can only express whole functions or exact parameter ids.
-        echo "[IGNORE][$suite] $target: -k not ($exclude_k)"
-        set -- "$@" -k "not ($exclude_k)"
-    fi
     echo "[RUN][$suite] $target"
     if ! TE_TEST_GROUP_PRESET=plugin-unit "$PYTHON_BIN" "$TE_PATH/tests/test_utils/run_ci_test_group.py" \
         --target-env "$target" "$PYTHON_BIN" -m pytest -v -s --tb=short \

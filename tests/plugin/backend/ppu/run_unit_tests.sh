@@ -129,12 +129,6 @@ run_suite() {
     [ "$suite" = debug ] && extra+=(--feature_dirs=transformer_engine/debug/features --configs_dir=tests/pytorch/debug/test_configs/)
     [ "$target" = tests/pytorch/test_cpu_offloading_v1.py ] && export NVTE_CPU_OFFLOAD_V1=1
     [ "$target" = tests/pytorch/test_onnx_export.py ] && export NVTE_UnfusedDPA_Emulate_FP8=1
-    local exclude_k="${PPU_TARGET_EXCLUDE_K[$target]:-}"
-    if [ -n "$exclude_k" ]; then
-      # Keep parameter-matrix filters at parameter granularity; ignored_tests
-      # can only express whole functions or exact parameter ids.
-      extra+=(-k "not ($exclude_k)")
-    fi
     run_target "$suite" "$target" "${extra[@]}"
   done
   XML_LOG_DIR="$old_log"
