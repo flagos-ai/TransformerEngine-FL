@@ -76,10 +76,10 @@ passing testcases.
 ## Ignore naming and include scopes
 
 Repository-controlled test omissions use `ignore` names: platform group reasons
-are configured in `ignored_test_groups`, whole-file and case filters use
-`*_IGNORE_*`, the plan records an `ignored` ledger, and launcher messages use
-`[IGNORE]`. PPU records whole-file ignores in `ignored-tests.tsv` and reports
-those rows as `ignored`. Reasons, owners and restore conditions are retained.
+are configured in `ignored_test_groups`, file and case filters are configured in
+`ignored_tests` (see "Ignoring a test on one platform" below), the plan records
+an `ignored` ledger, and log messages use `[IGNORE]`. Reasons, owners and
+restore conditions are retained.
 The former `unsupported_test_groups` key is rejected with a migration error,
 rather than silently enabling tests from an old ignore list. These entries
 never count as passing evidence. A required baseline still cannot
@@ -94,6 +94,100 @@ Pytest/JUnit `skipped`, pytest `--deselect` and collection hooks, GitHub Actions
 They remain unchanged, as do build/dependency setup switches such as
 `TE_FL_SKIP_CUDA` and `HYGON_SKIP_DEP_INSTALL`. Capability-driven runtime skips
 remain distinct from repository-configured ignores.
+
+## Ignoring a test on one platform
+
+Use this when a test cannot pass on one platform for a reason that is known and
+recorded: a missing vendor capability, a defect in an image or toolchain, or a
+failure that is waiting for its owner. An ignored test is not a passing test: it
+is listed in the plan summary as a coverage gap and never counts as evidence.
+Do not add `-k`, `--deselect` or file lists to launcher scripts for this; the
+platform config is the single place, so the plan and the execution agree.
+
+### Where
+
+`.github/configs/<platform>.yml`, top-level key `ignored_tests`: a YAML list of
+strings. Put a comment above each entry (or group of entries) with the reason,
+the owner and the condition for removing it.
+
+```yaml
+ignored_tests:
+  # FlagTree Enflame backend cannot legalize tt.atomic_rmw (owner: FlagTree).
+  # Restore when kernels using tl.atomic_add compile.
+  - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_mhc_apis_match_native_exactly
+  # Vendor runtime: FP16/BF16 layer norm misses the reference tolerance
+  # (owner: PPU runtime). Restore when the dtype1/dtype2 cases pass.
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_layer_norm[*dtype1*]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_layer_norm[*dtype2*]
+```
+
+### What an entry can name
+
+Always choose the narrowest form that covers exactly the failing cases.
+
+| Form | Example | Ignores |
+|---|---|---|
+| Directory (ends with `/`) | `tests/pytorch/nvfp4/` | Every test under the directory |
+| File | `tests/pytorch/test_checkpoint.py` | Every test in the file |
+| Function | `tests/pytorch/test_jit.py::test_torch_dynamo` | The function with all of its parameters |
+| Class | `tests/pytorch/test_fused_optimizer.py::TestFusedSGD` | Every method of the class |
+| Method | `tests/pytorch/test_fusible_ops.py::TestBasicOps::test_bias` | The method with all of its parameters |
+| Name pattern | `tests/pytorch/test_onnx_export.py::test_export_linear*` | Functions whose name matches (`*`, `?`) |
+| One parameter case | `...::test_dropout[dtype0-shape2-None-True-0.5]` | Exactly that parameter ID |
+| Parameter pattern | `...::test_layer_norm[*dtype1*]` | Parameter IDs matching the pattern |
+
+Rules for the bracketed part:
+
+- Without `*` or `?` the ID is literal and must match the whole ID.
+- With `*` or `?` it is a pattern over the whole ID: `[*dtype1*]` means
+  "contains `dtype1`", `[None-device1-*]` means "starts with `None-device1-`",
+  `[*-dtype1-*-glu]` means "contains `-dtype1-` and ends with `-glu`".
+- A parameter pattern does not widen the function name: `test_layer_norm[*]`
+  never matches `test_layer_norm_autocast`.
+- There is no "and/or/not". List one entry per alternative; for "all except
+  A and B", list the other values.
+
+The node is written exactly as pytest prints it, with the path relative to the
+repository root. To get it, copy the line from the job log or from a local
+collection:
+
+```bash
+python3 -m pytest tests/pytorch/test_fusible_ops.py --collect-only -q | grep test_layer_norm
+# tests/pytorch/test_fusible_ops.py::TestBasicOps::test_layer_norm[None-False-dtype1-in_shape0-weight_shape0]
+```
+
+### Steps
+
+1. Find the failing node IDs in the job log (`FAILED tests/...::test_x[...]`)
+   and the first error that explains them.
+2. Work out the smallest description of the failing set: one case, a parameter
+   pattern, a function, or a file. Check that the pattern does not also match
+   cases that pass (compare with the `PASSED` lines of the same function).
+3. Add the entries with their comment to `.github/configs/<platform>.yml`.
+4. Run the CI self-tests; they load every platform config and reject malformed
+   entries:
+   `python -m unittest discover -s .github/scripts/ci -p 'test_*.py'`
+5. In the next CI run, confirm each ignored node is logged as
+   `[IGNORE] tests/...` in the platform job and listed under "Declared platform
+   coverage gaps" in the plan summary, and that the passing cases of the same
+   function still run.
+6. Remove the entry when its restore condition holds. Entries are meant to be
+   temporary.
+
+### Scope and limits
+
+- An entry applies to every job of that platform (unit, debug, distributed,
+  onnx). A case that fails in one suite and passes in another is ignored in
+  both.
+- A file or directory entry is applied before collection, so the file is not
+  imported. A node entry is applied after collection.
+- `ignored_test_groups` is the coarse form: it removes a whole logical group
+  (for example `quantization`) with one reason, and every `test_targets` entry
+  of that group becomes an ignored target on the platform. Check the group's
+  targets in `.flagcicd/project.yaml` before using it; prefer `ignored_tests`
+  when only some files or cases fail.
+- Capability checks inside a test (`pytest.skip`, `skipif`) are unrelated and
+  stay in the test.
 
 ## Selection and levels
 
@@ -300,9 +394,7 @@ is unchanged. Review the logged node IDs after upstream parameter changes.
 ### Plugin discovery compatibility
 
 The plugin-unit preset forces `TE_FL_PREFER=vendor` for NPU backend files before
-imports. Every platform, including Ascend, runs
-`tests/plugin/accuracy/test_compute_scale.py`; the NPU backend follows the TEX
-CUDA scale semantics that test asserts.
+imports.
 
 Isolated pytest exit code 5 is accepted only when the newly generated JUnit
 report contains skipped cases exclusively, with no failures or errors. Empty
@@ -313,14 +405,8 @@ FlagOps upload is advisory and explicitly skips when its API token is absent;
 coverage collection, artifacts and required coverage checks remain enabled.
 
 Plugin tests are not quarantined in test code or launcher scripts. A failure
-caused by this repository stays a failure until it is fixed. A defect owned by
-an external toolchain or image (for example FlagTree or FlagGems) may be listed
-in the platform config under `ignored_tests`, using the same convention as
-Megatron-LM-FL: a list of `path` or `path::node` entries (coarse or fine), with
-a YAML comment above each group giving the reason, owner and restore condition.
-The planner merges these entries into each execution's ignored targets, lists
-them on the plan's platform entry (`ignored_tests`) and in the plan summary's
-coverage gaps. They never count as passing evidence; remove an entry as soon as
-its restore condition holds. The shared
+caused by this repository stays a failure until it is fixed; a failure that
+cannot pass on a platform is listed in that platform's `ignored_tests` as
+described in "Ignoring a test on one platform". The shared
 workflow passes its platform identity explicitly; the MetaX standalone
 environment sets the same identity.
