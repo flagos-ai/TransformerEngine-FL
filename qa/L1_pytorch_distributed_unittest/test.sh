@@ -106,10 +106,13 @@ run_test_step() {
 
     if [ "$PLATFORM" = "metax" ]; then
         case "$test_path" in
+            # fsdp2 and cast_master pass on C550 (2 passed / 7 skipped and
+            # 1 passed / 3 skipped) and run below. The numerics pair stays
+            # quarantined: run_numerics.py hardcodes a 30s init_process_group
+            # timeout and a container whose TE import takes ~35s fails the
+            # NCCL store handshake before rank 0 publishes the unique id.
             *"test_numerics.py" | \
-            *"test_numerics_exact.py" | \
-            *"test_torch_fsdp2.py" | \
-            *"test_cast_master_weights_to_fp8.py")
+            *"test_numerics_exact.py")
                 echo "-------------------------------------------------------"
                 echo "[IGNORE] Platform MetaX: Ignoring $label"
                 echo "-------------------------------------------------------"
