@@ -78,8 +78,7 @@ paths_watch:
 
 # Missing test-group coverage is explicit; these entries do not claim hardware incapability.
 ignored_test_groups:
-  attention: Hygon unit QA does not run attention, RoPE, GQA or HF attention targets; CP utilities belong to the separate distributed group.
-  distributed: Current Hygon unit QA filters every configured distributed target, leaving no runnable distributed testcase or evidence. Restore after a Hygon distributed target executes and produces a passing report.
+  attention: Hygon unit QA runs the GQA and HF-integration targets only. The fused-attention suite requires a fused backend built for CUDA, the attention-accuracy targets are blocked by the shared FP8 block-scaling capability check (torch.version.cuda is None on DTK), and FP8 variants require the quantize operator. CP utilities now belong to the distributed group and run there.
   quantization: Hygon unit QA has no recipe, quantized-tensor, FP8 or NVFP4 target.
 
 # These tests will be skipped when running pytest (file or file::node).
@@ -90,9 +89,8 @@ ignored_tests:
   - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_cross_entropy_forward_and_backward_match_native_exactly
   # FlagTree/FlagTune: compiled graph tracing currently produces an invalid grid.
   - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_dispatch_entry_does_not_shrink_the_compiled_graph
-  # The shared FP8 block-scaling capability check converts torch.version.cuda
-  # unconditionally; Hygon's non-CUDA DTK build exposes None during collection.
-  # Restore after the shared check handles non-CUDA runtimes.
+  # The nvdlfw-inspect feature registry is not adapted to DTK and the
+  # quantize operator is missing; both surfaces fail these targets.
   - tests/pytorch/debug/test_log.py
   - tests/pytorch/test_sanity.py
   # Hygon's current TE-FL registry has no quantize operator. These debug
@@ -102,7 +100,6 @@ ignored_tests:
   - tests/pytorch/debug/test_api_features.py::test_statistics_collection
   - tests/pytorch/debug/test_api_features.py::test_statistics_multi_run
   # Hygon DTK launch/runtime limitations; restore after the affected paths pass.
-  - tests/pytorch/test_jit.py::test_torch_dynamo
   - tests/pytorch/test_onnx_export.py::test_export_linear*
   - tests/pytorch/test_onnx_export.py::test_export_layernorm_linear*
   - tests/pytorch/test_onnx_export.py::test_export_layernorm_mlp*
