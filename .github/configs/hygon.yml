@@ -78,8 +78,7 @@ paths_watch:
 
 # Missing test-group coverage is explicit; these entries do not claim hardware incapability.
 ignored_test_groups:
-  attention: Hygon unit QA runs the GQA and HF-integration targets only. The fused-attention suite requires a fused backend built for CUDA, the attention-accuracy targets are blocked by the shared FP8 block-scaling capability check (torch.version.cuda is None on DTK), and FP8 variants require the quantize operator. CP utilities belong to the separate distributed group.
-  distributed: Current Hygon unit QA filters every configured distributed target, leaving no runnable distributed testcase or evidence. Restore after a Hygon distributed target executes and produces a passing report.
+  attention: Hygon unit QA runs the GQA and HF-integration targets only. The fused-attention suite requires a fused backend built for CUDA, the attention-accuracy targets are blocked by the shared FP8 block-scaling capability check (torch.version.cuda is None on DTK), and FP8 variants require the quantize operator. CP utilities now belong to the distributed group and run there.
   quantization: Hygon unit QA has no recipe, quantized-tensor, FP8 or NVFP4 target.
 
 # These tests will be skipped when running pytest (file or file::node).
