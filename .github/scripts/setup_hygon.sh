@@ -11,7 +11,7 @@ source "$WORKSPACE/tests/plugin/backend/hygon/set_env.sh"
 # Hygon CI is a reference-backend baseline. Force the selection policy here so
 # inherited shell state cannot silently fall back to FlagOS.
 export TE_FL_SKIP_CUDA=1
-export TE_FL_PREFER=reference
+export TE_FL_PREFER="${TE_FL_PREFER:-flagos}"
 export NVTE_FRAMEWORK=pytorch
 export NVTE_FLASH_ATTN=0
 export NVTE_FUSED_ATTN=0

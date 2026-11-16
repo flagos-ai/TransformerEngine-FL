@@ -9,7 +9,10 @@ export TE_PATH="${TE_PATH:-$(cd -- "$SCRIPT_DIR/../../../.." && pwd)}"
 export TE_LIB_PATH="${TE_LIB_PATH:-$(python3 -c 'import site; print(site.getsitepackages()[0])' 2>/dev/null)/transformer_engine}"
 export PYTHONPATH="${TE_PATH}${PYTHONPATH:+:$PYTHONPATH}"
 export TE_FL_SKIP_CUDA="${TE_FL_SKIP_CUDA:-1}"
-export TE_FL_PREFER="${TE_FL_PREFER:-vendor}"
+# TE-FL uses one dispatch order on every platform: flagos -> vendor ->
+# reference (policy.py PREFER_DEFAULT). Do not pin a different preference
+# here; quarantine the failing cases in the platform config instead.
+export TE_FL_PREFER="${TE_FL_PREFER:-flagos}"
 export NVTE_WITH_MACA="${NVTE_WITH_MACA:-1}"
 export NVTE_WITH_NCCL_EP="${NVTE_WITH_NCCL_EP:-0}"
 export CUDA_HOME="${CUDA_HOME:-/opt/maca}"

@@ -12,6 +12,9 @@ runner_labels:
 container_volumes:
   - /opt/hyhal:/opt/hyhal
 
+# One dispatch order on every platform: flagos -> vendor -> reference.
+# The current image still pins a different TE_FL_PREFER in its ENV, so the
+# option below passes it explicitly; drop it once the image is rebuilt.
 container_options: >-
   --privileged
   --ipc=host
@@ -22,6 +25,7 @@ container_options: >-
   --device=/dev/kfd
   --device=/dev/dri
   --group-add video
+  -e TE_FL_PREFER=flagos
 
 setup_script: .github/scripts/setup_hygon.sh
 

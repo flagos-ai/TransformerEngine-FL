@@ -18,6 +18,9 @@ container_volumes:
   - /home/flagscale_cicd/flask/static:/workspace/report
 
 # Container options
+# One dispatch order on every platform: flagos -> vendor -> reference.
+# The current image still pins a different TE_FL_PREFER in its ENV, so the
+# option below passes it explicitly; drop it once the image is rebuilt.
 container_options: >-
   --privileged 
   --gpus all 
@@ -28,6 +31,7 @@ container_options: >-
   --user root
   -e NVTE_CUDA_ARCHS=80
   -e NVTE_WITH_NCCL_EP=0
+  -e TE_FL_PREFER=flagos
 
 # Platform-specific environment setup script
 setup_script: .github/scripts/setup_cuda.sh

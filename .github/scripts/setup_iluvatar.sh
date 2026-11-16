@@ -9,7 +9,7 @@ command -v "${PYTHON_BIN:-python3}" >/dev/null || {
 }
 source "$WORKSPACE/tests/plugin/backend/iluvatar/set_env.sh"
 # CI prefers FlagOS, with the per-op reference selections from set_env.sh.
-export TE_FL_PREFER=flagos
+export TE_FL_PREFER="${TE_FL_PREFER:-flagos}"
 export TE_FL_ALLOW_VENDORS=
 command -v ixsmi >/dev/null
 ixsmi

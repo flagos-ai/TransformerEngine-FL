@@ -16,7 +16,10 @@ export NVTE_WITH_NCCL_EP="${NVTE_WITH_NCCL_EP:-0}"
 export NVTE_FRAMEWORK="${NVTE_FRAMEWORK:-pytorch}"
 export TE_FL_ENABLE_MUSA_CUDA_COMPAT="${TE_FL_ENABLE_MUSA_CUDA_COMPAT:-1}"
 export TORCH_DEVICE_BACKEND_AUTOLOAD="${TORCH_DEVICE_BACKEND_AUTOLOAD:-0}"
-export TE_FL_PREFER="${TE_FL_PREFER:-vendor}"
+# TE-FL uses one dispatch order on every platform: flagos -> vendor ->
+# reference (policy.py PREFER_DEFAULT). Do not pin a different preference
+# here; quarantine the failing cases in the platform config instead.
+export TE_FL_PREFER="${TE_FL_PREFER:-flagos}"
 export TE_FL_PER_OP="${TE_FL_PER_OP:-layernorm_fwd=reference|flagos|vendor;layernorm_bwd=reference|flagos|vendor}"
 export DISTRIBUTED_BACKEND="${DISTRIBUTED_BACKEND:-mccl}"
 export MUSA_HOME="${MUSA_HOME:-/usr/local/musa}"

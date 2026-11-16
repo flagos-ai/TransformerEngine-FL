@@ -51,7 +51,7 @@ detect_platform() {
 : "${OUTPUT_DIR:=${TE_PATH}/qa/L1_pytorch_mcore_integration/output}"
 : "${DATA_CACHE_PATH:=/tmp/data_cache}"
 : "${PLATFORM:=$(detect_platform)}"
-: "${TE_FL_PREFER:=vendor}"
+: "${TE_FL_PREFER:=flagos}"
 : "${MCORE_FP8_MODE:=auto}"
 
 : "${DISTRIBUTED_BACKEND:=nccl}"

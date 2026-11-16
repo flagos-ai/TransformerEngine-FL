@@ -151,7 +151,7 @@ CMD ["bash"]
 FROM base AS release
 LABEL io.flagos.image.stage="release"
 # This published wheel provides FlagOS/Reference Python paths, not CUDA binaries.
-ENV TE_FL_SKIP_CUDA=1 TE_FL_PREFER=reference
+ENV TE_FL_SKIP_CUDA=1
 ARG TE_WHEEL_URL=https://resource.flagos.net/repository/flagos-pypi-thead/packages/transformer-engine/2.17.0+fl.0.3.0/transformer_engine-2.17.0+fl.0.3.0-py3-none-any.whl#sha256=d6abfe990299995bafcc70cbd4c28f9cad176f34064e4b887c3e0c051e74d778
 RUN python -m pip install --no-cache-dir \
         pydantic==2.14.3 importlib_metadata==10.2.0 einops==0.8.2 onnx==1.23.2 onnxscript==0.7.2 \
@@ -184,7 +184,7 @@ RUN command -v gcc g++ cmake git ninja nvcc python3-config \
 FROM dev AS native-build
 ARG TE_SOURCE_REF=b99c2fa89ba0931bdf8d724e3da8278620574297
 ARG MAX_JOBS=32
-ENV TE_FL_SKIP_CUDA=0 SKIP_CUDA_BUILD=0 TE_FL_PREFER=vendor \
+ENV TE_FL_SKIP_CUDA=0 SKIP_CUDA_BUILD=0 \
     NVTE_WITH_CUDA=1 NVTE_WITH_MACA=0 NVTE_NO_LOCAL_VERSION=1 \
     NVTE_BUILD_THREADS_PER_JOB=1
 # Keep the native extension and Python sources at the same revision. Build
@@ -200,7 +200,7 @@ RUN git init /tmp/te-source \
 
 FROM dev AS ci
 LABEL io.flagos.image.stage="ci"
-ENV TE_FL_SKIP_CUDA=0 SKIP_CUDA_BUILD=0 TE_FL_PREFER=vendor \
+ENV TE_FL_SKIP_CUDA=0 SKIP_CUDA_BUILD=0 \
     NVTE_WITH_CUDA=1 NVTE_WITH_MACA=0
 COPY --from=native-build /opt/te-native-wheels/ /opt/te-image/native-wheels/
 RUN python -m pip install --no-cache-dir \

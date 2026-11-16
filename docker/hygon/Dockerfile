@@ -21,7 +21,7 @@ ENV VIRTUAL_ENV=/flagos \
     PATH=/flagos/bin:/opt/dtk/bin:/opt/dtk/llvm/bin:/opt/dtk/hip/bin:/opt/hyhal/bin:${PATH} \
     LD_LIBRARY_PATH=/opt/dtk/dcc/gcvm/lib:/opt/dtk/hip/lib:/opt/dtk/llvm/lib:/opt/dtk/lib:/opt/dtk/lib64:/opt/hyhal/lib:/opt/hyhal/lib64:/opt/dtk/dushmem/lib:/opt/dtk/opencl/lib:/opt/dtk/.hyhal/rocm_smi/lib:/opt/dtk/.hyhal/lib:/opt/dtk/.hyhal/lib64 \
     HIP_PATH=/opt/dtk/hip ROCM_PATH=/opt/dtk DTKROOT=/opt/dtk HYHAL_PATH=/opt/hyhal \
-    TE_FL_SKIP_CUDA=1 TE_FL_PREFER=reference NVTE_FRAMEWORK=pytorch NVTE_WITH_NCCL_EP=0 \
+    TE_FL_SKIP_CUDA=1 NVTE_FRAMEWORK=pytorch NVTE_WITH_NCCL_EP=0 \
     NVTE_FLASH_ATTN=0 NVTE_FUSED_ATTN=0 NVTE_UNFUSED_ATTN=1 NVTE_UnfusedDPA_Emulate_FP8=1
 # Preserve the audited vendor stack and dependency versions.
 RUN mkdir -p /opt/te-image \

@@ -17,6 +17,9 @@ export TE_FL_SKIP_CUDA=1
 export NVTE_SKIP_SUBMODULE_CHECKS_DURING_BUILD=1
 export NVTE_FRAMEWORK=pytorch
 export NVTE_WITH_NCCL_EP=0
+# TE-FL uses one dispatch order on every platform: flagos -> vendor ->
+# reference (policy.py PREFER_DEFAULT). Do not pin a different preference
+# here; quarantine the failing cases in the platform config instead.
 export TE_FL_PREFER="${TE_FL_PREFER:-flagos}"
 # Keep the FlagOS baseline, with explicit reference implementations for the
 # GEMM compatibility cases and the unscale/L2 norm op missing from IXTE.
