@@ -114,10 +114,16 @@ paths_watch:
 
 # Plugin node quarantines. Remove each target when its restore condition holds.
 ignored_tests:
-  # FlagGems norm kernels on MACA miss the half-precision weight-gradient
-  # tolerance (2.9e-5 vs 1e-5 allowed, rel 1.8e-3 vs 1e-3) once the shared
+  # FlagGems norm kernels miss the half-precision weight-gradient tolerance
+  # (2.9e-5 vs 1e-5 allowed, rel 1.8e-3 vs 1e-3) once the shared
   # flagos -> vendor -> reference order selects default.flagos; the FP32 cases
-  # pass. Observed in run 43804752380. Owner: FlagGems MACA backend.
+  # pass. Observed in run 43804752380.
+  # Owner: FlagGems norm. This was first recorded here and attributed to the
+  # FlagGems MACA backend, which was wrong: in run 43832203212 the six patterns
+  # below match the A100 failures one for one, 25 of 25, with no pattern left
+  # unmatched, and A100 runs flag_gems 5.4.0 rather than the MACA backend. The
+  # defect is in the FlagGems norm kernels themselves, so cuda.yml carries the
+  # same six entries and the same owner.
   # Restore when the FP16/BF16 kernels reach the reference tolerance.
   # Repro (CI image, TE_FL_PREFER=flagos from set_env.sh):
   #   pytest tests/pytorch/test_fusible_ops.py -k "test_layer_norm or rmsnorm"

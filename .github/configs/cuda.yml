@@ -162,6 +162,66 @@ ignored_tests:
   #   pytest tests/pytorch/test_sanity.py -k test_sanity_linear_with_zero_tokens
   # Isolate the cause: rerun with TE_FL_PER_OP="generic_gemm=vendor|reference".
   - tests/pytorch/test_sanity.py::test_sanity_linear_with_zero_tokens
+  # Two more entry points into the same empty-operand GEMM defect, found in run
+  # 43832203212 after the entry above was quarantined. test_sanity.py:570 uses
+  # batch_sizes_with_zero = [0, 1, 2], so the bs=0 cases of grouped_linear reach
+  # generic_gemm_fl with num_tokens=0 exactly like the case above. Each poisoned
+  # its own process: debug/test_numerics.py failed 1/60, and test_sanity.py under
+  # nvinspect failed 4982 of which 4981 are cascades of the first bs=0 case.
+  # Only the bs=0 cases are quarantined: the cascade prevented bs=1 and bs=2 from
+  # ever executing cleanly, so there is no evidence against them yet. If the next
+  # run shows them failing too, widen these two entries.
+  # The unit job runs the same file without nvinspect and passes 3904/3904, so
+  # the nvinspect path is what reaches the empty GEMM here.
+  # Repro: NVTE_TEST_NVINSPECT_ENABLED=1 pytest tests/pytorch/test_sanity.py \
+  #   -k "test_sanity_grouped_linear and small"
+  - tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-small-0-dtype*]
+  - tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-weird-0-dtype*]
+  - tests/pytorch/debug/test_numerics.py::test_logging_zero_numel_tensor
+  # FlagGems norm kernels miss the half-precision weight-gradient tolerance once
+  # the shared flagos -> vendor -> reference order selects default.flagos for
+  # layernorm/rmsnorm. The FP32 cases (dtype0) all pass and stay enabled.
+  # This is NOT a MetaX-specific defect: the six patterns below were first
+  # recorded in metax.yml for C550, and in run 43832203212 they match the A100
+  # failures one for one, 25 of 25, with no pattern left unmatched. A100 runs
+  # flag_gems 5.4.0 and C550 runs the FlagGems MACA backend, so the defect is in
+  # the FlagGems norm kernels themselves. Owner: FlagGems norm.
+  # Consequence worth stating: with this entry no platform has FP16/BF16
+  # evidence for FlagOS norm any more. MetaX, PPU, Iluvatar and MUSA already
+  # quarantine or pin these cases, Enflame pins layernorm to reference, and
+  # Ascend, Hygon and KunlunXin never run test_fusible_ops.py at all.
+  # Restore when the FP16/BF16 kernels reach the reference tolerance.
+  # Repro (CI image, TE_FL_PREFER=flagos):
+  #   pytest tests/pytorch/test_fusible_ops.py -k "test_layer_norm or rmsnorm"
+  # Isolate the cause: rerun with
+  #   TE_FL_PER_OP="layernorm_bwd=vendor|reference;rmsnorm_bwd=vendor|reference"
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_layer_norm[*dtype1*]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_layer_norm[*dtype2*]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_rmsnorm[*-True-dtype1-*]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_rmsnorm[*-True-dtype2-in_shape0-weight_shape1]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_rmsnorm[*-True-dtype2-in_shape1-*]
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_backward_add_rmsnorm[True-dtype1-in_shape1-*]
+  # The same FlagGems norm defect seen through TransformerLayer: all 16 dtype1
+  # and all 16 dtype2 cases fail, all 16 dtype0 (FP32) cases pass. Identical in
+  # the unit and debug jobs of run 43832203212.
+  - tests/pytorch/test_numerics.py::test_layernorm_accuracy[*dtype1]
+  - tests/pytorch/test_numerics.py::test_layernorm_accuracy[*dtype2]
+  # make_graphed_callables returns the wgrad with the dgrad's shape for the
+  # fusible linear op: "returned an invalid gradient at index 1 - got [32, 2, 64]
+  # but expected shape compatible with [64, 64]". All three dtypes fail, FP32
+  # included, so this is a shape bug and not the norm tolerance issue above.
+  # Not yet isolated to a backend; the other 23 cases in the file pass.
+  # Observed in run 43832203212. Repro:
+  #   pytest tests/pytorch/test_cuda_graphs.py -k "linear_op"
+  # Isolate the cause: rerun with TE_FL_PER_OP="generic_gemm=vendor|reference".
+  - tests/pytorch/test_cuda_graphs.py::test_make_graphed_callables[None-None-False-*-linear_op]
+  # FlagOS multi_tensor_adam keeps exp_avg and exp_avg_sq in BF16 with less
+  # precision than the test allows: 299370 of 3145728 elements (9.5%) differ,
+  # max absolute 9.1e-3 and relative 8.9e-3 against 2e-3 allowed. multi_tensor_adam
+  # resolves to default.flagos. The FP32-state cases in the same class pass.
+  # Owner: FlagOS fused_adam. Observed in run 43832203212. Repro:
+  #   pytest tests/pytorch/test_fused_optimizer.py -k test_bf16_exp_avg_and_exp_avg_sq
+  - tests/pytorch/test_fused_optimizer.py::TestFusedAdam::test_bf16_exp_avg_and_exp_avg_sq
   # The entries below were hard-coded in qa/ (PRs #60 and #73) and are moved here
   # unchanged so that every ignore is visible in the plan. The reasons are the
   # ones recorded in qa/; they were not re-verified in this move. Restore each
