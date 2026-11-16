@@ -104,23 +104,8 @@ run_test_step() {
     local cmd=$3
     local label=$4
 
-    if [ "$PLATFORM" = "metax" ]; then
-        case "$test_path" in
-            # fsdp2 and cast_master pass on C550 (2 passed / 7 skipped and
-            # 1 passed / 3 skipped) and run below. The numerics pair stays
-            # quarantined: run_numerics.py hardcodes a 30s init_process_group
-            # timeout and a container whose TE import takes ~35s fails the
-            # NCCL store handshake before rank 0 publishes the unique id.
-            *"test_numerics.py" | \
-            *"test_numerics_exact.py")
-                echo "-------------------------------------------------------"
-                echo "[IGNORE] Platform MetaX: Ignoring $label"
-                echo "-------------------------------------------------------"
-                return 0
-                ;;
-        esac
-    fi
-
+    # Platform ignores live in .github/configs/<platform>.yml (ignored_tests);
+    # the CI runner applies them to every pytest call below. Do not filter here.
     echo "-------------------------------------------------------"
     echo "[RUN] Executing: $label"
     eval "$cmd" || test_fail "$label"
@@ -135,7 +120,7 @@ run_test_step "pytest_test_numerics_exact.xml" "$TE_PATH/tests/pytorch/distribut
 "test_numerics_exact.py"
 # python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_fusible_ops.xml $TE_PATH/tests/pytorch/distributed/test_fusible_ops.py || test_fail "test_fusible_ops.py"
 run_test_step "pytest_test_torch_fsdp2.xml" "$TE_PATH/tests/pytorch/distributed/test_torch_fsdp2.py" \
-"python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_torch_fsdp2.xml $TE_PATH/tests/pytorch/distributed/test_torch_fsdp2.py -k 'not (test_distributed)'" \
+"python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_torch_fsdp2.xml $TE_PATH/tests/pytorch/distributed/test_torch_fsdp2.py" \
 "test_torch_fsdp2.py"
 # python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_comm_gemm_overlap.xml $TE_PATH/tests/pytorch/distributed/test_comm_gemm_overlap.py || test_fail "test_comm_gemm_overlap.py"
 # python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_fusible_ops_with_userbuffers.xml $TE_PATH/tests/pytorch/distributed/test_fusible_ops_with_userbuffers.py || test_fail "test_fusible_ops_with_userbuffers.py"

@@ -162,3 +162,48 @@ ignored_tests:
   #   pytest tests/pytorch/test_sanity.py -k test_sanity_linear_with_zero_tokens
   # Isolate the cause: rerun with TE_FL_PER_OP="generic_gemm=vendor|reference".
   - tests/pytorch/test_sanity.py::test_sanity_linear_with_zero_tokens
+  # The entries below were hard-coded in qa/ (PRs #60 and #73) and are moved here
+  # unchanged so that every ignore is visible in the plan. The reasons are the
+  # ones recorded in qa/; they were not re-verified in this move. Restore each
+  # once it passes on A100.
+  # qa/L0_pytorch_unittest/test.sh skipped these whenever torch.cuda was
+  # available: "transformers library may not be available in CI".
+  - tests/pytorch/test_checkpoint.py
+  - tests/pytorch/test_cpu_offloading.py
+  - tests/pytorch/test_cpu_offloading_v1.py
+  - tests/pytorch/attention/test_attention.py
+  - tests/pytorch/attention/test_kv_cache.py
+  - tests/pytorch/test_hf_integration.py
+  # qa/L0_pytorch_unittest/test.sh -k filter: "CUDA attention backward segfaults
+  # in these TransformerLayer sanity families". Unit job only; the debug job
+  # always ran the whole file.
+  - test: tests/pytorch/test_sanity.py::test_sanity_gpt
+    jobs: [pytorch_unit]
+  - test: tests/pytorch/test_sanity.py::test_sanity_gpt_126m
+    jobs: [pytorch_unit]
+  - test: tests/pytorch/test_sanity.py::test_sanity_bert
+    jobs: [pytorch_unit]
+  - test: tests/pytorch/test_sanity.py::test_sanity_bert_126m
+    jobs: [pytorch_unit]
+  - test: tests/pytorch/test_sanity.py::test_sanity_T5
+    jobs: [pytorch_unit]
+  - test: tests/pytorch/test_sanity.py::test_sanity_T5_126m
+    jobs: [pytorch_unit]
+  - test: tests/pytorch/test_sanity.py::test_sanity_amp_and_nvfuser
+    jobs: [pytorch_unit]
+  - test: tests/pytorch/test_sanity.py::test_sanity_drop_path
+    jobs: [pytorch_unit]
+  - test: tests/pytorch/test_sanity.py::test_sanity_fused_qkv_params
+    jobs: [pytorch_unit]
+  - test: tests/pytorch/test_sanity.py::test_sanity_gradient_accumulation_fusion
+    jobs: [pytorch_unit]
+  # Same -k filter in the unit and debug numerics steps; qa/ gave no reason.
+  - tests/pytorch/test_numerics.py::test_linear_accuracy
+  - tests/pytorch/test_numerics.py::test_linear_accuracy_delay_wgrad_compute
+  - tests/pytorch/test_numerics.py::test_linear_accuracy_save_original_input
+  - tests/pytorch/test_numerics.py::test_layernorm_linear_accuracy
+  - tests/pytorch/test_numerics.py::test_layernorm_linear_accuracy_delay_wgrad_compute
+  - tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy
+  - tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy_checkpoint
+  - tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy_delay_wgrad_compute
+  - tests/pytorch/test_numerics.py::test_transformer_layer_hidden_states_format

@@ -150,8 +150,31 @@ ignored_tests:
   - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_mhc_apis_match_native_exactly
   # Fixed-seed vendor dropout sampling currently falls outside its statistical bound.
   - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_dropout[dtype0-shape2-None-True-0.5]
+  # The entries below were hard-coded per platform in qa/ (PRs #60, #73) and are
+  # moved here unchanged so that every ignore is visible in the plan. qa/ gave no
+  # reason for most of them and they were not re-verified in this move. Restore
+  # each once it passes on C550. The attention, RoPE, GQA and HF-integration
+  # files from the same lists are covered by the attention group ignore below.
+  # From the PLATFORM=metax lists in qa/L0_pytorch_unittest/test.sh (unit job)
+  # and qa/L0_pytorch_debug_unittest/test.sh (debug job).
+  - tests/pytorch/test_numerics.py
+  - tests/pytorch/test_sanity.py
+  - tests/pytorch/debug/test_sanity.py
+  - tests/pytorch/test_fused_optimizer.py
+  - tests/pytorch/test_multi_tensor.py
+  - tests/pytorch/test_cpu_offloading.py
+  - tests/pytorch/test_cpu_offloading_v1.py
+  - tests/pytorch/test_checkpoint.py
+  - tests/pytorch/test_cuda_graphs.py
+  # qa/L0_pytorch_unittest/test.sh -k filter on MetaX.
+  - tests/pytorch/test_jit.py::test_torch_dynamo
+  # From qa/L1_pytorch_distributed_unittest/test.sh: run_numerics.py hardcodes a
+  # 30 s init_process_group timeout, and a container whose TE import takes ~35 s
+  # fails the NCCL store handshake before rank 0 publishes the unique id.
+  - tests/pytorch/distributed/test_numerics.py
+  - tests/pytorch/distributed/test_numerics_exact.py
 
 # Current QA coverage gaps, recorded in the plan instead of claimed as passing.
 ignored_test_groups:
-  attention: MetaX unit QA filters attention, RoPE, GQA, numerics and sanity attention targets; no matching attention testcase executes.
+  attention: MetaX has not run its attention, RoPE, GQA, HF-integration or attention-numerics targets in CI (formerly filtered in qa/); no matching attention testcase executes.
   quantization: Current C550 CI skips every selected FP8, MXFP8 and NVFP4 target; no passing quantization evidence is available.
