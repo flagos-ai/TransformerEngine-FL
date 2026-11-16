@@ -451,6 +451,8 @@ test_groups:
     - transformer_engine/pytorch/numerics_debug.py
     - tests/pytorch/debug/
     - qa/L0_pytorch_debug_unittest/
+    test_targets:
+    - tests/pytorch/debug/
     kind: unit
     required: true
     evidence: junit
@@ -483,6 +485,10 @@ test_groups:
     - tests/pytorch/attention/test_cp_utils.py
     - tests/plugin/backend/reference/test_context_parallel.py
     - qa/L1_pytorch_distributed_unittest/
+    test_targets:
+    - tests/pytorch/distributed/
+    - tests/pytorch/attention/test_cp_utils.py
+    - tests/plugin/backend/reference/test_context_parallel.py
     kind: unit
     required: true
     evidence: junit
@@ -503,6 +509,8 @@ test_groups:
     - transformer_engine/pytorch/onnx_extensions.py
     - tests/pytorch/test_onnx_export.py
     - qa/L1_pytorch_onnx_unittest/
+    test_targets:
+    - tests/pytorch/test_onnx_export.py
     kind: unit
     required: true
     evidence: junit
