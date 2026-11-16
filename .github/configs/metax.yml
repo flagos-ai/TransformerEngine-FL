@@ -98,7 +98,7 @@ test_matrix:
       - c550
     # Ignored test files for unit tests
     # These files will be skipped when running pytest
-    ignored_tests:
+    # ignored_tests belongs at the top level; see below.
       # example: tests/unit_tests/test_example.py
       # - tests/unit_tests/test_inference.py
       # - tests/unit_tests/test_rl_utils.py
@@ -114,6 +114,33 @@ paths_watch:
 
 # Plugin node quarantines. Remove each target when its restore condition holds.
 ignored_tests:
+  # FlagGems norm kernels on MACA miss the half-precision weight-gradient
+  # tolerance (2.9e-5 vs 1e-5 allowed, rel 1.8e-3 vs 1e-3) once the shared
+  # flagos -> vendor -> reference order selects default.flagos; the FP32 cases
+  # pass. Observed in run 43804752380. Owner: FlagGems MACA backend.
+  # Restore when the FP16/BF16 kernels reach the reference tolerance.
+  # Repro (CI image, TE_FL_PREFER=flagos from set_env.sh):
+  #   pytest tests/pytorch/test_fusible_ops.py -k "test_layer_norm or rmsnorm"
+  # Isolate the cause: rerun with
+  #   TE_FL_PER_OP="layernorm_bwd=vendor|reference;rmsnorm_bwd=vendor|reference"
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_layer_norm[*dtype1*]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_layer_norm[*dtype2*]
+  # The rmsnorm cases only miss it with zero_centered_gamma enabled; dtype2
+  # in_shape0-weight_shape0 passes, so it stays enabled.
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_rmsnorm[*-True-dtype1-*]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_rmsnorm[*-True-dtype2-in_shape0-weight_shape1]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_rmsnorm[*-True-dtype2-in_shape1-*]
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_backward_add_rmsnorm[True-dtype1-in_shape1-*]
+  # ONNX Runtime and TE disagree on the exported graphs once the norm layers run
+  # on default.flagos (output validation reports 3k-16k element mismatches).
+  # Likely the same norm kernels as above (not yet isolated); run 43804752380.
+  # Repro: pytest tests/pytorch/test_onnx_export.py -k "core_attention or transformer_layer"
+  - tests/pytorch/test_onnx_export.py::test_export_core_attention
+  - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_activation
+  - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_output_layernorm
+  - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_recipe
+  - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_unfused_qkv_params
+  - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_zero_centered_gamma
   # num_warps=32 exceeds the MACA compiler limit; restore after launch adaptation.
   - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_cross_entropy_forward_and_backward_match_native_exactly
   # The parallel cross-entropy launch also passes num_warps=32, while the

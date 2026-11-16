@@ -115,6 +115,14 @@ ignored_tests:
   - tests/pytorch/debug/test_api_features.py::test_statistics_collection
   - tests/pytorch/debug/test_api_features.py::test_statistics_multi_run
   - tests/pytorch/distributed/test_torch_fsdp2.py::test_fsdp2_mem_leak_tests
+  # KunlunXin XCCL: the watchdog times out on the first ALLGATHER (SeqNum=1,
+  # 600 s) in these multi-process cases. Intermittent: failed in runs 43804752380
+  # and 43551559048, passed in 43531989327. Owner: KunlunXin communication stack.
+  # Repro (CI image, set_env.sh): pytest tests/pytorch/distributed/test_numerics.py
+  #   tests/pytorch/distributed/test_cast_master_weights_to_fp8.py
+  # Restore once both pass in repeated runs.
+  - tests/pytorch/distributed/test_numerics.py::test_distributed[None]
+  - tests/pytorch/distributed/test_cast_master_weights_to_fp8.py::test_cast_master_weights_to_fp8[2]
 
 # Missing test-group coverage is explicit; these entries do not claim hardware incapability.
 ignored_test_groups:
