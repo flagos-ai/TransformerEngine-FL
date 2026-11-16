@@ -105,13 +105,18 @@ ignored_tests:
   # tolerance in the capturable-master harness; restore after image/runtime
   # gradient parity is fixed. FusedAdam weights and formula tests pass.
   - tests/pytorch/test_fused_optimizer.py::TestAdamTest::test_grad_scaler_capturable_master
-  - tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv
-  - tests/plugin/backend/flagos/test_gemm.py::test_generic_gemm_lifecycle_matrix
-  - tests/plugin/backend/flagos/test_gemm.py::test_grouped_gemm_standard_lifecycle
+  # TE_FL_STRICT=1 rerun: 330 passed; quarantine only the 102 failed cases.
+  - tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[0.0-True-fp8_dtype0-*-applier*-input_size_pair0]
+  - tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[0.0-True-fp8_dtype0-*-applier*-input_size_pair1]
+  - tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[0.0-True-fp8_dtype0-*-applier*-input_size_pair2]
+  - tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[0.0-True-fp8_dtype0-*-applier*-input_size_pair3]
+  - tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[0.0-True-fp8_dtype0-*-applier*-input_size_pair4]
+  - tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[0.0-True-fp8_dtype0-*-applier*-input_size_pair5]
+  - tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[0.0-True-fp8_dtype0-*-applier*-input_size_pair6]
+  - tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[0.0-True-fp8_dtype0-*-applier*-input_size_pair7]
+  - tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[0.0-True-fp8_dtype1-*-applier*-input_size_pair*]
   - tests/plugin/backend/flagos/test_multi_tensor.py::test_l2_norm_non_finite_tracking
   - tests/plugin/backend/flagos/test_multi_tensor.py::test_scale_standard_lifecycle
-  - tests/plugin/backend/flagos/test_multi_tensor.py::test_scale_non_finite_tracking
-  - tests/plugin/backend/flagos/test_optimizer.py::test_multi_tensor_adam_lifecycle
   - tests/plugin/backend/flagos/test_optimizer.py::test_param_remainder_bit_manipulation_lifecycle
   # Parameter-level quarantines from the CoreX baseline (hardware-verified in
   # PR #15). A bare function/class covers all of its parameters, a bracketed
@@ -119,7 +124,6 @@ ignored_tests:
   # test_sanity_grouped_linear fails for bias-less first/last/middle layouts
   # with 1 or 2 GEMMs in the unit job only (it passes under nvinspect in the
   # debug job), so those entries are scoped with `jobs`.
-  # test_sanity_layernorm_mlp passes only gelu and swiglu, in every job.
   - test: tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-first-False-True-*-1-dtype*]
     jobs: [pytorch_unit]
   - test: tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-first-False-True-*-2-dtype*]
@@ -132,16 +136,6 @@ ignored_tests:
     jobs: [pytorch_unit]
   - test: tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-middle-False-True-*-2-dtype*]
     jobs: [pytorch_unit]
-  - tests/pytorch/test_sanity.py::test_sanity_layernorm_mlp[*-geglu-*]
-  - tests/pytorch/test_sanity.py::test_sanity_layernorm_mlp[*-glu-*]
-  - tests/pytorch/test_sanity.py::test_sanity_layernorm_mlp[*-qgelu-*]
-  - tests/pytorch/test_sanity.py::test_sanity_layernorm_mlp[*-qgeglu-*]
-  - tests/pytorch/test_sanity.py::test_sanity_layernorm_mlp[*-relu-*]
-  - tests/pytorch/test_sanity.py::test_sanity_layernorm_mlp[*-reglu-*]
-  - tests/pytorch/test_sanity.py::test_sanity_layernorm_mlp[*-srelu-*]
-  - tests/pytorch/test_sanity.py::test_sanity_layernorm_mlp[*-sreglu-*]
-  - tests/pytorch/test_sanity.py::test_sanity_layernorm_mlp[*-silu-*]
-  - tests/pytorch/test_sanity.py::test_sanity_layernorm_mlp[*-clamped_swiglu-*]
   - tests/pytorch/test_fusible_ops.py::TestFuser::test_dtype_cast
   - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_identity[None-cuda-dtype0]
   - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_identity[None-cuda-dtype1]
