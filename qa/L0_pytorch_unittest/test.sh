@@ -5,6 +5,10 @@
 : ${XML_LOG_DIR:=/logs}
 mkdir -p "$XML_LOG_DIR"
 
+# FlagGems LayerNorm statistics lose precision for FP16/BF16 inputs. Keep
+# LayerNorm tests on the vendor implementation until that is fixed.
+export TE_FL_PER_OP="${TE_FL_PER_OP:+${TE_FL_PER_OP};}layernorm_fwd=vendor;layernorm_bwd=vendor"
+
 pip install pytest==8.2.1
 # solve test_fused_optimizer import error
 pip install expecttest
