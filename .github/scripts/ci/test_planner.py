@@ -680,7 +680,12 @@ class PlannerTests(unittest.TestCase):
             "tests/pytorch/test_numerics.py::test_linear_accuracy_delay_wgrad_compute",
         ):
             self.assertIn(node, platforms["musa"]["ignored_tests"])
-        self.assertEqual(platforms["cuda"]["ignored_tests"], [compiled, reverted_source_case])
+        # The plan lists exactly what the platform config declares.
+        cuda_config = yaml.safe_load((ROOT / ".github/configs/cuda.yml").read_text())
+        self.assertEqual(
+            platforms["cuda"]["ignored_tests"], planner.platform_ignored_tests(cuda_config)
+        )
+        self.assertIn(reverted_source_case, platforms["cuda"]["ignored_tests"])
         enflame_ignored = platforms["enflame"]["ignored_tests"]
         for node in (
             "test_cross_entropy_forward_and_backward_match_native_exactly",
