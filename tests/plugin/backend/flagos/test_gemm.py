@@ -184,6 +184,36 @@ def test_generic_gemm_unsupported_features():
         )
 
 
+def test_generic_gemm_3d_backward_output_shapes():
+    """Weight gradients stay 2D while input gradients recover the token dimensions."""
+    x = torch.randn(32, 2, 64)
+    dy = torch.randn(32, 2, 64)
+    weight = torch.randn(64, 64)
+    common = dict(
+        D=None,
+        quantizer=None,
+        output_dtype=torch.float32,
+        bias=None,
+        bias_type=None,
+        gelu=False,
+        gelu_in=None,
+        grad=True,
+        workspace=torch.empty(0),
+        workspace_size=0,
+        accumulate=False,
+        use_split_accumulator=False,
+    )
+
+    with patch.object(mock_flag_gems, "mm", side_effect=torch.mm):
+        dx, *_ = generic_gemm_fl(weight, False, dy, False, **common)
+        dw, *_ = generic_gemm_fl(x, False, dy, True, **common)
+
+    torch.testing.assert_close(dx, (dy.reshape(-1, 64) @ weight).reshape(32, 2, 64))
+    torch.testing.assert_close(dw, dy.reshape(-1, 64).T @ x.reshape(-1, 64))
+    assert dx.shape == x.shape
+    assert dw.shape == weight.shape
+
+
 # ==============================================================================
 # Part 3: te_general_grouped_gemm_fl Execution Path Tests
 # ==============================================================================

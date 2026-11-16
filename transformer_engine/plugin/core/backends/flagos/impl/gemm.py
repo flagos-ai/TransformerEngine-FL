@@ -107,7 +107,9 @@ def generic_gemm_fl(
         else:
             out1 = flag_gems.mm(B_comp, A_comp)
 
-    if shape_b_changed:
+    # Only restore B's token dimensions when they are the output's leading dimensions.
+    # With transB=True (weight gradient), the leading dimension is B's feature dimension.
+    if shape_b_changed and not transB:
         out1 = out1.view(s, b, -1)
 
     torch_out_dtype = _convert_dtype(output_dtype)
