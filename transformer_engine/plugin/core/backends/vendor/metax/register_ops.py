@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import functools
 
+import torch
+
 from ....types import OpImpl, BackendImplKind
 
 
@@ -24,6 +26,11 @@ def _bind_is_available(fn, is_available_fn):
 
     wrapper._is_available = is_available_fn
     return wrapper
+
+
+def _metax_overlap_available(is_available_fn):
+    """Limit new UB capability queries to a MACA PyTorch runtime."""
+    return bool(getattr(torch.version, "maca", None)) and is_available_fn()
 
 
 def register_builtins(registry) -> None:
@@ -45,6 +52,7 @@ def register_builtins(registry) -> None:
 
     # Bind is_available to all methods
     is_avail = backend.is_available
+    overlap_is_avail = functools.partial(_metax_overlap_available, is_avail)
 
     impls = [
         # Normalization
@@ -1107,6 +1115,30 @@ def register_builtins(registry) -> None:
             impl_id="vendor.metax",
             kind=BackendImplKind.VENDOR,
             fn=_bind_is_available(backend.create_fp8_tensor_meta, is_avail),
+            vendor="METAX",
+            priority=100,
+        ),
+        OpImpl(
+            op_name="device_supports_multicast",
+            impl_id="vendor.metax",
+            kind=BackendImplKind.VENDOR,
+            fn=_bind_is_available(backend.device_supports_multicast, overlap_is_avail),
+            vendor="METAX",
+            priority=100,
+        ),
+        OpImpl(
+            op_name="ubuf_built_with_mpi",
+            impl_id="vendor.metax",
+            kind=BackendImplKind.VENDOR,
+            fn=_bind_is_available(backend.ubuf_built_with_mpi, overlap_is_avail),
+            vendor="METAX",
+            priority=100,
+        ),
+        OpImpl(
+            op_name="get_stream_priority_range",
+            impl_id="vendor.metax",
+            kind=BackendImplKind.VENDOR,
+            fn=_bind_is_available(backend.get_stream_priority_range, overlap_is_avail),
             vendor="METAX",
             priority=100,
         ),

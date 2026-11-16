@@ -112,6 +112,13 @@ def _import_tex_module():
     # PyInit name ("transformer_engine_torch"), which would shadow the TEFL
     # dispatch module that plugin.core._module_setup installs under the same
     # name. Save the current owner and restore it right after exec_module.
+    #
+    # The restore must be UNCONDITIONAL: whether the extension registers
+    # itself in sys.modules during exec_module depends on the build. The
+    # torch2.8 build (single-phase PyInit) self-registers, so the old
+    # conditional check happened to work; the torch2.10 build does not,
+    # which silently dropped the TEFL alias and broke
+    # `import transformer_engine.pytorch` downstream.
     saved_owner = sys.modules.pop("transformer_engine_torch", None)
     try:
         sys.setdlopenflags(os.RTLD_LAZY | os.RTLD_GLOBAL)
@@ -120,11 +127,10 @@ def _import_tex_module():
         spec.loader.exec_module(mod)
     finally:
         sys.setdlopenflags(old_flags)
-        if sys.modules.get("transformer_engine_torch") is mod:
-            if saved_owner is not None:
-                sys.modules["transformer_engine_torch"] = saved_owner
-            else:
-                del sys.modules["transformer_engine_torch"]
+        if saved_owner is not None:
+            sys.modules["transformer_engine_torch"] = saved_owner
+        else:
+            sys.modules.pop("transformer_engine_torch", None)
     sys.modules["transformer_engine_torch_metax"] = mod
     return mod
 
@@ -158,6 +164,28 @@ def _check_metax_available() -> bool:
 def _get_tex():
     _ensure_metax_libs()
     return _import_tex_module()
+
+
+_LEGACY_UB_TYPES = {}
+
+
+def _legacy_ub_type(native_type):
+    """Keep a native UB instance while adding the v2.17 capability query.
+
+    MetaX's v2.13 constructor does not implement cuBLASMp, and this backend
+    rejects use_cublasmp=True. A Python subclass retains the native pybind
+    holder/type compatibility required by generic_gemm.
+    """
+    if hasattr(native_type, "with_cublasmp"):
+        return native_type
+    if native_type not in _LEGACY_UB_TYPES:
+
+        class LegacyUserbuffer(native_type):
+            def with_cublasmp(self):
+                return False
+
+        _LEGACY_UB_TYPES[native_type] = LegacyUserbuffer
+    return _LEGACY_UB_TYPES[native_type]
 
 
 class MetaxBackend(TEFLBackendBase):
@@ -1962,6 +1990,15 @@ class MetaxBackend(TEFLBackendBase):
             chunk_size, noop_flag, tensor_lists, block_len
         )
 
+    def device_supports_multicast(self, device_id=-1):
+        return self._get_tex().device_supports_multicast(device_id)
+
+    def ubuf_built_with_mpi(self):
+        return self._get_tex().ubuf_built_with_mpi()
+
+    def get_stream_priority_range(self, device_id=-1):
+        return self._get_tex().get_stream_priority_range(device_id)
+
     # Comm+GEMM Overlap
     def bulk_overlap_ag_with_external_gemm(
         self,
@@ -2016,7 +2053,7 @@ class MetaxBackend(TEFLBackendBase):
         # The legacy constructor has no comm_type argument; it is only used
         # by the cuBLASMp constructor in the newer CUDA extension.
         tex = self._get_tex()
-        return tex.CommOverlap(
+        return _legacy_ub_type(tex.CommOverlap)(
             buffer_shape,
             buffer_dtype,
             helper,
@@ -2054,7 +2091,8 @@ class MetaxBackend(TEFLBackendBase):
         if use_cublasmp:
             raise NotImplementedError("metax does not support cuBLASMp overlap")
         tex = self._get_tex()
-        return tex.CommOverlapP2P(
+        comm_type = tex.CommOverlapType(int(comm_type))
+        return _legacy_ub_type(tex.CommOverlapP2P)(
             buffer_shape,
             buffer_dtype,
             helper,
