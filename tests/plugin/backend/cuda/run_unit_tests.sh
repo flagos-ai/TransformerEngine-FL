@@ -35,7 +35,7 @@ run_suite() {
     local suite_log_dir="$XML_LOG_ROOT/$suite"
     mkdir -p "$suite_log_dir"
     echo "===== START $suite ====="
-    if ! XML_LOG_DIR="$suite_log_dir" PLATFORM=cuda bash "$TE_PATH/$script"; then
+    if ! XML_LOG_DIR="$suite_log_dir" bash "$TE_PATH/$script"; then
         suite_status=1
         FAILED=1
         FAILED_SUITES+=("$suite")

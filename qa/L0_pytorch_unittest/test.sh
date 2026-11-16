@@ -80,11 +80,8 @@ else
 fi
 run_test_step "pytest_test_sanity.xml" "$TE_PATH/tests/pytorch/test_sanity.py" "$SANITY_CMD" "test_sanity.py"
 
-if [ "$PLATFORM" = "cuda" ]; then
-    # FlagGems mm cannot handle the K=0 gradient GEMM; run these cases with CUDA vendor ops.
-    run_test_step "pytest_test_sanity_zero_tokens.xml" "$TE_PATH/tests/pytorch/test_sanity.py" \
-    "TE_FL_PREFER=vendor TE_FL_STRICT=0 python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_sanity_zero_tokens.xml $TE_PATH/tests/pytorch/test_sanity.py -k test_sanity_linear_with_zero_tokens --no-header" "test_sanity_linear_with_zero_tokens"
-fi
+run_test_step "pytest_test_sanity_zero_tokens.xml" "$TE_PATH/tests/pytorch/test_sanity.py" \
+"TE_FL_PREFER=vendor python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_sanity_zero_tokens.xml $TE_PATH/tests/pytorch/test_sanity.py -k test_sanity_linear_with_zero_tokens --no-header" "test_sanity_linear_with_zero_tokens"
 
 
 # Step: Recipe
