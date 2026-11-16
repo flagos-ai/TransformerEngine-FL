@@ -76,9 +76,15 @@ if [ "$PLATFORM" = "metax" ]; then
     SANITY_CMD="python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_sanity.xml $TE_PATH/tests/pytorch/test_sanity.py -k \"not (test_sanity_layernorm_mlp or test_sanity_gpt or test_sanity_bert or test_sanity_T5 or test_sanity_amp_and_nvfuser or test_sanity_drop_path or test_sanity_fused_qkv_params or test_sanity_gradient_accumulation_fusion or test_inference_mode or test_sanity_normalization_amp or test_sanity_layernorm_linear or test_sanity_linear_with_zero_tokens or test_sanity_grouped_linear)\" --no-header"
 else
     # CUDA attention backward segfaults in these TransformerLayer sanity families.
-    SANITY_CMD="python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_sanity.xml $TE_PATH/tests/pytorch/test_sanity.py -k \"not (test_sanity_gpt or test_sanity_bert or test_sanity_T5 or test_sanity_amp_and_nvfuser or test_sanity_drop_path or test_sanity_fused_qkv_params or test_sanity_gradient_accumulation_fusion)\" --no-header"
+    SANITY_CMD="python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_sanity.xml $TE_PATH/tests/pytorch/test_sanity.py -k \"not (test_sanity_gpt or test_sanity_bert or test_sanity_T5 or test_sanity_amp_and_nvfuser or test_sanity_drop_path or test_sanity_fused_qkv_params or test_sanity_gradient_accumulation_fusion or test_sanity_linear_with_zero_tokens)\" --no-header"
 fi
 run_test_step "pytest_test_sanity.xml" "$TE_PATH/tests/pytorch/test_sanity.py" "$SANITY_CMD" "test_sanity.py"
+
+if [ "$PLATFORM" = "cuda" ]; then
+    # FlagGems mm cannot handle the K=0 gradient GEMM; run these cases with CUDA vendor ops.
+    run_test_step "pytest_test_sanity_zero_tokens.xml" "$TE_PATH/tests/pytorch/test_sanity.py" \
+    "TE_FL_PREFER=vendor TE_FL_STRICT=0 python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_sanity_zero_tokens.xml $TE_PATH/tests/pytorch/test_sanity.py -k test_sanity_linear_with_zero_tokens --no-header" "test_sanity_linear_with_zero_tokens"
+fi
 
 
 # Step: Recipe
