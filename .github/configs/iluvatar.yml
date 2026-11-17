@@ -86,8 +86,6 @@ ignored_tests:
   - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_dispatch_entry_does_not_shrink_the_compiled_graph
   # CoreX baseline: these files have no passing device evidence or have known
   # hangs/runtime contract failures. Restore each file after isolated reruns pass.
-  - test: tests/pytorch/test_numerics.py
-    jobs: [pytorch_unit]
   - tests/pytorch/test_cuda_graphs.py
   - tests/pytorch/test_cpu_offloading.py
   - tests/pytorch/test_cpu_offloading_v1.py
@@ -112,21 +110,6 @@ ignored_tests:
   # Parameter-level quarantines from the CoreX baseline (hardware-verified in
   # PR #15). A bare function/class covers all of its parameters, a bracketed
   # ID is one exact case, and * inside the brackets matches part of the ID.
-  # test_sanity_grouped_linear fails for bias-less first/last/middle layouts
-  # with 1 or 2 GEMMs in the unit job only (it passes under nvinspect in the
-  # debug job), so those entries are scoped with `jobs`.
-  - test: tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-first-False-True-*-1-dtype*]
-    jobs: [pytorch_unit]
-  - test: tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-first-False-True-*-2-dtype*]
-    jobs: [pytorch_unit]
-  - test: tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-last-False-True-*-1-dtype*]
-    jobs: [pytorch_unit]
-  - test: tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-last-False-True-*-2-dtype*]
-    jobs: [pytorch_unit]
-  - test: tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-middle-False-True-*-1-dtype*]
-    jobs: [pytorch_unit]
-  - test: tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-middle-False-True-*-2-dtype*]
-    jobs: [pytorch_unit]
   - tests/pytorch/test_fusible_ops.py::TestFuser::test_dtype_cast
   - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_identity[None-cuda-dtype0]
   - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_identity[None-cuda-dtype1]
@@ -232,12 +215,25 @@ ignored_tests:
   - tests/pytorch/debug/test_api_features.py::test_fake_quant
   - tests/pytorch/debug/test_api_features.py::test_statistics_collection
   - tests/pytorch/debug/test_api_features.py::test_statistics_multi_run
+  # Unit job only: these pass in the debug job (shared script, nvinspect on).
+  - jobs: [pytorch_unit]
+    tests:
+      # CoreX baseline file (see the file list above).
+      - tests/pytorch/test_numerics.py
+      # Bias-less first/last/middle layouts with 1 or 2 GEMMs.
+      - tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-first-False-True-*-1-dtype*]
+      - tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-first-False-True-*-2-dtype*]
+      - tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-last-False-True-*-1-dtype*]
+      - tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-last-False-True-*-2-dtype*]
+      - tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-middle-False-True-*-1-dtype*]
+      - tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-middle-False-True-*-2-dtype*]
   # Shared-flow alignment (run of 2026-11-17 at deb7ee4d): debug, distributed
   # and onnx now run the shared qa scripts. Each entry below failed, crashed or
-  # hung in that run on iluvatar; the comment above each group is its first error.
-  # pytorch_debug: AssertionError: Outputs not close enough in tensor at idx=N
-  - test: tests/pytorch/test_numerics.py::test_layernorm_accuracy[*-*-*-*-dtype1]
-    jobs: [pytorch_debug]
+  # hung in that run on iluvatar; each comment is the first error of the tests below it.
+  - jobs: [pytorch_debug]
+    tests:
+      # AssertionError: Outputs not close enough in tensor at idx=N
+      - tests/pytorch/test_numerics.py::test_layernorm_accuracy[*-*-*-*-dtype1]
 
 # RoPE uses the FlagOS backend tests, as on PPU; the common large-shape RoPE
 # matrix is not launched on this 32 GiB baseline. Restore quantization when

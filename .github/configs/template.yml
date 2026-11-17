@@ -116,3 +116,7 @@ ignored_test_groups: {}
 #   # Restore when the backend ships in the CI image.
 #   - tests/pytorch/attention/test_attention.py
 #   - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_layer_norm[*dtype1*]
+#   # Cases that fail only in some jobs go in a group for those jobs.
+#   - jobs: [pytorch_debug]
+#     tests:
+#       - tests/pytorch/test_numerics.py::test_layernorm_accuracy[*-*-*-*-dtype1]

@@ -107,7 +107,7 @@ platform config is the single place, so the plan and the execution agree.
 ### Where
 
 `.github/configs/<platform>.yml`, top-level key `ignored_tests`: a YAML list of
-strings. Put a comment above each entry (or group of entries) with the reason,
+strings and job groups (see "Scope and limits"). Put a comment above each entry (or group of entries) with the reason,
 the owner and the condition for removing it.
 
 ```yaml
@@ -177,18 +177,28 @@ python3 -m pytest tests/pytorch/test_fusible_ops.py --collect-only -q | grep tes
 ### Scope and limits
 
 - A plain entry applies to every job of that platform (unit, debug,
-  distributed, onnx). When a case fails in one job and passes in another, scope
-  the entry so the passing job keeps running it:
+  distributed, onnx). When cases fail in some jobs and pass in others, put them
+  in a group so the passing jobs keep running them. One group per job (or set
+  of jobs), with a comment above each test or set of tests inside it:
 
   ```yaml
   ignored_tests:
-    # Fails in the unit job only; passes under nvinspect in the debug job.
-    - test: tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-1-dtype*]
-      jobs: [pytorch_unit]
+    - tests/pytorch/attention/test_kv_cache.py      # every job
+    - jobs: [pytorch_debug]
+      tests:
+        # float16 misses the tolerance; float32 passes (owner: vendor runtime).
+        - tests/pytorch/test_numerics.py::test_layernorm_accuracy[*-*-*-*-dtype1]
+        # Process abort in SDPA backward (owner: vendor runtime).
+        - tests/pytorch/test_numerics.py::test_mha_accuracy
+    - jobs: [pytorch_unit, pytorch_distributed]
+      tests:
+        - tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-1-dtype*]
   ```
 
   `jobs` lists names from the platform's `unit_test_matrix` /
-  `integration_test_matrix`. `test` accepts every form from the table above.
+  `integration_test_matrix`; an unknown name is rejected, so a typo cannot
+  silently disable an entry. Each item of `tests` accepts every form from the
+  table above. The planner flattens the groups into one ignore list per job.
 - A file or directory entry is applied before collection, so the file is not
   imported. A node entry is applied after collection.
 - `ignored_test_groups` is the coarse form: it removes a whole logical group

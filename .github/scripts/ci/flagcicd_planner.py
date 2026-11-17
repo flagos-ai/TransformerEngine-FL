@@ -48,12 +48,31 @@ def load_platforms(configs_dir: Path) -> dict[str, Any]:
         nproc = config.get("nproc_per_node")
         if isinstance(nproc, bool) or not isinstance(nproc, int) or nproc < 1:
             raise ValueError(f"{path.name}: nproc_per_node must be a positive integer")
+        check_ignored_test_jobs(path.name, config)
         platforms[path.stem] = {
             "config": config,
             "config_hash": hashlib.sha256(config_bytes).hexdigest(),
             "config_path": path.relative_to(configs_dir.parent).as_posix(),
         }
     return platforms
+
+
+def check_ignored_test_jobs(name: str, config: dict) -> None:
+    """Reject ignored_tests job groups that name a job the platform lacks.
+
+    A misspelled job name would otherwise disable its entries silently.
+    """
+    known = {
+        item.get("name")
+        for key in ("unit_test_matrix", "integration_test_matrix")
+        for item in config.get(key) or []
+        if isinstance(item, dict)
+    }
+    for entry in config.get("ignored_tests") or []:
+        if isinstance(entry, dict) and isinstance(entry.get("jobs"), list):
+            unknown = sorted(str(job) for job in set(entry["jobs"]) - known)
+            if unknown:
+                raise ValueError(f"{name}: ignored_tests names unknown jobs: {', '.join(unknown)}")
 
 
 def _capped(paths: list[str], prefix: str) -> list[str]:
@@ -315,8 +334,9 @@ def platform_ignored_tests(config: dict, job: str | None = None) -> list[str]:
 
     Same convention as Megatron-LM-FL's `ignored_tests`: a list of
     `path` or `path::node` entries, with the reason in a YAML comment above
-    each group. An entry may instead be a mapping `{test: <entry>, jobs:
-    [<job name>, ...]}` when the case fails in only some jobs of the platform.
+    each group. A plain entry applies to every job of the platform. Cases that
+    fail in only some jobs go in a group `{jobs: [<job name>, ...], tests:
+    [<entry>, ...]}`; load_platforms checks that the job names exist.
     With `job` set, only the entries that apply to that job are returned;
     without it, every entry is, so the plan records them all.
     """
@@ -325,22 +345,25 @@ def platform_ignored_tests(config: dict, job: str | None = None) -> list[str]:
         raise ValueError("ignored_tests must be a list of test files or nodes")
     targets = set()
     for entry in entries:
-        jobs = None
+        jobs, tests = None, [entry]
         if isinstance(entry, dict):
-            if set(entry) != {"test", "jobs"}:
-                raise ValueError("A scoped ignored_tests entry needs exactly 'test' and 'jobs'")
-            entry, jobs = entry["test"], entry["jobs"]
+            if set(entry) != {"jobs", "tests"}:
+                raise ValueError("A job-scoped ignored_tests group needs exactly 'jobs' and 'tests'")
+            jobs, tests = entry["jobs"], entry["tests"]
             if (
                 not isinstance(jobs, list)
                 or not jobs
                 or any(not isinstance(name, str) or not name.strip() for name in jobs)
             ):
                 raise ValueError("ignored_tests 'jobs' must be a non-empty list of job names")
-        if not isinstance(entry, str) or not entry.strip():
-            raise ValueError("ignored_tests must be a list of test files or nodes")
-        contract.split_test_target(entry)
-        if job is None or jobs is None or job in jobs:
-            targets.add(entry)
+            if not isinstance(tests, list) or not tests:
+                raise ValueError("ignored_tests 'tests' must be a non-empty list of test files or nodes")
+        for test in tests:
+            if not isinstance(test, str) or not test.strip():
+                raise ValueError("ignored_tests must be a list of test files or nodes")
+            contract.split_test_target(test)
+            if job is None or jobs is None or job in jobs:
+                targets.add(test)
     return sorted(targets)
 
 

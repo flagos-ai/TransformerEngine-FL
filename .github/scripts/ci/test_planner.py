@@ -813,28 +813,39 @@ class PlannerTests(unittest.TestCase):
             planner.platform_ignored_tests({"ignored_tests": "tests/test_case.py"})
 
     def test_job_scoped_ignored_tests_apply_only_to_their_jobs(self):
+        everywhere = "tests/a.py::test_everywhere"
+        unit_only = "tests/a.py::test_unit_only[*x*]"
+        two_jobs = "tests/b.py::test_debug_and_onnx"
         config = {
+            "unit_test_matrix": [{"name": n} for n in ("pytorch_unit", "pytorch_debug", "pytorch_onnx")],
             "ignored_tests": [
-                "tests/a.py::test_everywhere",
-                {"test": "tests/a.py::test_unit_only[*x*]", "jobs": ["pytorch_unit"]},
-            ]
+                everywhere,
+                {"jobs": ["pytorch_unit"], "tests": [unit_only]},
+                {"jobs": ["pytorch_debug", "pytorch_onnx"], "tests": [two_jobs]},
+            ],
         }
-        everywhere, scoped = "tests/a.py::test_everywhere", "tests/a.py::test_unit_only[*x*]"
-        self.assertEqual(planner.platform_ignored_tests(config), [everywhere, scoped])
-        self.assertEqual(
-            planner.platform_ignored_tests(config, "pytorch_unit"), [everywhere, scoped]
-        )
-        self.assertEqual(planner.platform_ignored_tests(config, "pytorch_debug"), [everywhere])
+        self.assertEqual(planner.platform_ignored_tests(config), [everywhere, unit_only, two_jobs])
+        self.assertEqual(planner.platform_ignored_tests(config, "pytorch_unit"), [everywhere, unit_only])
+        self.assertEqual(planner.platform_ignored_tests(config, "pytorch_debug"), [everywhere, two_jobs])
+        self.assertEqual(planner.platform_ignored_tests(config, "pytorch_onnx"), [everywhere, two_jobs])
         for bad in (
-            {"test": "tests/a.py"},
-            {"test": "tests/a.py", "jobs": []},
-            {"test": "tests/a.py", "jobs": "pytorch_unit"},
-            {"test": "tests/../a.py", "jobs": ["pytorch_unit"]},
-            {"test": "tests/a.py", "jobs": ["pytorch_unit"], "reason": "x"},
+            {"tests": ["tests/a.py"]},
+            {"jobs": ["pytorch_unit"]},
+            {"jobs": [], "tests": ["tests/a.py"]},
+            {"jobs": "pytorch_unit", "tests": ["tests/a.py"]},
+            {"jobs": ["pytorch_unit"], "tests": []},
+            {"jobs": ["pytorch_unit"], "tests": "tests/a.py"},
+            {"jobs": ["pytorch_unit"], "tests": ["tests/../a.py"]},
+            {"jobs": ["pytorch_unit"], "tests": ["tests/a.py"], "reason": "x"},
+            {"test": "tests/a.py", "jobs": ["pytorch_unit"]},
         ):
             with self.subTest(entry=bad):
                 with self.assertRaises(ValueError):
                     planner.platform_ignored_tests({"ignored_tests": [bad]})
+        planner.check_ignored_test_jobs("ok.yml", config)
+        typo = dict(config, ignored_tests=[{"jobs": ["pytorch_debgu"], "tests": ["tests/a.py"]}])
+        with self.assertRaisesRegex(ValueError, "unknown jobs: pytorch_debgu"):
+            planner.check_ignored_test_jobs("typo.yml", typo)
         plan = self.run_planner("nightly")
         grouped = "tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-first-False-True-*-1-dtype*]"
         jobs = {

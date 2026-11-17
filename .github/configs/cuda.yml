@@ -190,8 +190,9 @@ ignored_tests:
   # Repro: NVTE_TEST_NVINSPECT_ENABLED=1 pytest tests/pytorch/test_sanity.py \
   #   -k test_sanity_grouped_linear
   # Isolate the cause: rerun with TE_FL_PER_OP="generic_gemm=vendor|reference".
-  - test: tests/pytorch/test_sanity.py::test_sanity_grouped_linear
-    jobs: [pytorch_debug]
+  - jobs: [pytorch_debug]
+    tests:
+      - tests/pytorch/test_sanity.py::test_sanity_grouped_linear
   # An independent entry into the empty-operand GEMM defect, in its own pytest
   # process so it is not a cascade: a zero-numel tensor reaches generic_gemm_fl
   # and the FlagGems autotune launch raises the same illegal memory access.
@@ -307,26 +308,18 @@ ignored_tests:
   # qa/L0_pytorch_unittest/test.sh -k filter: "CUDA attention backward segfaults
   # in these TransformerLayer sanity families". Unit job only; the debug job
   # always ran the whole file.
-  - test: tests/pytorch/test_sanity.py::test_sanity_gpt
-    jobs: [pytorch_unit]
-  - test: tests/pytorch/test_sanity.py::test_sanity_gpt_126m
-    jobs: [pytorch_unit]
-  - test: tests/pytorch/test_sanity.py::test_sanity_bert
-    jobs: [pytorch_unit]
-  - test: tests/pytorch/test_sanity.py::test_sanity_bert_126m
-    jobs: [pytorch_unit]
-  - test: tests/pytorch/test_sanity.py::test_sanity_T5
-    jobs: [pytorch_unit]
-  - test: tests/pytorch/test_sanity.py::test_sanity_T5_126m
-    jobs: [pytorch_unit]
-  - test: tests/pytorch/test_sanity.py::test_sanity_amp_and_nvfuser
-    jobs: [pytorch_unit]
-  - test: tests/pytorch/test_sanity.py::test_sanity_drop_path
-    jobs: [pytorch_unit]
-  - test: tests/pytorch/test_sanity.py::test_sanity_fused_qkv_params
-    jobs: [pytorch_unit]
-  - test: tests/pytorch/test_sanity.py::test_sanity_gradient_accumulation_fusion
-    jobs: [pytorch_unit]
+  - jobs: [pytorch_unit]
+    tests:
+      - tests/pytorch/test_sanity.py::test_sanity_gpt
+      - tests/pytorch/test_sanity.py::test_sanity_gpt_126m
+      - tests/pytorch/test_sanity.py::test_sanity_bert
+      - tests/pytorch/test_sanity.py::test_sanity_bert_126m
+      - tests/pytorch/test_sanity.py::test_sanity_T5
+      - tests/pytorch/test_sanity.py::test_sanity_T5_126m
+      - tests/pytorch/test_sanity.py::test_sanity_amp_and_nvfuser
+      - tests/pytorch/test_sanity.py::test_sanity_drop_path
+      - tests/pytorch/test_sanity.py::test_sanity_fused_qkv_params
+      - tests/pytorch/test_sanity.py::test_sanity_gradient_accumulation_fusion
   # Same -k filter in the unit and debug numerics steps; qa/ gave no reason.
   - tests/pytorch/test_numerics.py::test_linear_accuracy
   - tests/pytorch/test_numerics.py::test_linear_accuracy_delay_wgrad_compute
@@ -339,10 +332,11 @@ ignored_tests:
   - tests/pytorch/test_numerics.py::test_transformer_layer_hidden_states_format
   # Shared-flow alignment (run of 2026-11-17 at deb7ee4d): debug, distributed
   # and onnx now run the shared qa scripts. Each entry below failed, crashed or
-  # hung in that run on cuda; the comment above each group is its first error.
+  # hung in that run on cuda; each comment is the first error of the tests below it.
   # pytorch_distributed: subprocess.CalledProcessError: Command '[PosixPath('/flagos/bin/python3'), '-m', 'torch.distributed.
   # The id is the visible GPU count: the run had 4 GPUs and [4] failed (worker
   # stderr not captured; [1] and [2] passed). CI runs with --gpus all, so the
   # same full-world case is [8] there.
-  - test: tests/pytorch/distributed/test_fusible_ops.py::test_distributed_fuser_ops[8]
-    jobs: [pytorch_distributed]
+  - jobs: [pytorch_distributed]
+    tests:
+      - tests/pytorch/distributed/test_fusible_ops.py::test_distributed_fuser_ops[8]
