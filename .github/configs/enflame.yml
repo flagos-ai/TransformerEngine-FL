@@ -159,6 +159,14 @@ ignored_tests:
     jobs: [pytorch_debug]
   - test: tests/pytorch/test_numerics.py::test_mha_accuracy
     jobs: [pytorch_debug]
+  # pytorch_debug: AssertionError: Outputs not close enough (float16 only; float32
+  # passes). First run of these functions on Enflame: CI run 44060885243.
+  - test: tests/pytorch/test_numerics.py::test_layernorm_accuracy[*-*-*-*-dtype1]
+    jobs: [pytorch_debug]
+  - test: tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy[*-*-LayerNorm-relu-*-*-dtype1]
+    jobs: [pytorch_debug]
+  - test: tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy[*-*-LayerNorm-reglu-*-*-dtype1]
+    jobs: [pytorch_debug]
   # pytorch_debug: RuntimeError: All 1 implementation(s) failed for op='quantize'.
   - test: tests/pytorch/debug/test_api_features.py::test_per_tensor_scaling
     jobs: [pytorch_debug]
