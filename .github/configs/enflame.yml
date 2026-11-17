@@ -148,8 +148,7 @@ ignored_tests:
   - tests/pytorch/test_onnx_export.py::test_export_gpt_generation*
   # Shared-flow alignment (run of 2026-11-17 at deb7ee4d): debug, distributed
   # and onnx now run the shared qa scripts. Each entry below failed, crashed or
-  # hung in that run on enflame; reason, environment and repro are in
-  # .github/configs/ignored-tests-record.md (section enflame).
+  # hung in that run on enflame; the comment above each group is its first error.
   # pytorch_debug: AssertionError: AMP wrong output type.
   - test: tests/pytorch/test_sanity.py::test_sanity_normalization_amp[*-*-*-*-dtype1]
     jobs: [pytorch_debug]

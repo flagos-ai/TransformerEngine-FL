@@ -181,8 +181,7 @@ ignored_tests:
   - tests/pytorch/distributed/test_numerics_exact.py
   # Shared-flow alignment (run of 2026-11-17 at deb7ee4d): debug, distributed
   # and onnx now run the shared qa scripts. Each entry below failed, crashed or
-  # hung in that run on metax; reason, environment and repro are in
-  # .github/configs/ignored-tests-record.md (section metax).
+  # hung in that run on metax; the comment above each group is its first error.
   # pytorch_debug: AssertionError: GEMM not possible
   - test: tests/pytorch/test_numerics.py::test_transformer_layer_hidden_states_format[*-*-dtype1]
     jobs: [pytorch_debug]

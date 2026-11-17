@@ -114,8 +114,7 @@ run_test_step() {
 }
 
 # Kept disabled for every platform: in the 2026-11-17 run on 8 platforms (deb7ee4d) this step
-# failed on all of them (test_current_device), so it is not a platform difference; details in
-# .github/configs/ignored-tests-record.md (section "Shared steps kept disabled").
+# failed on all of them (test_current_device), so it is not a platform difference.
 # python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_sanity.xml $TE_PATH/tests/pytorch/distributed/test_sanity.py || test_fail "test_sanity.py"
 run_test_step "pytest_test_numerics.xml" "$TE_PATH/tests/pytorch/distributed/test_numerics.py" \
 "python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_numerics.xml $TE_PATH/tests/pytorch/distributed/test_numerics.py" \
@@ -130,8 +129,7 @@ run_test_step "pytest_test_torch_fsdp2.xml" "$TE_PATH/tests/pytorch/distributed/
 "python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_torch_fsdp2.xml $TE_PATH/tests/pytorch/distributed/test_torch_fsdp2.py" \
 "test_torch_fsdp2.py"
 # Kept disabled for every platform: in the 2026-11-17 run on 8 platforms (deb7ee4d) these three
-# steps failed, did not collect or timed out on all of them, so it is not a platform difference; details in
-# .github/configs/ignored-tests-record.md (section "Shared steps kept disabled").
+# steps failed, did not collect or timed out on all of them, so it is not a platform difference.
 # python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_comm_gemm_overlap.xml $TE_PATH/tests/pytorch/distributed/test_comm_gemm_overlap.py || test_fail "test_comm_gemm_overlap.py"
 # python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_fusible_ops_with_userbuffers.xml $TE_PATH/tests/pytorch/distributed/test_fusible_ops_with_userbuffers.py || test_fail "test_fusible_ops_with_userbuffers.py"
 # python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_attention_with_cp.xml $TE_PATH/tests/pytorch/attention/test_attention_with_cp.py || test_fail "test_attention_with_cp.py"

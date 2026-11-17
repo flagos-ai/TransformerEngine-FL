@@ -239,8 +239,7 @@ ignored_tests:
   - tests/pytorch/debug/test_api_features.py::test_statistics_multi_run
   # Shared-flow alignment (run of 2026-11-17 at deb7ee4d): debug, distributed
   # and onnx now run the shared qa scripts. Each entry below failed, crashed or
-  # hung in that run on iluvatar; reason, environment and repro are in
-  # .github/configs/ignored-tests-record.md (section iluvatar).
+  # hung in that run on iluvatar; the comment above each group is its first error.
   # pytorch_debug: AssertionError: Outputs not close enough in tensor at idx=N
   - test: tests/pytorch/test_numerics.py::test_layernorm_accuracy[*-*-*-*-dtype1]
     jobs: [pytorch_debug]
