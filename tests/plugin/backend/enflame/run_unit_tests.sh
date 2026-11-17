@@ -41,25 +41,15 @@ run_pytest_step() {
     run_cmd "$suite" "$label" "$PYTHON" -m pytest "$@"
 }
 
-run_debug_suite() {
-    echo "===== START debug ====="
-    run_pytest_step debug test_config.py \
-        -v -s --tb=auto --junitxml="$XML_LOG_DIR/test_config.xml" \
-        "$TE_PATH/tests/pytorch/debug/test_config.py" \
-        --feature_dirs="$TE_PATH/transformer_engine/debug/features"
-    run_pytest_step debug test_log.py \
-        -v -s --tb=auto --junitxml="$XML_LOG_DIR/test_log.xml" \
-        "$TE_PATH/tests/pytorch/debug/test_log.py" \
-        --feature_dirs="$TE_PATH/transformer_engine/debug/features" \
-        -k "test_compute_max_blockwise_dynamic_range_direct"
-    run_pytest_step debug test_api_features.py \
-        -v -s --tb=auto --no-header --junitxml="$XML_LOG_DIR/test_api_features.xml" \
-        "$TE_PATH/tests/pytorch/debug/test_api_features.py" \
-        --feature_dirs="$TE_PATH/transformer_engine/debug/features" \
-        --configs_dir="$TE_PATH/tests/pytorch/debug/test_configs" \
-        -k "test_transformer_engine_no_config"
-    echo "===== END debug rc=$FAIL ====="
+# debug, distributed and onnx run the shared qa scripts like every other
+# platform; Enflame differences live only in .github/configs/enflame.yml.
+run_shared_suite() {
+    echo "===== START $1 ====="
+    run_cmd "$1" "$2" env XML_LOG_DIR="$XML_LOG_DIR" bash "$TE_PATH/$2"
+    echo "===== END $1 rc=$FAIL ====="
 }
+
+run_debug_suite() { run_shared_suite debug qa/L0_pytorch_debug_unittest/test.sh; }
 
 run_unittest_suite() {
     echo "===== START unittest ====="
@@ -82,33 +72,9 @@ run_unittest_suite() {
     echo "===== END unittest rc=$FAIL ====="
 }
 
-run_distributed_suite() {
-    echo "===== START distributed ====="
-    run_pytest_step distributed test_cast_master_weights_to_fp8.py \
-        -v -s --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_cast_master_weights_to_fp8.xml" \
-        "$TE_PATH/tests/pytorch/distributed/test_cast_master_weights_to_fp8.py"
-    run_pytest_step distributed test_cp_utils.py \
-        -v -s --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_cp_utils.xml" \
-        "$TE_PATH/tests/pytorch/attention/test_cp_utils.py"
-    run_pytest_step distributed test_numerics.py \
-        -v -s --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_numerics.xml" \
-        "$TE_PATH/tests/pytorch/distributed/test_numerics.py"
-    run_pytest_step distributed test_numerics_exact.py \
-        -v -s --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_numerics_exact.xml" \
-        "$TE_PATH/tests/pytorch/distributed/test_numerics_exact.py"
-    run_pytest_step distributed test_torch_fsdp2.py \
-        -v -s --tb=auto --junitxml="$XML_LOG_DIR/pytest_test_torch_fsdp2.xml" \
-        "$TE_PATH/tests/pytorch/distributed/test_torch_fsdp2.py"
-    echo "===== END distributed rc=$FAIL ====="
-}
+run_distributed_suite() { run_shared_suite distributed qa/L1_pytorch_distributed_unittest/test.sh; }
 
-run_onnx_suite() {
-    echo "===== START onnx ====="
-    run_pytest_step onnx test_onnx_export.py \
-        --tb=auto --junitxml="$XML_LOG_DIR/test_onnx_export.xml" \
-        "$TE_PATH/tests/pytorch/test_onnx_export.py"
-    echo "===== END onnx rc=$FAIL ====="
-}
+run_onnx_suite() { run_shared_suite onnx qa/L1_pytorch_onnx_unittest/test.sh; }
 
 run_suite() {
     case "$1" in

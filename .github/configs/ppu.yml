@@ -94,13 +94,16 @@ ignored_tests:
   - tests/pytorch/test_fused_optimizer.py::TestFusedSGD
   - tests/pytorch/test_fused_optimizer.py::TestFusedAdam::test_bf16_exp_avg_and_exp_avg_sq
   - tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv
-  - tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-1-dtype*]
-  - tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-2-dtype*]
+  - test: tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-1-dtype*]
+    jobs: [pytorch_unit]
+  - test: tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-2-dtype*]
+    jobs: [pytorch_unit]
   - tests/pytorch/test_numerics.py::test_gpt_cuda_graph[*dtype1*]
   - tests/pytorch/test_numerics.py::test_gpt_cuda_graph[*dtype2*]
   - tests/pytorch/test_numerics.py::test_layernorm_accuracy[*dtype1*]
   - tests/pytorch/test_numerics.py::test_layernorm_accuracy[*dtype2*]
-  - tests/pytorch/test_numerics.py::test_transformer_layer_hidden_states_format[*126m-2-dtype*]
+  - test: tests/pytorch/test_numerics.py::test_transformer_layer_hidden_states_format[*126m-2-dtype*]
+    jobs: [pytorch_unit]
   - tests/pytorch/test_cuda_graphs.py::test_make_graphed_callables_with_kwargs
   - tests/pytorch/test_cuda_graphs.py::test_make_graphed_callables[*-dtype1-mha*]
   - tests/pytorch/test_cuda_graphs.py::test_make_graphed_callables[*-dtype2-mha*]

@@ -43,25 +43,22 @@ run_pytest() {
     fi
 }
 
+# debug, distributed and onnx run the shared qa scripts like every other
+# platform; Iluvatar differences live only in .github/configs/iluvatar.yml.
+run_shared() {
+    echo "[RUN][$suite] $1"
+    if ! XML_LOG_DIR="$XML_LOG_DIR" bash "$TE_PATH/$1"; then
+        FAILED=1
+        FAILED_TESTS+=("$suite:$1")
+    fi
+}
+
 run_suite() {
     local target
     local index=0
-    local feature_dirs="$TE_PATH/transformer_engine/debug/features"
-    local configs_dir="$TE_PATH/tests/pytorch/debug/test_configs"
     case "$suite" in
         debug)
-            for name in sanity config numerics log api_features perf; do
-                run_pytest "debug_$name" "tests/pytorch/debug/test_$name.py" \
-                    --feature_dirs="$feature_dirs" --configs_dir="$configs_dir"
-            done
-            NVTE_TEST_NVINSPECT_ENABLED=1 \
-            NVTE_TEST_NVINSPECT_CONFIG_FILE="$configs_dir/dummy_feature.yaml" \
-            NVTE_TEST_NVINSPECT_FEATURE_DIRS="$feature_dirs" \
-                run_pytest debug_sanity_regular "tests/pytorch/test_sanity.py"
-            NVTE_TEST_NVINSPECT_ENABLED=1 \
-            NVTE_TEST_NVINSPECT_CONFIG_FILE="$configs_dir/dummy_feature.yaml" \
-            NVTE_TEST_NVINSPECT_FEATURE_DIRS="$feature_dirs" \
-                run_pytest debug_numerics_regular "tests/pytorch/test_numerics.py"
+            run_shared qa/L0_pytorch_debug_unittest/test.sh
             ;;
         unittest)
             for target in "${ILUVATAR_UNIT_TEST_TARGETS[@]}"; do
@@ -77,18 +74,10 @@ required = int(os.environ["ILUVATAR_NPROC_PER_NODE"])
 assert torch.cuda.device_count() >= required, f"Distributed QA needs {required} visible devices"
 assert torch.distributed.is_nccl_available(), "Vendor NCCL-compatible backend is required"
 CHECK
-            for target in "${ILUVATAR_DISTRIBUTED_TEST_TARGETS[@]}"; do
-                index=$((index + 1))
-                run_pytest "distributed_$index" "$target"
-            done
-            NVTE_TEST_NVINSPECT_ENABLED=1 \
-            NVTE_TEST_NVINSPECT_CONFIG_FILE="$configs_dir/dummy_feature.yaml" \
-            NVTE_TEST_NVINSPECT_FEATURE_DIRS="$feature_dirs" \
-                run_pytest distributed_debug_numerics "tests/pytorch/distributed/test_numerics.py"
+            run_shared qa/L1_pytorch_distributed_unittest/test.sh
             ;;
         onnx)
-            NVTE_UnfusedDPA_Emulate_FP8=1 \
-                run_pytest onnx_export "tests/pytorch/test_onnx_export.py"
+            run_shared qa/L1_pytorch_onnx_unittest/test.sh
             ;;
     esac
 }

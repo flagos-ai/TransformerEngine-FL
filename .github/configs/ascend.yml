@@ -88,10 +88,7 @@ paths_watch:
   - tests/plugin/backend/ascend/
   - transformer_engine/plugin/core/backends/vendor/npu/
   - tests/plugin/backend/npu/
-  - qa/L0_pytorch_debug_unittest/test_ascend.sh
   - qa/L0_pytorch_unittest/test_ascend.sh
-  - qa/L1_pytorch_distributed_unittest/test_ascend.sh
-  - qa/L1_pytorch_onnx_unittest/test_ascend.sh
 
 # Missing test-group coverage is explicit; these entries do not claim hardware incapability.
 ignored_test_groups:
@@ -113,3 +110,72 @@ ignored_tests:
   # strict equality; the other NPU layernorm cases remain enabled. Restore when
   # the vendor kernel reaches the reference tolerance.
   - tests/plugin/backend/npu/test_layernorm.py::TestLayerNormTENPUParity::test_dense_forward_backward_matrix
+  # Shared-flow alignment (run of 2026-11-17 at deb7ee4d): debug, distributed
+  # and onnx now run the shared qa scripts. Each entry below failed, crashed or
+  # hung in that run on ascend; reason, environment and repro are in
+  # .github/configs/ignored-tests-record.md (section ascend).
+  # pytorch_debug: AttributeError: Operator 'fused_amax_and_scale_update_after_reduction' not found
+  - test: tests/pytorch/debug/test_numerics.py::test_disable_fp8*
+    jobs: [pytorch_debug]
+  - test: tests/pytorch/debug/test_numerics.py::test_fake_quant_fp8
+    jobs: [pytorch_debug]
+  - test: tests/pytorch/debug/test_numerics.py::test_microbatching_per_tensor_scaling
+    jobs: [pytorch_debug]
+  - test: tests/pytorch/debug/test_numerics.py::test_per_tensor_scaling
+    jobs: [pytorch_debug]
+  - test: tests/pytorch/debug/test_sanity.py::test_sanity_debug[*-True-*]
+    jobs: [pytorch_debug]
+  # pytorch_debug: collection failure
+  - test: tests/pytorch/debug/test_log.py
+    jobs: [pytorch_debug]
+  - test: tests/pytorch/test_numerics.py
+    jobs: [pytorch_debug]
+  - test: tests/pytorch/test_sanity.py
+    jobs: [pytorch_debug]
+  # pytorch_debug: torch._dynamo.exc.BackendCompilerFailed: backend='inductor' raised:
+  - test: tests/pytorch/debug/test_numerics.py::test_logging_zero_numel_tensor
+    jobs: [pytorch_debug]
+  - test: tests/pytorch/debug/test_sanity.py::test_sanity_debug[*-*-layernorm_mlp]
+    jobs: [pytorch_debug]
+  - test: tests/pytorch/debug/test_sanity.py::test_sanity_debug[*-*-transformer_layer]
+    jobs: [pytorch_debug]
+  - test: tests/pytorch/debug/test_sanity.py::test_sanity_debug[log-*-mha_attention]
+    jobs: [pytorch_debug]
+  # pytorch_distributed: collection failure
+  - test: tests/pytorch/debug/test_distributed.py
+    jobs: [pytorch_distributed]
+  - test: tests/pytorch/distributed/test_numerics.py
+    jobs: [pytorch_distributed]
+  - test: tests/pytorch/distributed/test_numerics_exact.py
+    jobs: [pytorch_distributed]
+  - test: tests/pytorch/distributed/test_torch_fsdp2.py
+    jobs: [pytorch_distributed]
+  # pytorch_distributed: subprocess.CalledProcessError: Command '[PosixPath('/flagos/bin/python3'), '-m', 'torch.distributed.
+  - test: tests/pytorch/distributed/test_fusible_ops.py::test_distributed_fuser_ops
+    jobs: [pytorch_distributed]
+  # pytorch_onnx: AssertionError: Torch not compiled with CUDA enabled
+  - test: tests/pytorch/test_onnx_export.py::test_export_layernorm_linear*
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_layernorm_mlp*
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_linear*
+    jobs: [pytorch_onnx]
+  # pytorch_onnx: AttributeError: Operator 'quantize' not found
+  - test: tests/pytorch/test_onnx_export.py::test_export_core_attention[*-*-*-fp8_recipe1]
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_core_attention[*-*-*-fp8_recipe2]
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_gpt_generation
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_multihead_attention_cross_attn
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_multihead_attention_no*
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_multihead_attention_recipe[*-fp8_recipe0]
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_multihead_attention_recipe[*-fp8_recipe1]
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_multihead_attention_unfused_qkv_params
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_transformer_layer*
+    jobs: [pytorch_onnx]

@@ -71,13 +71,6 @@ run_pytest_step() {
     run_cmd "unittest" "$label" "$xml_name" "$@"
 }
 
-run_distributed_step() {
-    local label=$1
-    local xml_name=$2
-    shift 2
-    run_cmd "distributed" "$label" "$xml_name" "$@"
-}
-
 install_base_deps() {
     install_python_package pytest "${PYTEST_PACKAGE_SPEC:-pytest==8.2.1}"
 }
@@ -87,47 +80,20 @@ install_l0_deps() {
     install_python_package expecttest "${EXPECTTEST_PACKAGE_SPEC:-expecttest}"
 }
 
-install_onnx_deps() {
-    install_python_package onnxruntime "${ONNXRUNTIME_PACKAGE_SPEC:-onnxruntime}"
-    install_python_package onnxruntime_extensions "${ONNXRUNTIME_EXTENSIONS_PACKAGE_SPEC:-onnxruntime_extensions}"
-    install_base_deps
-}
-
-run_debug_suite() {
-    echo "===== START debug $(date '+%F %T') ====="
-    install_base_deps
-
-    if ! install_python_package nvdlfw_inspect.api "${NVINSPECT_PACKAGE_SPEC:-nvdlfw-inspect}" ||
-       ! python_has_module nvdlfw_inspect.api; then
-        echo "ERROR: Hygon debug tests require importable nvdlfw_inspect.api" >&2
+# debug, distributed and onnx run the shared qa scripts like every other
+# platform; Hygon differences live only in .github/configs/hygon.yml.
+run_shared_suite() {
+    local suite=$1 script=$2
+    echo "===== START $suite $(date '+%F %T') ====="
+    echo "[RUN][$suite] $script"
+    if ! XML_LOG_DIR="$XML_LOG_DIR" bash "$TE_PATH/$script"; then
         FAIL=1
-        FAILED_CASES+=("debug:nvdlfw_inspect dependency")
-        echo "===== END debug rc=1 $(date '+%F %T') ====="
-        return 0
+        FAILED_CASES+=("$suite:$script")
     fi
-
-    local feature_dirs="${NVTE_TEST_NVINSPECT_FEATURE_DIRS:-$TE_PATH/transformer_engine/debug/features}"
-    local configs_dir="${NVTE_TEST_NVINSPECT_CONFIGS_DIR:-$TE_PATH/tests/pytorch/debug/test_configs}/"
-    local dummy_config="${NVTE_TEST_NVINSPECT_DUMMY_CONFIG_FILE:-$TE_PATH/tests/pytorch/debug/test_configs/dummy_feature.yaml}"
-
-    run_cmd "debug" "debug/test_config.py" "test_config.xml" \
-        "$PYTHON" -m pytest -v -s "$TE_PATH/tests/pytorch/debug/test_config.py" \
-        --feature_dirs="$feature_dirs"
-    run_cmd "debug" "debug/test_log.py" "test_log.xml" \
-        "$PYTHON" -m pytest -v -s "$TE_PATH/tests/pytorch/debug/test_log.py" \
-        --feature_dirs="$feature_dirs" --configs_dir="$configs_dir"
-    run_cmd "debug" "debug/test_api_features.py" "test_api_features.xml" \
-        env NVTE_TORCH_COMPILE=0 "$PYTHON" -m pytest -v -s "$TE_PATH/tests/pytorch/debug/test_api_features.py" \
-        --no-header --feature_dirs="$feature_dirs" --configs_dir="$configs_dir"
-    run_cmd "debug" "test_sanity.py (nvinspect)" "test_sanity_2.xml" \
-        env NVTE_TEST_NVINSPECT_ENABLED=1 \
-        NVTE_TEST_NVINSPECT_CONFIG_FILE="$dummy_config" \
-        NVTE_TEST_NVINSPECT_FEATURE_DIRS="$feature_dirs" \
-        PYTORCH_JIT=0 NVTE_TORCH_COMPILE=0 NVTE_ALLOW_NONDETERMINISTIC_ALGO=0 \
-        "$PYTHON" -m pytest -v -s "$TE_PATH/tests/pytorch/test_sanity.py" --no-header
-
-    echo "===== END debug rc=$FAIL $(date '+%F %T') ====="
+    echo "===== END $suite rc=$FAIL $(date '+%F %T') ====="
 }
+
+run_debug_suite() { run_shared_suite debug qa/L0_pytorch_debug_unittest/test.sh; }
 
 run_unittest_suite() {
     echo "===== START unittest $(date '+%F %T') ====="
@@ -156,26 +122,9 @@ run_unittest_suite() {
     echo "===== END unittest rc=$FAIL $(date '+%F %T') ====="
 }
 
-run_distributed_suite() {
-    echo "===== START distributed $(date '+%F %T') ====="
-    install_base_deps
+run_distributed_suite() { run_shared_suite distributed qa/L1_pytorch_distributed_unittest/test.sh; }
 
-    run_distributed_step "attention/test_cp_utils.py" "pytest_test_cp_utils.xml" \
-        "$PYTHON" -m pytest -v -s "$TE_PATH/tests/pytorch/attention/test_cp_utils.py"
-
-    echo "===== END distributed rc=$FAIL $(date '+%F %T') ====="
-}
-
-run_onnx_suite() {
-    echo "===== START onnx $(date '+%F %T') ====="
-    install_onnx_deps
-
-    run_cmd "onnx" "test_onnx_export.py" "test_onnx_export.xml" \
-        env NVTE_UnfusedDPA_Emulate_FP8=1 \
-        "$PYTHON" -m pytest --tb=auto "$TE_PATH/tests/pytorch/test_onnx_export.py"
-
-    echo "===== END onnx rc=$FAIL $(date '+%F %T') ====="
-}
+run_onnx_suite() { run_shared_suite onnx qa/L1_pytorch_onnx_unittest/test.sh; }
 
 run_suite() {
     case "$1" in

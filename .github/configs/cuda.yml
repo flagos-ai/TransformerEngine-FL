@@ -337,3 +337,10 @@ ignored_tests:
   - tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy_checkpoint
   - tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy_delay_wgrad_compute
   - tests/pytorch/test_numerics.py::test_transformer_layer_hidden_states_format
+  # Shared-flow alignment (run of 2026-11-17 at deb7ee4d): debug, distributed
+  # and onnx now run the shared qa scripts. Each entry below failed, crashed or
+  # hung in that run on cuda; reason, environment and repro are in
+  # .github/configs/ignored-tests-record.md (section cuda).
+  # pytorch_distributed: subprocess.CalledProcessError: Command '[PosixPath('/flagos/bin/python3'), '-m', 'torch.distributed.
+  - test: tests/pytorch/distributed/test_fusible_ops.py::test_distributed_fuser_ops[4]
+    jobs: [pytorch_distributed]

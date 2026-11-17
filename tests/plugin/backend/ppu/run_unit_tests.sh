@@ -73,9 +73,29 @@ PY
   printf '%s\t%s\t%s\t%s\t%s\t\t\n' "$suite" "$target" "$rc" "$status" "$reason" >> "$SUMMARY"
   echo "[EXIT $rc][$suite] $target (log: $log)"
 }
+# debug, distributed and onnx run the shared qa scripts like every other
+# platform; PPU differences live only in .github/configs/ppu.yml ignored_tests.
+shared_qa_script() {
+  case "$1" in
+    debug) echo qa/L0_pytorch_debug_unittest/test.sh ;;
+    distributed) echo qa/L1_pytorch_distributed_unittest/test.sh ;;
+    onnx) echo qa/L1_pytorch_onnx_unittest/test.sh ;;
+  esac
+}
+run_shared_suite() {
+  local suite="$1" script rc status=passed
+  script="$(shared_qa_script "$suite")"
+  echo "[RUN][$suite] $script"
+  timeout --signal=TERM --kill-after=10s "${PPU_STEP_TIMEOUT:-7200}s" \
+    env XML_LOG_DIR="$XML_LOG_DIR" bash "$TE_PATH/$script" 2>&1 | tee "$XML_LOG_DIR/shared-suite.log"
+  rc=${PIPESTATUS[0]}
+  if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then status=timed_out; OVERALL_FAIL=1
+  elif [ "$rc" -ne 0 ]; then status=failed; OVERALL_FAIL=1; fi
+  printf '%s\t%s\t%s\t%s\t\t\t\n' "$suite" "$script" "$rc" "$status" >> "$SUMMARY"
+  echo "[EXIT $rc][$suite] $script"
+}
 run_suite() {
   local suite="$1" target
-  local -n targets="PPU_${suite^^}_TARGETS"
   local previous_visible="${CUDA_VISIBLE_DEVICES:-}"
   local previous_visible_set=0
   [ -n "${CUDA_VISIBLE_DEVICES+x}" ] && previous_visible_set=1
@@ -112,6 +132,16 @@ run_suite() {
   fi
   mkdir -p "$ROOT_LOG_DIR/$suite"
   local old_log="$XML_LOG_DIR"; XML_LOG_DIR="$ROOT_LOG_DIR/$suite"
+  if [ -n "$(shared_qa_script "$suite")" ]; then
+    run_shared_suite "$suite"
+    XML_LOG_DIR="$old_log"
+    if [ "$suite" = distributed ]; then
+      if [ "$previous_visible_set" -eq 1 ]; then export CUDA_VISIBLE_DEVICES="$previous_visible"
+      else unset CUDA_VISIBLE_DEVICES; fi
+    fi
+    return
+  fi
+  local -n targets="PPU_${suite^^}_TARGETS"
   local -a expanded_targets=()
   for target in "${targets[@]}"; do
     if [ "$target" = tests/plugin ]; then
@@ -162,7 +192,13 @@ with summary.open() as f:
         xml = summary.parent / suite / (target.replace('/', '_').removesuffix('.py') + '.xml')
         log = summary.parent / suite / (target.replace('/', '_').removesuffix('.py') + '.log')
         counts = {'tests': 0, 'failures': 0, 'errors': 0, 'skipped': 0}
-        if status != 'ignored':
+        if target.startswith('qa/'):
+            # A shared qa script writes one JUnit file per step into the suite dir.
+            log = summary.parent / suite / 'shared-suite.log'
+            for report in sorted((summary.parent / suite).glob('*.xml')):
+                root = ET.parse(report)
+                for key in counts: counts[key] += sum(int(x.get(key, 0)) for x in root.iter('testsuite'))
+        elif status != 'ignored':
             if not xml.is_file():
                 raise FileNotFoundError(f'Missing JUnit report: {xml}')
             root = ET.parse(xml)

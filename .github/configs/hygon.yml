@@ -103,11 +103,105 @@ ignored_tests:
   - tests/pytorch/debug/test_api_features.py::test_fake_quant
   - tests/pytorch/debug/test_api_features.py::test_statistics_collection
   - tests/pytorch/debug/test_api_features.py::test_statistics_multi_run
-  # Hygon DTK launch/runtime limitations; restore after the affected paths pass.
-  - tests/pytorch/test_onnx_export.py::test_export_linear*
-  - tests/pytorch/test_onnx_export.py::test_export_layernorm_linear*
-  - tests/pytorch/test_onnx_export.py::test_export_layernorm_mlp*
-  - tests/pytorch/test_onnx_export.py::test_export_core_attention*
-  - tests/pytorch/test_onnx_export.py::test_export_transformer_layer*
-  - tests/pytorch/test_onnx_export.py::test_export_multihead_attention*
-  - tests/pytorch/test_onnx_export.py::test_export_gpt_generation*
+  # Shared-flow alignment (run of 2026-11-17 at deb7ee4d): debug, distributed
+  # and onnx now run the shared qa scripts. Each entry below failed, crashed or
+  # hung in that run on hygon; reason, environment and repro are in
+  # .github/configs/ignored-tests-record.md (section hygon).
+  # pytorch_debug: AttributeError: Operator 'fused_amax_and_scale_update_after_reduction' not found
+  - test: tests/pytorch/debug/test_numerics.py::test_disable_fp8*
+    jobs: [pytorch_debug]
+  - test: tests/pytorch/debug/test_numerics.py::test_fake_quant_fp8
+    jobs: [pytorch_debug]
+  - test: tests/pytorch/debug/test_numerics.py::test_microbatching_per_tensor_scaling
+    jobs: [pytorch_debug]
+  - test: tests/pytorch/debug/test_numerics.py::test_per_tensor_scaling
+    jobs: [pytorch_debug]
+  - test: tests/pytorch/debug/test_sanity.py::test_sanity_debug[*-True-*]
+    jobs: [pytorch_debug]
+  # pytorch_debug: SystemExit: 1
+  - test: tests/pytorch/debug/test_sanity.py::test_sanity_debug[fake_quant-*-mha_attention]
+    jobs: [pytorch_debug]
+  - test: tests/pytorch/debug/test_sanity.py::test_sanity_debug[fake_quant-*-transformer_layer]
+    jobs: [pytorch_debug]
+  # pytorch_debug: collection failure
+  - test: tests/pytorch/test_numerics.py
+    jobs: [pytorch_debug]
+  # pytorch_distributed: AssertionError: torchrun exited with 1
+  - test: tests/pytorch/debug/test_distributed.py::test_debug_distributed
+    jobs: [pytorch_distributed]
+  # pytorch_distributed: collection failure
+  - test: tests/pytorch/distributed/test_numerics.py
+    jobs: [pytorch_distributed]
+  - test: tests/pytorch/distributed/test_numerics_exact.py
+    jobs: [pytorch_distributed]
+  - test: tests/pytorch/distributed/test_torch_fsdp2.py
+    jobs: [pytorch_distributed]
+  # pytorch_distributed: subprocess.CalledProcessError: Command '[PosixPath('/flagos/bin/python3'), '-m', 'torch.distributed.
+  - test: tests/pytorch/distributed/test_cast_master_weights_to_fp8.py::test_cast_master_weights_to_fp8
+    jobs: [pytorch_distributed]
+  - test: tests/pytorch/distributed/test_fusible_ops.py::test_distributed_fuser_ops
+    jobs: [pytorch_distributed]
+  # pytorch_onnx: AttributeError: Operator 'fused_amax_and_scale_update_after_reduction' not found
+  - test: tests/pytorch/test_onnx_export.py::test_export_layernorm_mlp[*-fp8_recipe0]
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_layernorm_mlp_activation
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_layernorm_mlp_no*
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_layernorm_mlp_return*
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_layernorm_mlp_zero_centered_gamma
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_linear_recipe[*-fp8_recipe0]
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_linear_return_bias
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_linear_use_bias
+    jobs: [pytorch_onnx]
+  # pytorch_onnx: AttributeError: Operator 'quantize' not found
+  - test: tests/pytorch/test_onnx_export.py::test_export_core_attention[*-*-*-fp8_recipe1]
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_core_attention[*-*-*-fp8_recipe2]
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_gpt_generation[*-fp8_recipe0]
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_gpt_generation[*-fp8_recipe1]
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_layernorm_linear_no*
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_layernorm_linear_recipe[*-fp8_recipe0]
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_layernorm_linear_recipe[*-fp8_recipe1]
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_layernorm_linear_return*
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_layernorm_linear_zero_centered_gamma
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_layernorm_mlp[*-fp8_recipe1]
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_linear_recipe[*-fp8_recipe1]
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_multihead_attention_cross_attn
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_multihead_attention_no*
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_multihead_attention_recipe[*-fp8_recipe0]
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_multihead_attention_recipe[*-fp8_recipe1]
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_multihead_attention_unfused_qkv_params
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_transformer_layer_activation
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_transformer_layer_no_mask
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_transformer_layer_output_layernorm
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_transformer_layer_recipe[*-fp8_recipe0]
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_transformer_layer_recipe[*-fp8_recipe1]
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_transformer_layer_unfused_qkv_params
+    jobs: [pytorch_onnx]
+  - test: tests/pytorch/test_onnx_export.py::test_export_transformer_layer_zero_centered_gamma
+    jobs: [pytorch_onnx]

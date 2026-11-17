@@ -141,10 +141,7 @@ ignored_tests:
   # on default.flagos (output validation reports 3k-16k element mismatches).
   # Likely the same norm kernels as above (not yet isolated); run 43804752380.
   # Repro: pytest tests/pytorch/test_onnx_export.py -k "core_attention or transformer_layer"
-  - tests/pytorch/test_onnx_export.py::test_export_core_attention
-  - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_activation
   - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_output_layernorm
-  - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_recipe
   - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_unfused_qkv_params
   - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_zero_centered_gamma
   # num_warps=32 exceeds the MACA compiler limit; restore after launch adaptation.
@@ -162,10 +159,13 @@ ignored_tests:
   # each once it passes on C550. The attention, RoPE, GQA and HF-integration
   # files from the same lists are covered by the attention group ignore below.
   # From the PLATFORM=metax lists in qa/L0_pytorch_unittest/test.sh (unit job)
-  # and qa/L0_pytorch_debug_unittest/test.sh (debug job).
-  - tests/pytorch/test_numerics.py
-  - tests/pytorch/test_sanity.py
-  - tests/pytorch/debug/test_sanity.py
+  # and qa/L0_pytorch_debug_unittest/test.sh (debug job). The debug job ran these
+  # files on C550 on 2026-11-17 (4116 + 741 + 13 passed), so they now apply to the
+  # unit job only; the debug failures are listed in the shared-flow block below.
+  - test: tests/pytorch/test_numerics.py
+    jobs: [pytorch_unit]
+  - test: tests/pytorch/test_sanity.py
+    jobs: [pytorch_unit]
   - tests/pytorch/test_fused_optimizer.py
   - tests/pytorch/test_multi_tensor.py
   - tests/pytorch/test_cpu_offloading.py
@@ -179,6 +179,62 @@ ignored_tests:
   # fails the NCCL store handshake before rank 0 publishes the unique id.
   - tests/pytorch/distributed/test_numerics.py
   - tests/pytorch/distributed/test_numerics_exact.py
+  # Shared-flow alignment (run of 2026-11-17 at deb7ee4d): debug, distributed
+  # and onnx now run the shared qa scripts. Each entry below failed, crashed or
+  # hung in that run on metax; reason, environment and repro are in
+  # .github/configs/ignored-tests-record.md (section metax).
+  # pytorch_debug: AssertionError: GEMM not possible
+  - test: tests/pytorch/test_numerics.py::test_transformer_layer_hidden_states_format[*-*-dtype1]
+    jobs: [pytorch_debug]
+  - test: tests/pytorch/test_numerics.py::test_transformer_layer_hidden_states_format[*-*-dtype2]
+    jobs: [pytorch_debug]
+  # pytorch_debug: AssertionError: Mismatch in tensor 4
+  - test: tests/pytorch/test_numerics.py::test_gpt_checkpointing[*-2-dtype2]
+    jobs: [pytorch_debug]
+  # pytorch_debug: AssertionError: Outputs not close enough in tensor at idx=N
+  - test: tests/pytorch/test_numerics.py::test_dpa_accuracy[*-*-dtype1]
+    jobs: [pytorch_debug]
+  - test: tests/pytorch/test_numerics.py::test_dpa_accuracy[*-*-dtype2]
+    jobs: [pytorch_debug]
+  - test: tests/pytorch/test_numerics.py::test_layernorm_accuracy[*-*-*-*-1-*]
+    jobs: [pytorch_debug]
+  - test: tests/pytorch/test_numerics.py::test_layernorm_accuracy[*-*-*-*-dtype1]
+    jobs: [pytorch_debug]
+  - test: tests/pytorch/test_numerics.py::test_layernorm_accuracy[*-*-*-*-dtype2]
+    jobs: [pytorch_debug]
+  - test: tests/pytorch/test_numerics.py::test_layernorm_accuracy[*-*-*-2-*]
+    jobs: [pytorch_debug]
+  - test: tests/pytorch/test_numerics.py::test_layernorm_accuracy[*-0.001-*-*-*]
+    jobs: [pytorch_debug]
+  # pytorch_debug: RuntimeError: All 1 implementation(s) failed for op='quantize'.
+  - test: tests/pytorch/debug/test_sanity.py::test_sanity_debug[fake_quant-*-mha_attention]
+    jobs: [pytorch_debug]
+  - test: tests/pytorch/debug/test_sanity.py::test_sanity_debug[fake_quant-*-transformer_layer]
+    jobs: [pytorch_debug]
+  # pytorch_debug: RuntimeError: All 3 implementation(s) failed for op='get_flash_attention_class'.
+  - test: tests/pytorch/test_sanity.py::test_sanity_amp_and_nvfuser[*-*-*-dtype0]
+    jobs: [pytorch_debug]
+  # pytorch_onnx: ValueError: Output validation of <path> failed with 16013 errors
+  - test: tests/pytorch/test_onnx_export.py::test_export_core_attention[precision0-*-*-*]
+    jobs: [pytorch_onnx]
+  # pytorch_onnx: ValueError: Output validation of <path> failed with 16043 errors
+  - test: tests/pytorch/test_onnx_export.py::test_export_core_attention[precision3-*-*-*]
+    jobs: [pytorch_onnx]
+  # pytorch_onnx: ValueError: Output validation of <path> failed with 3123 errors
+  - test: tests/pytorch/test_onnx_export.py::test_export_transformer_layer_activation[clamped_swiglu]
+    jobs: [pytorch_onnx]
+  # pytorch_onnx: ValueError: Output validation of <path> failed with 3144 errors
+  - test: tests/pytorch/test_onnx_export.py::test_export_transformer_layer_activation[geglu]
+    jobs: [pytorch_onnx]
+  # pytorch_onnx: ValueError: Output validation of <path> failed with 3181 errors
+  - test: tests/pytorch/test_onnx_export.py::test_export_transformer_layer_activation[reglu]
+    jobs: [pytorch_onnx]
+  # pytorch_onnx: ValueError: Output validation of <path> failed with 3332 errors
+  - test: tests/pytorch/test_onnx_export.py::test_export_transformer_layer_recipe[precision0-*]
+    jobs: [pytorch_onnx]
+  # pytorch_onnx: ValueError: Output validation of <path> failed with 3378 errors
+  - test: tests/pytorch/test_onnx_export.py::test_export_transformer_layer_activation[relu]
+    jobs: [pytorch_onnx]
 
 # Current QA coverage gaps, recorded in the plan instead of claimed as passing.
 ignored_test_groups:

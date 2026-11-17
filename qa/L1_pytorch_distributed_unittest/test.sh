@@ -96,7 +96,9 @@ else
     echo "Warning: nvdlfw_inspect is unavailable; debug numerics test will be skipped"
 fi
 
-pip3 install pytest==8.2.1 || error_exit "Failed to install pytest"
+# Images that mark Python as externally managed (PEP 668) refuse pip; keep
+# the image's pytest in that case instead of aborting the whole suite.
+pip3 install pytest==8.2.1 || python3 -c "import pytest" || error_exit "Failed to install pytest"
 
 run_test_step() {
     local xml_file=$1
@@ -111,6 +113,9 @@ run_test_step() {
     eval "$cmd" || test_fail "$label"
 }
 
+# Kept disabled for every platform: in the 2026-11-17 run on 8 platforms (deb7ee4d) this step
+# failed on all of them (test_current_device), so it is not a platform difference; details in
+# .github/configs/ignored-tests-record.md (section "Shared steps kept disabled").
 # python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_sanity.xml $TE_PATH/tests/pytorch/distributed/test_sanity.py || test_fail "test_sanity.py"
 run_test_step "pytest_test_numerics.xml" "$TE_PATH/tests/pytorch/distributed/test_numerics.py" \
 "python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_numerics.xml $TE_PATH/tests/pytorch/distributed/test_numerics.py" \
@@ -118,10 +123,15 @@ run_test_step "pytest_test_numerics.xml" "$TE_PATH/tests/pytorch/distributed/tes
 run_test_step "pytest_test_numerics_exact.xml" "$TE_PATH/tests/pytorch/distributed/test_numerics_exact.py" \
 "python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_numerics_exact.xml $TE_PATH/tests/pytorch/distributed/test_numerics_exact.py" \
 "test_numerics_exact.py"
-# python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_fusible_ops.xml $TE_PATH/tests/pytorch/distributed/test_fusible_ops.py || test_fail "test_fusible_ops.py"
+run_test_step "pytest_test_fusible_ops.xml" "$TE_PATH/tests/pytorch/distributed/test_fusible_ops.py" \
+"python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_fusible_ops.xml $TE_PATH/tests/pytorch/distributed/test_fusible_ops.py" \
+"test_fusible_ops.py"
 run_test_step "pytest_test_torch_fsdp2.xml" "$TE_PATH/tests/pytorch/distributed/test_torch_fsdp2.py" \
 "python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_torch_fsdp2.xml $TE_PATH/tests/pytorch/distributed/test_torch_fsdp2.py" \
 "test_torch_fsdp2.py"
+# Kept disabled for every platform: in the 2026-11-17 run on 8 platforms (deb7ee4d) these three
+# steps failed, did not collect or timed out on all of them, so it is not a platform difference; details in
+# .github/configs/ignored-tests-record.md (section "Shared steps kept disabled").
 # python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_comm_gemm_overlap.xml $TE_PATH/tests/pytorch/distributed/test_comm_gemm_overlap.py || test_fail "test_comm_gemm_overlap.py"
 # python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_fusible_ops_with_userbuffers.xml $TE_PATH/tests/pytorch/distributed/test_fusible_ops_with_userbuffers.py || test_fail "test_fusible_ops_with_userbuffers.py"
 # python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_attention_with_cp.xml $TE_PATH/tests/pytorch/attention/test_attention_with_cp.py || test_fail "test_attention_with_cp.py"
@@ -141,14 +151,17 @@ run_test_step "pytest_test_cast_master_weights_to_fp8.xml" "$TE_PATH/tests/pytor
 : ${NVTE_TEST_NVINSPECT_DUMMY_CONFIG_FILE:=$TE_PATH/tests/pytorch/debug/test_configs/dummy_feature.yaml}
 : ${NVTE_TEST_NVINSPECT_FEATURE_DIRS:=$TE_PATH/transformer_engine/debug/features}
 
-# pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_distributed.xml $TE_PATH/tests/pytorch/debug/test_distributed.py --feature_dirs=$NVTE_TEST_NVINSPECT_FEATURE_DIRS || test_fail "debug test_distributed.py"
-# standard numerics tests with initialized debug
+# Both debug steps need nvdlfw_inspect; the second runs the standard numerics
+# tests with debug initialized.
 if [ "$DEBUG_TESTS_READY" -eq 1 ]; then
+    run_test_step "pytest_test_distributed.xml" "$TE_PATH/tests/pytorch/debug/test_distributed.py" \
+    "pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_distributed.xml $TE_PATH/tests/pytorch/debug/test_distributed.py --feature_dirs=$NVTE_TEST_NVINSPECT_FEATURE_DIRS" \
+    "debug test_distributed.py"
     run_test_step "pytest_test_numerics_2.xml" "$TE_PATH/tests/pytorch/distributed/test_numerics.py" \
     "NVTE_TEST_NVINSPECT_ENABLED=1 NVTE_TEST_NVINSPECT_CONFIG_FILE=$NVTE_TEST_NVINSPECT_DUMMY_CONFIG_FILE NVTE_TEST_NVINSPECT_FEATURE_DIRS=$NVTE_TEST_NVINSPECT_FEATURE_DIRS pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_numerics_2.xml $TE_PATH/tests/pytorch/distributed/test_numerics.py" \
     "test_numerics.py (debug)"
 else
-    echo "Skipping debug test_numerics.py because nvdlfw_inspect is unavailable"
+    echo "Skipping debug test_distributed.py and test_numerics.py because nvdlfw_inspect is unavailable"
 fi
 
 if [ "$RET" -ne 0 ]; then

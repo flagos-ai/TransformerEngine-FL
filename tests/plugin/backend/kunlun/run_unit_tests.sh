@@ -82,61 +82,15 @@ run_suite() {
             "TE_TEST_GROUP_PRESET=plugin-unit python3 \
             $TE_PATH/tests/test_utils/run_ci_test_group.py"
             ;;
+        # distributed and onnx run the shared qa scripts like every other platform;
+        # Kunlun differences live only in .github/configs/kunlun.yml ignored_tests.
         distributed | pytorch_distributed_unittest)
-        run_test_step "pytest_test_numerics.xml" \
-            "python3 -m pytest -v -s \
-            --junitxml=$XML_LOG_DIR/pytest_test_numerics.xml \
-            $TE_PATH/tests/pytorch/distributed/test_numerics.py"
-        run_test_step "pytest_test_numerics_exact.xml" \
-            "python3 -m pytest -v -s \
-            --junitxml=$XML_LOG_DIR/pytest_test_numerics_exact.xml \
-            $TE_PATH/tests/pytorch/distributed/test_numerics_exact.py"
-        run_test_step "pytest_test_torch_fsdp2.xml" \
-            "PYTEST_ADDOPTS= COVERAGE_PROCESS_START= python3 -m pytest -v -s \
-            --junitxml=$XML_LOG_DIR/pytest_test_torch_fsdp2.xml \
-            $TE_PATH/tests/pytorch/distributed/test_torch_fsdp2.py"
-        run_test_step "pytest_test_cp_utils.xml" \
-            "python3 -m pytest -v -s \
-            --junitxml=$XML_LOG_DIR/pytest_test_cp_utils.xml \
-            $TE_PATH/tests/pytorch/attention/test_cp_utils.py"
-        run_test_step "pytest_test_cast_master_weights_to_fp8.xml" \
-            "python3 -m pytest -v -s \
-            --junitxml=$XML_LOG_DIR/pytest_test_cast_master_weights_to_fp8.xml \
-            $TE_PATH/tests/pytorch/distributed/test_cast_master_weights_to_fp8.py"
+        run_test_step "qa/L1_pytorch_distributed_unittest/test.sh" \
+            "XML_LOG_DIR=$XML_LOG_DIR bash $TE_PATH/qa/L1_pytorch_distributed_unittest/test.sh"
             ;;
         onnx | pytorch_onnx_unittest)
-        export NVTE_UnfusedDPA_Emulate_FP8="${NVTE_UnfusedDPA_Emulate_FP8:-1}"
-
-        run_test_step "test_onnx_export_linear.xml" \
-            "NVTE_FLASH_ATTN=0 NVTE_FUSED_ATTN=0 NVTE_UNFUSED_ATTN=1 \
-            NVTE_UnfusedDPA_Emulate_FP8=1 python3 -m pytest -v -s --tb=short \
-            --junitxml=$XML_LOG_DIR/test_onnx_export_linear.xml \
-            $TE_PATH/tests/pytorch/test_onnx_export.py \
-            -k 'test_export_linear_recipe or test_export_linear_use_bias or test_export_linear_return_bias'"
-        run_test_step "test_onnx_export_normalization.xml" \
-            "NVTE_FLASH_ATTN=0 NVTE_FUSED_ATTN=0 NVTE_UNFUSED_ATTN=1 \
-            NVTE_UnfusedDPA_Emulate_FP8=1 python3 -m pytest -v -s --tb=short \
-            --junitxml=$XML_LOG_DIR/test_onnx_export_normalization.xml \
-            $TE_PATH/tests/pytorch/test_onnx_export.py \
-            -k 'test_export_layernorm_recipe or test_export_layernorm_zero_centered_gamma or test_export_layernorm_normalization'"
-        run_test_step "test_onnx_export_layernorm_linear.xml" \
-            "NVTE_FLASH_ATTN=0 NVTE_FUSED_ATTN=0 NVTE_UNFUSED_ATTN=1 \
-            NVTE_UnfusedDPA_Emulate_FP8=1 python3 -m pytest -v -s --tb=short \
-            --junitxml=$XML_LOG_DIR/test_onnx_export_layernorm_linear.xml \
-            $TE_PATH/tests/pytorch/test_onnx_export.py \
-            -k 'test_export_layernorm_linear_recipe or test_export_layernorm_linear_return_ln_out or test_export_layernorm_linear_zero_centered_gamma or test_export_layernorm_linear_normalization or test_export_layernorm_linear_no_bias or test_export_layernorm_linear_return_bias'"
-        run_test_step "test_onnx_export_layernorm_mlp.xml" \
-            "NVTE_FLASH_ATTN=0 NVTE_FUSED_ATTN=0 NVTE_UNFUSED_ATTN=1 \
-            NVTE_UnfusedDPA_Emulate_FP8=1 python3 -m pytest -v -s --tb=short \
-            --junitxml=$XML_LOG_DIR/test_onnx_export_layernorm_mlp.xml \
-            $TE_PATH/tests/pytorch/test_onnx_export.py \
-            -k 'test_export_layernorm_mlp or test_export_layernorm_mlp_return_layernorm_output or test_export_layernorm_mlp_return_bias or test_export_layernorm_mlp_no_bias or test_export_layernorm_mlp_zero_centered_gamma or test_export_layernorm_mlp_normalization or test_export_layernorm_mlp_activation'"
-        run_test_step "test_onnx_export_context.xml" \
-            "NVTE_FLASH_ATTN=0 NVTE_FUSED_ATTN=0 NVTE_UNFUSED_ATTN=1 \
-            NVTE_UnfusedDPA_Emulate_FP8=1 python3 -m pytest -v -s --tb=short \
-            --junitxml=$XML_LOG_DIR/test_onnx_export_context.xml \
-            $TE_PATH/tests/pytorch/test_onnx_export.py \
-            -k 'test_export_ctx_manager'"
+        run_test_step "qa/L1_pytorch_onnx_unittest/test.sh" \
+            "XML_LOG_DIR=$XML_LOG_DIR bash $TE_PATH/qa/L1_pytorch_onnx_unittest/test.sh"
             ;;
         -h | --help)
             echo "Usage: $0 [debug] [unittest] [distributed] [onnx]"

@@ -37,9 +37,3 @@ readonly ILUVATAR_UNIT_TEST_TARGETS=(
     "tests/pytorch/test_hf_integration.py"
     "tests/plugin"
 )
-readonly ILUVATAR_DISTRIBUTED_TEST_TARGETS=(
-    "tests/pytorch/distributed/test_numerics_exact.py"
-    "tests/pytorch/distributed/test_torch_fsdp2.py"
-    "tests/pytorch/attention/test_cp_utils.py"
-    "tests/pytorch/distributed/test_cast_master_weights_to_fp8.py"
-)
