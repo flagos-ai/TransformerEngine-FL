@@ -46,6 +46,19 @@ SEQ_LEN = 128
 LOSS_FN = torch.nn.functional.cross_entropy
 
 
+@pytest.fixture(autouse=True)
+def match_cuda_gemm_precision():
+    """Match the TF32 precision used by the TE CUDA GEMMs in reference matmuls."""
+    if os.getenv("PLATFORM", "cuda") != "cuda":
+        yield
+        return
+
+    original = torch.backends.cuda.matmul.allow_tf32
+    torch.backends.cuda.matmul.allow_tf32 = True
+    yield
+    torch.backends.cuda.matmul.allow_tf32 = original
+
+
 def _cast_to_fp8(tensor, scale, dtype):
     tensor = tensor.contiguous()
     if type(scale) == torch.Tensor:
