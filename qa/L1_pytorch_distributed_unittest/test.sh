@@ -94,9 +94,12 @@ fi
 
 # It is not installed as a requirement,
 # because it is not available on PyPI.
-pip uninstall -y nvdlfw-inspect
-if pip install git+https://github.com/NVIDIA/nvidia-dlfw-inspect.git && \
-   python3 -c "import nvdlfw_inspect.api" >/dev/null 2>&1; then
+# --force-reinstall swaps the installed copy only after the new one is built, so
+# a refused install (PEP 668 on Enflame) or no network keeps the image's copy
+# instead of silently skipping the debug steps. Readiness is the import alone.
+pip install --force-reinstall --no-deps git+https://github.com/NVIDIA/nvidia-dlfw-inspect.git || \
+    echo "Warning: could not reinstall nvdlfw-inspect; keeping the installed copy if any"
+if python3 -c "import nvdlfw_inspect.api" >/dev/null 2>&1; then
     DEBUG_TESTS_READY=1
 else
     echo "Warning: nvdlfw_inspect is unavailable; debug numerics test will be skipped"

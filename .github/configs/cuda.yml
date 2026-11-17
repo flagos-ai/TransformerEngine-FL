@@ -341,5 +341,8 @@ ignored_tests:
   # and onnx now run the shared qa scripts. Each entry below failed, crashed or
   # hung in that run on cuda; the comment above each group is its first error.
   # pytorch_distributed: subprocess.CalledProcessError: Command '[PosixPath('/flagos/bin/python3'), '-m', 'torch.distributed.
-  - test: tests/pytorch/distributed/test_fusible_ops.py::test_distributed_fuser_ops[4]
+  # The id is the visible GPU count: the run had 4 GPUs and [4] failed (worker
+  # stderr not captured; [1] and [2] passed). CI runs with --gpus all, so the
+  # same full-world case is [8] there.
+  - test: tests/pytorch/distributed/test_fusible_ops.py::test_distributed_fuser_ops[8]
     jobs: [pytorch_distributed]

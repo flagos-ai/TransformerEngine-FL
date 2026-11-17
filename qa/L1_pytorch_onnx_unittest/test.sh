@@ -12,6 +12,6 @@ mkdir -p "$XML_LOG_DIR"
 
 # Images that mark Python as externally managed (PEP 668) refuse pip; keep
 # the image's pytest in that case instead of aborting the whole suite.
-pip3 install pytest==8.2.1 || python3 -c "import pytest" || error_exit "Failed to install pytest"
+pip3 install pytest==8.2.1 || python3 -c "import pytest" || { echo "Error: Failed to install pytest"; exit 1; }
 # NVTE_UnfusedDPA_Emulate_FP8=1 enables FP8 attention emulation when no native backend is available
 NVTE_UnfusedDPA_Emulate_FP8=1 python3 -m pytest --tb=auto --junitxml=$XML_LOG_DIR/test_onnx_export.xml $TE_PATH/tests/pytorch/test_onnx_export.py
