@@ -817,7 +817,9 @@ class PlannerTests(unittest.TestCase):
         unit_only = "tests/a.py::test_unit_only[*x*]"
         two_jobs = "tests/b.py::test_debug_and_onnx"
         config = {
-            "unit_test_matrix": [{"name": n} for n in ("pytorch_unit", "pytorch_debug", "pytorch_onnx")],
+            "unit_test_matrix": [
+                {"name": n} for n in ("pytorch_unit", "pytorch_debug", "pytorch_onnx")
+            ],
             "ignored_tests": [
                 everywhere,
                 {"jobs": ["pytorch_unit"], "tests": [unit_only]},
@@ -825,9 +827,15 @@ class PlannerTests(unittest.TestCase):
             ],
         }
         self.assertEqual(planner.platform_ignored_tests(config), [everywhere, unit_only, two_jobs])
-        self.assertEqual(planner.platform_ignored_tests(config, "pytorch_unit"), [everywhere, unit_only])
-        self.assertEqual(planner.platform_ignored_tests(config, "pytorch_debug"), [everywhere, two_jobs])
-        self.assertEqual(planner.platform_ignored_tests(config, "pytorch_onnx"), [everywhere, two_jobs])
+        self.assertEqual(
+            planner.platform_ignored_tests(config, "pytorch_unit"), [everywhere, unit_only]
+        )
+        self.assertEqual(
+            planner.platform_ignored_tests(config, "pytorch_debug"), [everywhere, two_jobs]
+        )
+        self.assertEqual(
+            planner.platform_ignored_tests(config, "pytorch_onnx"), [everywhere, two_jobs]
+        )
         for bad in (
             {"tests": ["tests/a.py"]},
             {"jobs": ["pytorch_unit"]},

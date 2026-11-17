@@ -348,7 +348,9 @@ def platform_ignored_tests(config: dict, job: str | None = None) -> list[str]:
         jobs, tests = None, [entry]
         if isinstance(entry, dict):
             if set(entry) != {"jobs", "tests"}:
-                raise ValueError("A job-scoped ignored_tests group needs exactly 'jobs' and 'tests'")
+                raise ValueError(
+                    "A job-scoped ignored_tests group needs exactly 'jobs' and 'tests'"
+                )
             jobs, tests = entry["jobs"], entry["tests"]
             if (
                 not isinstance(jobs, list)
@@ -357,7 +359,9 @@ def platform_ignored_tests(config: dict, job: str | None = None) -> list[str]:
             ):
                 raise ValueError("ignored_tests 'jobs' must be a non-empty list of job names")
             if not isinstance(tests, list) or not tests:
-                raise ValueError("ignored_tests 'tests' must be a non-empty list of test files or nodes")
+                raise ValueError(
+                    "ignored_tests 'tests' must be a non-empty list of test files or nodes"
+                )
         for test in tests:
             if not isinstance(test, str) or not test.strip():
                 raise ValueError("ignored_tests must be a list of test files or nodes")
