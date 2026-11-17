@@ -41,6 +41,13 @@ from transformer_engine.plugin.core.backends.flagos.impl.gemm import (
     validate_gemm_scale,
 )
 
+
+@pytest.fixture(autouse=True)
+def mock_gemm_module_flag_gems(monkeypatch):
+    """Use the mock even when the GEMM module was imported before this test file."""
+    monkeypatch.setattr(sys.modules[generic_gemm_fl.__module__], "flag_gems", mock_flag_gems)
+
+
 # ==============================================================================
 # Part 1: Helper and Utility Function Tests
 # ==============================================================================
@@ -274,6 +281,45 @@ def test_grouped_gemm_standard_lifecycle(grad, accumulate, single_output):
         math_sm_count=80,
     )
     assert returned_bias == bias
+
+
+@pytest.mark.parametrize("accumulate", [False, True])
+def test_grouped_gemm_wgrad_bias_uses_output_gradient(accumulate):
+    """Bias gradients sum over tokens, not over the weight-gradient matrix."""
+    inputs = [torch.randn(2, 3), torch.randn(4, 3)]
+    output_grads = [torch.randn(2, 5), torch.randn(4, 5)]
+    weight_grads = [torch.full((5, 3), 0.25) for _ in inputs]
+    bias_grads = [torch.full((5,), 0.5) for _ in inputs]
+
+    with (
+        patch.object(mock_flag_gems, "mm", side_effect=torch.mm),
+        patch.object(mock_flag_gems, "sum_dim", side_effect=lambda x, dim: x.sum(dim=tuple(dim))),
+        patch.object(mock_flag_gems, "copy_", side_effect=lambda dst, src: dst.copy_(src)),
+        patch.object(mock_flag_gems, "add_", side_effect=lambda dst, src: dst.add_(src)),
+    ):
+        te_general_grouped_gemm_fl(
+            inputs,
+            False,
+            output_grads,
+            True,
+            weight_grads,
+            None,
+            [2, 4],
+            bias_grads,
+            None,
+            False,
+            [],
+            True,
+            [],
+            0,
+            accumulate,
+            False,
+            0,
+        )
+
+    for x, dy, dw, db in zip(inputs, output_grads, weight_grads, bias_grads):
+        torch.testing.assert_close(dw, dy.T @ x + (0.25 if accumulate else 0))
+        torch.testing.assert_close(db, dy.sum(dim=0) + (0.5 if accumulate else 0))
 
 
 @pytest.mark.parametrize("single_output", [True, False])
