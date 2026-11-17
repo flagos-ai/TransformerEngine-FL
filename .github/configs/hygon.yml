@@ -117,6 +117,9 @@ ignored_tests:
     jobs: [pytorch_debug]
   - test: tests/pytorch/debug/test_sanity.py::test_sanity_debug[*-True-*]
     jobs: [pytorch_debug]
+  # pytorch_debug: KERNEL VMFault in mm_kernel, process aborted (SIGABRT) with no JUnit result
+  - test: tests/pytorch/debug/test_numerics.py::test_logging_zero_numel_tensor
+    jobs: [pytorch_debug]
   # pytorch_debug: SystemExit: 1
   - test: tests/pytorch/debug/test_sanity.py::test_sanity_debug[fake_quant-*-mha_attention]
     jobs: [pytorch_debug]

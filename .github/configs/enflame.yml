@@ -152,11 +152,23 @@ ignored_tests:
   # pytorch_debug: AssertionError: AMP wrong output type.
   - test: tests/pytorch/test_sanity.py::test_sanity_normalization_amp[*-*-*-*-dtype1]
     jobs: [pytorch_debug]
-  # pytorch_debug: Fatal Python error: Aborted (SIGABRT, core dumped) at the first test_gpt_accuracy case, in 4 consecu
+  # pytorch_debug: SIGABRT in topsatenScaledDotProductEfficientAttentionBackward
+  # (NOT_SUPPORT / RUNTIME_ERROR); both use the torch nn.MultiheadAttention
+  # reference. test_mha_accuracy: first seen in CI run 44041173929.
   - test: tests/pytorch/test_numerics.py::test_gpt_accuracy
+    jobs: [pytorch_debug]
+  - test: tests/pytorch/test_numerics.py::test_mha_accuracy
     jobs: [pytorch_debug]
   # pytorch_debug: RuntimeError: All 1 implementation(s) failed for op='quantize'.
   - test: tests/pytorch/debug/test_api_features.py::test_per_tensor_scaling
+    jobs: [pytorch_debug]
+  # pytorch_debug: process dies (SIGSEGV / SIGABRT: tops extractFatBinary failed,
+  # fp8 quantize compute err), so no JUnit result is written.
+  - test: tests/pytorch/debug/test_api_features.py::test_fake_quant
+    jobs: [pytorch_debug]
+  - test: tests/pytorch/debug/test_api_features.py::test_statistics_collection
+    jobs: [pytorch_debug]
+  - test: tests/pytorch/debug/test_api_features.py::test_statistics_multi_run
     jobs: [pytorch_debug]
   # pytorch_debug: TypeError: Data types for parameters must match when outside of autocasted region.
   - test: tests/pytorch/test_sanity.py::test_sanity_amp_and_nvfuser[*-*-*-dtype1]

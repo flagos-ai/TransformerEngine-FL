@@ -27,21 +27,26 @@ export NVTE_FLASH_ATTN="${NVTE_FLASH_ATTN:-0}"
 export NVTE_FUSED_ATTN="${NVTE_FUSED_ATTN:-0}"
 export NVTE_UNFUSED_ATTN="${NVTE_UNFUSED_ATTN:-1}"
 
-# Make CUDA runtime libraries discoverable for fused attention kernels.
-if [ -z "${CUDA_HOME:-}" ]; then
-    if [ -d /usr/local/cuda ]; then
-        export CUDA_HOME=/usr/local/cuda
-    elif [ -d /usr/local/cuda-12.8 ]; then
-        export CUDA_HOME=/usr/local/cuda-12.8
+# Make CUDA runtime libraries discoverable for fused attention kernels. Only a
+# build with TE's native CUDA library needs this; with TE_FL_SKIP_CUDA=1 the
+# vendor stack brings its own CUDA-compatible runtime, and putting
+# /usr/local/cuda/lib64 first shadows it (KunlunXin: "The NVIDIA driver on your
+# system is too old", every distributed file fails to collect).
+if [ "${TE_FL_SKIP_CUDA:-0}" != "1" ]; then
+    if [ -z "${CUDA_HOME:-}" ]; then
+        if [ -d /usr/local/cuda ]; then
+            export CUDA_HOME=/usr/local/cuda
+        elif [ -d /usr/local/cuda-12.8 ]; then
+            export CUDA_HOME=/usr/local/cuda-12.8
+        fi
     fi
-fi
-export CUDA_PATH="${CUDA_PATH:-${CUDA_HOME:-}}"
+    export CUDA_PATH="${CUDA_PATH:-${CUDA_HOME:-}}"
 
-CUDA_LIB_DIRS=()
-for path in \
-    "${CUDA_HOME:-}/lib64" \
-    "${CUDA_HOME:-}/targets/x86_64-linux/lib" \
-    "$(python3 - <<'PY'
+    CUDA_LIB_DIRS=()
+    for path in \
+        "${CUDA_HOME:-}/lib64" \
+        "${CUDA_HOME:-}/targets/x86_64-linux/lib" \
+        "$(python3 - <<'PY'
 import site
 from pathlib import Path
 
@@ -51,8 +56,8 @@ for root in site.getsitepackages():
         print(candidate)
         break
 PY
-)" \
-    "$(python3 - <<'PY'
+    )" \
+        "$(python3 - <<'PY'
 import site
 from pathlib import Path
 
@@ -62,18 +67,18 @@ for root in site.getsitepackages():
         print(candidate)
         break
 PY
-)"; do
-    if [ -n "$path" ] && [ -d "$path" ]; then
-        CUDA_LIB_DIRS+=("$path")
+    )"; do
+        if [ -n "$path" ] && [ -d "$path" ]; then
+            CUDA_LIB_DIRS+=("$path")
+        fi
+    done
+
+    if [ "${#CUDA_LIB_DIRS[@]}" -gt 0 ]; then
+        CUDA_LIB_PATH="$(IFS=:; echo "${CUDA_LIB_DIRS[*]}")"
+        export LD_LIBRARY_PATH="${CUDA_LIB_PATH}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
     fi
-done
 
-if [ "${#CUDA_LIB_DIRS[@]}" -gt 0 ]; then
-    CUDA_LIB_PATH="$(IFS=:; echo "${CUDA_LIB_DIRS[*]}")"
-    export LD_LIBRARY_PATH="${CUDA_LIB_PATH}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
-fi
-
-python3 - <<'PY'
+    python3 - <<'PY'
 import ctypes
 
 for name in ("libcudart.so", "libcudart.so.12"):
@@ -84,6 +89,7 @@ for name in ("libcudart.so", "libcudart.so.12"):
     except OSError as exc:
         print(f"[CUDA] Failed to preload {name}: {exc}")
 PY
+fi
 
 
 # It is not installed as a requirement,
