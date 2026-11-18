@@ -53,17 +53,33 @@ def test_cross_entropy_forward_and_backward_match_native_exactly():
     backward, native_backward = _entry_and_native(module_name, "cross_entropy_backward")
     logits = torch.randn(2, 3, 17, device="cuda")
     target = torch.tensor([[0, 4, 16], [3, -100, 8]], device="cuda")
-    args = (target, 0.1, False, None, -100)
+    args = (target, 0.1, False, None, -100, False)
 
-    actual_loss, actual_input = forward(logits.clone(), *args)
-    expected_loss, expected_input = native_forward(logits.clone(), *args)
-    _assert_equal(actual_loss, expected_loss)
-    _assert_equal(actual_input, expected_input)
+    actual_forward = forward(logits.clone(), *args)
+    expected_forward = native_forward(logits.clone(), *args)
+    _assert_equal(actual_forward[:5], expected_forward[:5])
+    assert actual_forward[5:] == expected_forward[5:]
 
     grad = torch.randn(2, 3, device="cuda")
+
+    def run_backward(fn, forward_result):
+        _, saved_input, stats, saved_target, n_non_ignore, rank, world_size = forward_result
+        return fn(
+            saved_input.clone(),
+            stats,
+            saved_target,
+            n_non_ignore,
+            grad.clone(),
+            0.1,
+            False,
+            rank,
+            world_size,
+            -100,
+        )
+
     _assert_equal(
-        backward(actual_input.clone(), grad.clone()),
-        native_backward(expected_input.clone(), grad.clone()),
+        run_backward(backward, actual_forward),
+        run_backward(native_backward, expected_forward),
     )
 
 

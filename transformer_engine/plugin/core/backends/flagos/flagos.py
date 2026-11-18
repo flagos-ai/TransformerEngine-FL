@@ -63,6 +63,10 @@ class FlagOSBackend(TEFLBackendBase):
         if not use_unfused_attention:
             logger.info_once("Disabling UnfusedDotProductAttention due to NVTE_UNFUSED_ATTN=0")
 
+        if attention_params is not None and attention_params.attn_mask_type == "arbitrary":
+            use_flash_attention = 0
+            use_fused_attention = 0
+
         flash_attention_backend = PkgVersion("2.6.0") if use_flash_attention else None
         fused_attention_backend = NVTE_Fused_Attn_Backend.NVTE_No_Backend
 

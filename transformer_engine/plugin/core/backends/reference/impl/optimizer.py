@@ -131,12 +131,9 @@ def _multi_tensor_adam_torch_impl(
         bias_correction1 = 1.0
         bias_correction2 = 1.0
 
-    for grad, model_param, exp_avg, exp_avg_sq, param in zip(
-        grads, model_params, exp_avgs, exp_avg_sqs, master_params
-    ):
-        if grad is None:
-            continue
+    chunk_elems = min(max(chunk_size, 1 << 20), 1 << 22)
 
+    def update_chunk(grad, model_param, exp_avg, exp_avg_sq, param, copy_model_param):
         # Convert to float for computation (matches CUDA's MATH_T = float)
         g = grad.float() * inv_scale
         p = param.float()
@@ -175,8 +172,26 @@ def _multi_tensor_adam_torch_impl(
             # Update parameter
             param.add_(update, alpha=-lr)
 
-        if param is not model_param:
+        if copy_model_param:
             model_param.copy_(param.to(dtype=model_param.dtype))
+
+    for grad, model_param, exp_avg, exp_avg_sq, param in zip(
+        grads, model_params, exp_avgs, exp_avg_sqs, master_params
+    ):
+        if grad is None:
+            continue
+
+        copy_model_param = param is not model_param
+        # Keep the original in-place behavior for strided tensors. Contiguous
+        # tensors use views so FP32 temporaries never span the whole parameter.
+        tensors = (grad, model_param, exp_avg, exp_avg_sq, param)
+        if all(t.is_contiguous() for t in tensors):
+            flat = [t.view(-1) for t in tensors]
+            for start in range(0, grad.numel(), chunk_elems):
+                stop = start + chunk_elems
+                update_chunk(*(t[start:stop] for t in flat), copy_model_param)
+        else:
+            update_chunk(*tensors, copy_model_param)
 
 
 def multi_tensor_adam_torch(

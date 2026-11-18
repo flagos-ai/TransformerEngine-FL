@@ -6,7 +6,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 from transformer_engine.plugin.core.types import BackendImplKind, OpImpl
-from transformer_engine.plugin.core.policy import SelectionPolicy
+from transformer_engine.plugin.core.policy import SelectionPolicy, policy_context
 from transformer_engine.plugin.core.ops import DType, FlashAttentionBase, TEFLBackendBase
 from transformer_engine.plugin.core.registry import OpRegistry
 from transformer_engine.plugin.core.manager import (
@@ -386,7 +386,7 @@ def test_call_with_fallback_and_invalidation():
 
     # ------------------------------------------------------------------
     # Case 2:
-    # strict mode (TE_FL_STRICT=0)
+    # strict mode (TE_FL_STRICT=1)
     # fallback disabled
     # vendor implementation failure should propagate directly
     # ------------------------------------------------------------------
@@ -405,10 +405,65 @@ def test_call_with_fallback_and_invalidation():
 
     strict_mgr = OpManager(registry=strict_registry)
 
-    with patch("os.getenv", return_value="0"):
+    with policy_context(SelectionPolicy.from_dict(prefer="vendor", strict=True)):
         with patch.object(OpImpl, "is_available", return_value=True):
             with pytest.raises(Exception, match="CUDA Out of Memory"):
                 strict_mgr.call("strict_op")
+
+
+def test_strict_vendor_requires_vendor_and_never_calls_flagos():
+    registry = OpRegistry()
+    manager = OpManager(registry=registry)
+    flagos = create_mock_impl("flagos", BackendImplKind.DEFAULT, op_name="strict_op")
+    reference = create_mock_impl("reference", BackendImplKind.REFERENCE, op_name="strict_op")
+    registry.register_impl(flagos)
+    registry.register_impl(reference)
+
+    with policy_context(SelectionPolicy.from_dict(prefer="vendor", strict=True)):
+        with pytest.raises(RuntimeError, match="No implementation available"):
+            manager.resolve("strict_op")
+        with pytest.raises(RuntimeError, match="No implementation available"):
+            manager.call("strict_op")
+
+    flagos.fn.assert_not_called()
+    reference.fn.assert_not_called()
+
+
+def test_wildcard_order_excludes_flagos_and_uses_reference():
+    registry = OpRegistry()
+    manager = OpManager(registry=registry)
+    flagos = create_mock_impl("flagos", BackendImplKind.DEFAULT, op_name="onnx_op")
+    reference = create_mock_impl("reference", BackendImplKind.REFERENCE, op_name="onnx_op")
+    registry.register_impl(flagos)
+    registry.register_impl(reference)
+
+    policy = SelectionPolicy.from_dict(prefer="vendor", per_op_order={"*": ["vendor", "reference"]})
+    with policy_context(policy):
+        assert manager.resolve("onnx_op") is reference.fn
+        assert [impl.impl_id for impl in manager.resolve_candidates("onnx_op")] == ["reference"]
+        assert manager.call("onnx_op") == "res_reference"
+
+    flagos.fn.assert_not_called()
+
+
+def test_strict_custom_impl_propagates_vendor_error():
+    registry = OpRegistry()
+    manager = OpManager(registry=registry)
+    vendor = create_mock_impl("vendor", BackendImplKind.VENDOR, op_name="attention")
+    flagos = create_mock_impl("flagos", BackendImplKind.DEFAULT, op_name="attention")
+    vendor.fn.return_value = "vendor_class"
+    registry.register_impl(vendor)
+    registry.register_impl(flagos)
+
+    def fail_vendor(impl_class):
+        assert impl_class == "vendor_class"
+        raise RuntimeError("vendor failed")
+
+    with policy_context(SelectionPolicy.from_dict(prefer="vendor", strict=True)):
+        with pytest.raises(RuntimeError, match="vendor failed"):
+            manager.call_with_custom_impl("attention", "vendor_class", fail_vendor)
+
+    flagos.fn.assert_not_called()
 
 
 # ==============================================================================

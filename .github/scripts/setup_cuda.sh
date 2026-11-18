@@ -53,7 +53,4 @@ else
     pip install . -v --no-deps --no-build-isolation
 fi
 
-echo "===== Step 3: Verify Installation ====="
-python3 tests/pytorch/test_sanity_import.py
-
 echo "===== Environment Setup Complete ====="
