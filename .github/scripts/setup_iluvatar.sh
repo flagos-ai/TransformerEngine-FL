@@ -17,6 +17,7 @@ ixsmi
 import os
 import sys
 import torch
+import flag_gems
 
 assert sys.version_info >= (3, 10), "Python 3.10+ is required"
 assert torch.cuda.is_available(), "Iluvatar device unavailable"
@@ -33,6 +34,22 @@ CHECK
 # Install this checkout without replacing the vendor Torch or compiling CUDA.
 cd "$WORKSPACE"
 "$PYTHON_BIN" -m pip install --no-deps --no-build-isolation .
+"$PYTHON_BIN" -m pip check
+"$PYTHON_BIN" tests/pytorch/test_sanity_import.py
+"$PYTHON_BIN" - <<'CHECK'
+from transformer_engine.plugin.core import get_manager
+manager = get_manager()
+for op in ("generic_gemm", "layernorm_fwd", "layernorm_bwd", "rmsnorm_fwd", "rmsnorm_bwd"):
+    selected = manager.get_selected_impl_id(op)
+    expected = "reference.torch" if op == "generic_gemm" else "default.flagos"
+    if selected != expected:
+        raise RuntimeError(f"{op}: expected {expected}, selected {selected!r}")
+    print(f"{op}: {selected}")
+selected = manager.get_selected_impl_id("multi_tensor_unscale_l2norm")
+if selected != "reference.torch":
+    raise RuntimeError(f"multi_tensor_unscale_l2norm: expected reference.torch, selected {selected!r}")
+print(f"multi_tensor_unscale_l2norm: {selected}")
+CHECK
 "$PYTHON_BIN" - <<'CHECK'
 import importlib
 

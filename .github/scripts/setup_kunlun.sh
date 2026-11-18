@@ -97,4 +97,6 @@ print("transformer_engine_klx_torch:", transformer_engine_klx_torch.__file__)
 print("vendor.kunlunxin backend is available")
 print("generic_gemm selected implementation:", selected_impl)
 PY
+python3 tests/pytorch/test_sanity_import.py
+
 echo "===== KunlunXin environment setup complete ====="

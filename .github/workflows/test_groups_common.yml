@@ -127,10 +127,6 @@ jobs:
           TE_CI_ARTIFACT_DIR: ${{ inputs.test_artifact_path }}
         run: bash "$GITHUB_WORKSPACE/${{ inputs.setup_script }}"
 
-      - name: Common environment setup
-        shell: bash
-        run: bash "$GITHUB_WORKSPACE/.github/scripts/setup_common.sh"
-
       - name: Execute tests
         id: execute
         shell: bash

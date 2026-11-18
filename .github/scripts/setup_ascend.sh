@@ -94,6 +94,9 @@ git submodule update --init --recursive
 python3 -m pip uninstall -y transformer_engine transformer_engine_torch || true
 TE_FL_SKIP_CUDA=1 python3 setup.py install
 
+echo "===== Verify TransformerEngine installation ====="
+python3 tests/pytorch/test_sanity_import.py
+
 echo "===== Verify Ascend vendor.npu backend ====="
 if python3 - <<'PY'
 import importlib.util
