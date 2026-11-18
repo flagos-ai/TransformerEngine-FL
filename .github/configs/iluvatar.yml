@@ -107,6 +107,10 @@ ignored_tests:
   - tests/plugin/backend/flagos/test_multi_tensor.py::test_l2_norm_non_finite_tracking
   - tests/plugin/backend/flagos/test_multi_tensor.py::test_scale_standard_lifecycle
   - tests/plugin/backend/flagos/test_optimizer.py::test_param_remainder_bit_manipulation_lifecycle
+  # FlagTree autotuning can repeat in-place mul_ on live Adam state, corrupting
+  # the result on the first tuned call (observed on Iluvatar). Restore after the
+  # runtime preserves in-place arguments during tuning.
+  - tests/plugin/backend/flagos/test_optimizer_numerical.py::test_multi_tensor_adam_matches_formula
   # Parameter-level quarantines from the CoreX baseline (hardware-verified in
   # PR #15). A bare function/class covers all of its parameters, a bracketed
   # ID is one exact case, and * inside the brackets matches part of the ID.

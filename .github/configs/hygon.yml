@@ -89,6 +89,10 @@ ignored_test_groups:
 # Only defects owned outside this repository belong here; give the reason,
 # owner and restore condition in a comment above each group.
 ignored_tests:
+  # FlagTree autotuning can repeat in-place mul_ on live Adam state, corrupting
+  # the result on the first tuned call (observed on Hygon). Restore after the
+  # runtime preserves in-place arguments during tuning.
+  - tests/plugin/backend/flagos/test_optimizer_numerical.py::test_multi_tensor_adam_matches_formula
   # Hygon DCU launch limit: num_warps=32 exceeds the device thread limit.
   - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_cross_entropy_forward_and_backward_match_native_exactly
   # FlagTree/FlagTune: compiled graph tracing currently produces an invalid grid.

@@ -7,6 +7,29 @@ The active entries are `ci.yml` (PR, push to main, manual dispatch),
 platform matrix; test jobs use `test_groups_common.yml`. `CI Complete`, `Nightly Complete`, `CI Requested Complete` and
 `Release Acceptance Complete` gate the results.
 
+## Developer change checklist
+
+When a PR changes code or tests, use this order to confirm that CI will run the
+intended tests:
+
+| Change | Check first | Configuration |
+|---|---|---|
+| Modify existing implementation | The changed source path is listed in the related test group's `paths`. | `.flagcicd/project.yaml` |
+| Add a test file or test cases | The changed test path selects the group through `paths`, and `test_targets` includes the file or node. If existing directory/glob entries already cover it, no duplicate entry is needed. | `.flagcicd/project.yaml` |
+| Add or change platform-specific behavior | The target platform is selected by `paths_watch`. | `.github/configs/<platform>.yml` |
+| Add a platform-specific test | The platform's `unit_test_matrix` or `integration_test_matrix` points to a launcher that includes the new test in its selected targets. | `.github/configs/<platform>.yml` and the referenced launcher |
+| Add distributed, ONNX or MCore coverage | The test group is eligible at the PR's level. PRs default to L1; these groups are normally L2. | `.flagcicd/project.yaml` |
+| Quarantine a known platform gap | Add the narrowest failing file or node to `ignored_tests`, with owner and restore condition. | `.github/configs/<platform>.yml` |
+
+The test group's `paths` answer **“which code changes select this group?”**.
+Its `test_targets` answer **“which tests does the group run?”**. Platform
+configuration answers **“where is the group launched?”**: for example, an
+entry in `unit_test_matrix` names a script such as
+`tests/plugin/backend/cuda/run_unit_tests.sh`; that script is then invoked with
+the matrix entry's arguments and must run the selected targets. Seeing a job
+start is not sufficient evidence that a newly added test ran; check the job
+report for the test node and its passing result.
+
 ## Execution plan transport
 
 The planning job uploads the full `plan.json` as `flagcicd-plan-<stage>`.
