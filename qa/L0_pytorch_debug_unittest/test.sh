@@ -11,6 +11,10 @@
 : ${XML_LOG_DIR:=/logs}
 mkdir -p "$XML_LOG_DIR"
 
+# Match the ordinary unit suite's LayerNorm routing while FlagGems precision
+# differs from the vendor implementation for FP16/BF16 inputs.
+export TE_FL_PER_OP="${TE_FL_PER_OP:+${TE_FL_PER_OP};}layernorm_fwd=vendor;layernorm_bwd=vendor"
+
 # Config with the dummy feature which prevents nvinspect from being disabled.
 # Nvinspect will be disabled if no feature is active.
 : ${NVTE_TEST_NVINSPECT_DUMMY_CONFIG_FILE:=$TE_PATH/tests/pytorch/debug/test_configs/dummy_feature.yaml}
@@ -92,7 +96,11 @@ run_test_step "test_perf.xml" "$TE_PATH/tests/pytorch/debug/test_perf.py" \
 # Step 7: Sanity 2
 run_test_step "test_sanity_2.xml" "$TE_PATH/tests/pytorch/test_sanity.py" \
 "NVTE_TEST_NVINSPECT_ENABLED=1 NVTE_TEST_NVINSPECT_CONFIG_FILE=$NVTE_TEST_NVINSPECT_DUMMY_CONFIG_FILE NVTE_TEST_NVINSPECT_FEATURE_DIRS=$NVTE_TEST_NVINSPECT_FEATURE_DIRS PYTORCH_JIT=0 NVTE_TORCH_COMPILE=0 NVTE_ALLOW_NONDETERMINISTIC_ALGO=0 \
-pytest -v -s --junitxml=$XML_LOG_DIR/test_sanity_2.xml $TE_PATH/tests/pytorch/test_sanity.py --no-header"
+pytest -v -s --junitxml=$XML_LOG_DIR/test_sanity_2.xml $TE_PATH/tests/pytorch/test_sanity.py -k 'not test_sanity_linear_with_zero_tokens' --no-header"
+
+run_test_step "test_sanity_zero_tokens.xml" "$TE_PATH/tests/pytorch/test_sanity.py" \
+"TE_FL_PREFER=vendor NVTE_TEST_NVINSPECT_ENABLED=1 NVTE_TEST_NVINSPECT_CONFIG_FILE=$NVTE_TEST_NVINSPECT_DUMMY_CONFIG_FILE NVTE_TEST_NVINSPECT_FEATURE_DIRS=$NVTE_TEST_NVINSPECT_FEATURE_DIRS PYTORCH_JIT=0 NVTE_TORCH_COMPILE=0 NVTE_ALLOW_NONDETERMINISTIC_ALGO=0 \
+pytest -v -s --junitxml=$XML_LOG_DIR/test_sanity_zero_tokens.xml $TE_PATH/tests/pytorch/test_sanity.py -k test_sanity_linear_with_zero_tokens --no-header"
 
 # Step 8: Numerics 2
 run_test_step "test_numerics_2.xml" "$TE_PATH/tests/pytorch/test_numerics.py" \
