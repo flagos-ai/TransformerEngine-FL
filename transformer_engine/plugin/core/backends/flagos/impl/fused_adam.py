@@ -262,7 +262,10 @@ def multi_tensor_adam_fl(
                 stop = start + chunk_elems
                 slices = [t[start:stop] for t in flat]
                 update_chunk(
-                    slices[0], slices[1], slices[2], slices[3],
+                    slices[0],
+                    slices[1],
+                    slices[2],
+                    slices[3],
                     slices[4] if p_master is not None else None,
                 )
         else:

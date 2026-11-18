@@ -437,9 +437,7 @@ def test_wildcard_order_excludes_flagos_and_uses_reference():
     registry.register_impl(flagos)
     registry.register_impl(reference)
 
-    policy = SelectionPolicy.from_dict(
-        prefer="vendor", per_op_order={"*": ["vendor", "reference"]}
-    )
+    policy = SelectionPolicy.from_dict(prefer="vendor", per_op_order={"*": ["vendor", "reference"]})
     with policy_context(policy):
         assert manager.resolve("onnx_op") is reference.fn
         assert [impl.impl_id for impl in manager.resolve_candidates("onnx_op")] == ["reference"]

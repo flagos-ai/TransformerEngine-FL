@@ -135,14 +135,14 @@ def test_multi_tensor_adam_chunks_match_full_tensor(monkeypatch, mode, master_we
     monkeypatch.setattr(mock_flag_gems, "true_divide", torch.true_divide)
     monkeypatch.setattr(mock_flag_gems, "copy_", lambda dst, src: dst.copy_(src))
     monkeypatch.setattr(mock_flag_gems, "mul_", lambda dst, scalar: dst.mul_(scalar))
-    monkeypatch.setattr(mock_flag_gems, "add_", lambda dst, src, *, alpha: dst.add_(src, alpha=alpha))
+    monkeypatch.setattr(
+        mock_flag_gems, "add_", lambda dst, src, *, alpha: dst.add_(src, alpha=alpha)
+    )
 
     lists = [[grad], [model], [exp_avg], [exp_avg_sq]]
     if master_weights:
         lists.append([master])
-    multi_tensor_adam_fl(
-        65536, torch.tensor(0), lists, 0.01, 0.9, 0.99, 1e-8, 1, mode, 0, 0.1
-    )
+    multi_tensor_adam_fl(65536, torch.tensor(0), lists, 0.01, 0.9, 0.99, 1e-8, 1, mode, 0, 0.1)
 
     assert len(sizes) > 2
     assert max(sizes) <= 1 << 20

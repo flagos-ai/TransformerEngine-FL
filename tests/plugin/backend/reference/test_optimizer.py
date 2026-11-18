@@ -76,9 +76,7 @@ def test_multi_tensor_adam_matches_formula(mode, bias_correction, master_weights
 
 @pytest.mark.parametrize("mode", [0, 1])
 @pytest.mark.parametrize("master_weights", [False, True])
-def test_multi_tensor_adam_large_tensor_crosses_chunk_boundary(
-    monkeypatch, mode, master_weights
-):
+def test_multi_tensor_adam_large_tensor_crosses_chunk_boundary(monkeypatch, mode, master_weights):
     n = (1 << 20) + 7
     grad = torch.linspace(-0.5, 0.5, n)
     master_param = torch.linspace(-1.0, 1.0, n)
@@ -86,8 +84,13 @@ def test_multi_tensor_adam_large_tensor_crosses_chunk_boundary(
     exp_avg = torch.full((n,), 0.125)
     exp_avg_sq = torch.full((n,), 0.25)
     expected = _expected(
-        master_param.clone(), grad, exp_avg.clone(), exp_avg_sq.clone(),
-        mode=mode, bias_correction=1, weight_decay=0.1,
+        master_param.clone(),
+        grad,
+        exp_avg.clone(),
+        exp_avg_sq.clone(),
+        mode=mode,
+        bias_correction=1,
+        weight_decay=0.1,
     )
 
     tensor_lists = [[grad], [model_param], [exp_avg], [exp_avg_sq]]
@@ -102,8 +105,17 @@ def test_multi_tensor_adam_large_tensor_crosses_chunk_boundary(
 
     monkeypatch.setattr(torch.Tensor, "float", tracked_float)
     multi_tensor_adam_torch(
-        65536, torch.zeros(1, dtype=torch.int), tensor_lists,
-        0.003, 0.9, 0.95, 1e-8, 4, mode, 1, 0.1,
+        65536,
+        torch.zeros(1, dtype=torch.int),
+        tensor_lists,
+        0.003,
+        0.9,
+        0.95,
+        1e-8,
+        4,
+        mode,
+        1,
+        0.1,
     )
 
     assert float_sizes and max(float_sizes) <= 1 << 20
