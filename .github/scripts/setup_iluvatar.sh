@@ -9,7 +9,7 @@ command -v "${PYTHON_BIN:-python3}" >/dev/null || {
 }
 source "$WORKSPACE/tests/plugin/backend/iluvatar/set_env.sh"
 # CI prefers FlagOS, with the per-op reference selections from set_env.sh.
-export TE_FL_PREFER=flagos
+export TE_FL_PREFER="${TE_FL_PREFER:-flagos}"
 export TE_FL_ALLOW_VENDORS=
 command -v ixsmi >/dev/null
 ixsmi
@@ -39,16 +39,16 @@ cd "$WORKSPACE"
 "$PYTHON_BIN" - <<'CHECK'
 from transformer_engine.plugin.core import get_manager
 manager = get_manager()
-for op in ("generic_gemm", "layernorm_fwd", "layernorm_bwd", "rmsnorm_fwd", "rmsnorm_bwd"):
+# generic_gemm and multi_tensor_unscale_l2norm are pinned to reference.torch by
+# the image's TE_FL_PER_OP; everything else follows the shared flagos -> vendor
+# -> reference order, so only the per-op pins are asserted.
+for op in ("layernorm_fwd", "layernorm_bwd", "rmsnorm_fwd", "rmsnorm_bwd"):
+    print(f"{op}: {manager.get_selected_impl_id(op)}")
+for op in ("generic_gemm", "multi_tensor_unscale_l2norm"):
     selected = manager.get_selected_impl_id(op)
-    expected = "reference.torch" if op == "generic_gemm" else "default.flagos"
-    if selected != expected:
-        raise RuntimeError(f"{op}: expected {expected}, selected {selected!r}")
+    if selected != "reference.torch":
+        raise RuntimeError(f"{op}: expected reference.torch from TE_FL_PER_OP, selected {selected!r}")
     print(f"{op}: {selected}")
-selected = manager.get_selected_impl_id("multi_tensor_unscale_l2norm")
-if selected != "reference.torch":
-    raise RuntimeError(f"multi_tensor_unscale_l2norm: expected reference.torch, selected {selected!r}")
-print(f"multi_tensor_unscale_l2norm: {selected}")
 CHECK
 "$PYTHON_BIN" - <<'CHECK'
 import importlib

@@ -7,6 +7,9 @@ export PYTHONPATH="$TE_PATH${PYTHONPATH:+:$PYTHONPATH}"
 export PLATFORM="${PLATFORM:-ppu}"
 export TE_FL_SKIP_CUDA="${TE_FL_SKIP_CUDA:-1}"
 export NVTE_FRAMEWORK="${NVTE_FRAMEWORK:-pytorch}"
+# TE-FL uses one dispatch order on every platform: flagos -> vendor ->
+# reference (policy.py PREFER_DEFAULT). Do not pin a different preference
+# here; quarantine the failing cases in the platform config instead.
 export TE_FL_PREFER="${TE_FL_PREFER:-flagos}"
 export NVTE_FLASH_ATTN="${NVTE_FLASH_ATTN:-0}"
 export NVTE_FUSED_ATTN="${NVTE_FUSED_ATTN:-0}"

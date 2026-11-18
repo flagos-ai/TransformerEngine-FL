@@ -7,6 +7,231 @@ The active entries are `ci.yml` (PR, push to main, manual dispatch),
 platform matrix; test jobs use `test_groups_common.yml`. `CI Complete`, `Nightly Complete`, `CI Requested Complete` and
 `Release Acceptance Complete` gate the results.
 
+## Developer change checklist
+
+When a PR changes code or tests, use this order to confirm that CI will run the
+intended tests:
+
+| Change | Check first | Configuration |
+|---|---|---|
+| Modify existing implementation | The changed source path is listed in the related test group's `paths`. | `.flagcicd/project.yaml` |
+| Add a test file or test cases | The changed test path selects the group through `paths`, and `test_targets` includes the file or node. If existing directory/glob entries already cover it, no duplicate entry is needed. | `.flagcicd/project.yaml` |
+| Add or change platform-specific behavior | The target platform is selected by `paths_watch`. | `.github/configs/<platform>.yml` |
+| Add a platform-specific test | The platform's `unit_test_matrix` or `integration_test_matrix` points to a launcher that includes the new test in its selected targets. | `.github/configs/<platform>.yml` and the referenced launcher |
+| Add distributed, ONNX or MCore coverage | The test group is eligible at the PR's level. PRs default to L1; these groups are normally L2. | `.flagcicd/project.yaml` |
+| Quarantine a known platform gap | Add the narrowest failing file or node to `ignored_tests`, with owner and restore condition. | `.github/configs/<platform>.yml` |
+
+The test group's `paths` answer **“which code changes select this group?”**.
+Its `test_targets` answer **“which tests does the group run?”**. Platform
+configuration answers **“where is the group launched?”**: for example, an
+entry in `unit_test_matrix` names a script such as
+`tests/plugin/backend/cuda/run_unit_tests.sh`; that script is then invoked with
+the matrix entry's arguments and must run the selected targets. Seeing a job
+start is not sufficient evidence that a newly added test ran; check the job
+report for the test node and its passing result.
+
+## Execution plan transport
+
+The planning job uploads the full `plan.json` as `flagcicd-plan-<stage>`.
+Entry workflows export only its artifact name and small routing/identity outputs;
+reusable workflows and the final gate download that artifact and pass its local
+path as `FLAGCICD_PLAN_FILE`. This keeps both plan loading and `toJson(needs)`
+below Linux's per-environment-string limit when all nine platforms are selected.
+Do not export the full plan through job outputs or a `FLAGCICD_PLAN` step env.
+
+Every plan file goes through the existing schema/hash checks; slice still checks
+source SHA and platform configuration identity. A configured missing/corrupt file
+fails rather than falling back to other data. The JSON-env reader remains only
+for compatibility with direct script callers and unit fixtures.
+
+## Automatic plugin coverage
+
+The unified CI catalog covers the `tests/plugin/` tree with separate owners:
+`plugin_core` selects `tests/plugin/plugin/`, `reference_backend` selects
+`tests/plugin/backend/reference/` and `tests/plugin/accuracy/`, and
+`vendor_backend` selects `tests/plugin/backend/npu/` and
+`tests/plugin/backend/flagos/`. Source routing follows those same boundaries.
+Core dispatch evidence must come from core tests, not a passing backend test.
+
+Unified CI owns automatic plugin execution. The independent
+`te-plugin-tests.yml` workflow is removed because its non-NPU test scope is
+already covered by the CUDA unit job. Manual runs remain available through the
+unified CI entry points. Runner labels come from the platform configuration
+(`nv-8g-cicd-te` for CUDA), avoiding a separate runner definition.
+
+Platform unit launchers that run plugin suites discover all `test_*.py`
+recursively through the shared `TE_TEST_GROUP_PRESET=plugin-unit` preset in
+`tests/test_utils/run_ci_test_group.py`. The preset supplies the discovery
+paths, non-Ascend NPU ignore prefix and path-scoped environment cleanup;
+platform scripts do not duplicate inline JSON or `TE_FL_*` unset lists. Inner
+pytest groups disable retries so the outer platform job owns retry policy.
+PPU retains its per-file timeout/summary and Iluvatar its per-file ignore audit,
+while both query `--list-targets` and `--target-env` from the shared preset.
+MUSA and Kunlun keep their existing unit suites unchanged while `plugin_core`,
+`reference_backend` and `vendor_backend` remain in `ignored_test_groups`.
+The old per-file backend calls are removed to avoid duplicate execution.
+Distinct relative paths produce distinct JUnit filenames even when test files
+share a basename. Numerics helper files are invoked by their driver rather
+than discovered twice. Core mock contracts clear vendor policy overrides;
+backend/accuracy tests retain real platform policy. CI test selection and
+coverage hooks remain in effect in all child processes.
+
+Non-Ascend plans and the shared preset ignore `tests/plugin/backend/npu/` before
+starting pytest.
+The common discovery root is `tests/plugin/`; platforms do not maintain lists
+of individual plugin test files. All original platform group ignores, their
+reasons, and existing file/case ignore rules are preserved. Expanding discovery
+does not establish hardware support and does not remove those ignores.
+
+The planner expands ignored groups (and non-Ascend NPU exclusions) into
+`ignored_test_targets`, including dependency-derived ignores, and records any
+resulting cross-group target suppressions in `ignored_group_test_targets` and
+the plan summary. The runner passes `ignored_test_targets` to every pytest child.
+Whole-file/directory ignores apply before import; node selectors apply after
+collection. Ignores take precedence over positive directory selections, even
+when another selected group overlaps the ignored files and even in full Nightly
+runs. Ignored tests produce no passing evidence. Standard capability-based
+runtime skips remain separate. When plan deselection and platform `-k`/`-m`
+filters leave an invocation with zero selected nodes, the selection plugin exits
+cleanly without recording passing evidence; group gates still require actual
+passing testcases.
+
+## Ignore naming and include scopes
+
+Repository-controlled test omissions use `ignore` names: platform group reasons
+are configured in `ignored_test_groups`, file and case filters are configured in
+`ignored_tests` (see "Ignoring a test on one platform" below), the plan records
+an `ignored` ledger, and log messages use `[IGNORE]`. Reasons, owners and
+restore conditions are retained.
+The former `unsupported_test_groups` key is rejected with a migration error,
+rather than silently enabling tests from an old ignore list. These entries
+never count as passing evidence. A required baseline still cannot
+be ignored; ignoring a dependency also makes its dependent groups unavailable.
+
+`coverage.include` chooses source files counted in coverage; it does not choose
+which tests run. GitHub Actions matrix `include` enumerates jobs. Neither is an
+ignore list. `test_targets` defines the positive test selection for a group.
+
+Pytest/JUnit `skipped`, pytest `--deselect` and collection hooks, GitHub Actions
+`skipped` results, and coverage.py `include`/`omit` are native interface names.
+They remain unchanged, as do build/dependency setup switches such as
+`TE_FL_SKIP_CUDA` and `HYGON_SKIP_DEP_INSTALL`. Capability-driven runtime skips
+remain distinct from repository-configured ignores.
+
+## Ignoring a test on one platform
+
+Use this when a test cannot pass on one platform for a reason that is known and
+recorded: a missing vendor capability, a defect in an image or toolchain, or a
+failure that is waiting for its owner. An ignored test is not a passing test: it
+is listed in the plan summary as a coverage gap and never counts as evidence.
+Do not add `-k`, `--deselect` or file lists to launcher scripts for this; the
+platform config is the single place, so the plan and the execution agree.
+
+### Where
+
+`.github/configs/<platform>.yml`, top-level key `ignored_tests`: a YAML list of
+strings and job groups (see "Scope and limits"). Put a comment above each entry (or group of entries) with the reason,
+the owner and the condition for removing it.
+
+```yaml
+ignored_tests:
+  # FlagTree Enflame backend cannot legalize tt.atomic_rmw (owner: FlagTree).
+  # Restore when kernels using tl.atomic_add compile.
+  - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_mhc_apis_match_native_exactly
+  # Vendor runtime: FP16/BF16 layer norm misses the reference tolerance
+  # (owner: PPU runtime). Restore when the dtype1/dtype2 cases pass.
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_layer_norm[*dtype1*]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_layer_norm[*dtype2*]
+```
+
+### What an entry can name
+
+Always choose the narrowest form that covers exactly the failing cases.
+
+| Form | Example | Ignores |
+|---|---|---|
+| Directory (ends with `/`) | `tests/pytorch/nvfp4/` | Every test under the directory |
+| File | `tests/pytorch/test_checkpoint.py` | Every test in the file |
+| Function | `tests/pytorch/test_jit.py::test_torch_dynamo` | The function with all of its parameters |
+| Class | `tests/pytorch/test_fused_optimizer.py::TestFusedSGD` | Every method of the class |
+| Method | `tests/pytorch/test_fusible_ops.py::TestBasicOps::test_bias` | The method with all of its parameters |
+| Name pattern | `tests/pytorch/test_onnx_export.py::test_export_linear*` | Functions whose name matches (`*`, `?`) |
+| One parameter case | `...::test_dropout[dtype0-shape2-None-True-0.5]` | Exactly that parameter ID |
+| Parameter pattern | `...::test_layer_norm[*dtype1*]` | Parameter IDs matching the pattern |
+
+Rules for the bracketed part:
+
+- Without `*` or `?` the ID is literal and must match the whole ID.
+- With `*` or `?` it is a pattern over the whole ID: `[*dtype1*]` means
+  "contains `dtype1`", `[None-device1-*]` means "starts with `None-device1-`",
+  `[*-dtype1-*-glu]` means "contains `-dtype1-` and ends with `-glu`".
+- A parameter pattern does not widen the function name: `test_layer_norm[*]`
+  never matches `test_layer_norm_autocast`.
+- There is no "and/or/not". List one entry per alternative; for "all except
+  A and B", list the other values.
+
+The node is written exactly as pytest prints it, with the path relative to the
+repository root. To get it, copy the line from the job log or from a local
+collection:
+
+```bash
+python3 -m pytest tests/pytorch/test_fusible_ops.py --collect-only -q | grep test_layer_norm
+# tests/pytorch/test_fusible_ops.py::TestBasicOps::test_layer_norm[None-False-dtype1-in_shape0-weight_shape0]
+```
+
+### Steps
+
+1. Find the failing node IDs in the job log (`FAILED tests/...::test_x[...]`)
+   and the first error that explains them.
+2. Work out the smallest description of the failing set: one case, a parameter
+   pattern, a function, or a file. Check that the pattern does not also match
+   cases that pass (compare with the `PASSED` lines of the same function).
+3. Add the entries with their comment to `.github/configs/<platform>.yml`.
+4. Run the CI self-tests; they load every platform config and reject malformed
+   entries:
+   `python -m unittest discover -s .github/scripts/ci -p 'test_*.py'`
+5. In the next CI run, confirm each ignored node is logged as
+   `[IGNORE] tests/...` in the platform job and listed under "Declared platform
+   coverage gaps" in the plan summary, and that the passing cases of the same
+   function still run.
+6. Remove the entry when its restore condition holds. Entries are meant to be
+   temporary.
+
+### Scope and limits
+
+- A plain entry applies to every job of that platform (unit, debug,
+  distributed, onnx). When cases fail in some jobs and pass in others, put them
+  in a group so the passing jobs keep running them. One group per job (or set
+  of jobs), with a comment above each test or set of tests inside it:
+
+  ```yaml
+  ignored_tests:
+    - tests/pytorch/attention/test_kv_cache.py      # every job
+    - jobs: [pytorch_debug]
+      tests:
+        # float16 misses the tolerance; float32 passes (owner: vendor runtime).
+        - tests/pytorch/test_numerics.py::test_layernorm_accuracy[*-*-*-*-dtype1]
+        # Process abort in SDPA backward (owner: vendor runtime).
+        - tests/pytorch/test_numerics.py::test_mha_accuracy
+    - jobs: [pytorch_unit, pytorch_distributed]
+      tests:
+        - tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-1-dtype*]
+  ```
+
+  `jobs` lists names from the platform's `unit_test_matrix` /
+  `integration_test_matrix`; an unknown name is rejected, so a typo cannot
+  silently disable an entry. Each item of `tests` accepts every form from the
+  table above. The planner flattens the groups into one ignore list per job.
+- A file or directory entry is applied before collection, so the file is not
+  imported. A node entry is applied after collection.
+- `ignored_test_groups` is the coarse form: it removes a whole logical group
+  (for example `quantization`) with one reason, and every `test_targets` entry
+  of that group becomes an ignored target on the platform. Check the group's
+  targets in `.flagcicd/project.yaml` before using it; prefer `ignored_tests`
+  when only some files or cases fail.
+- Capability checks inside a test (`pytest.skip`, `skipif`) are unrelated and
+  stay in the test.
+
 ## Selection and levels
 
 PR routing uses platform `paths_watch`. Vendor paths select their platforms;
@@ -37,7 +262,7 @@ Dependencies expand selection; they do not impose job execution order.
 
 `routing.shared_paths`, declared impact paths, unavailable diffs and unmapped
 code select the complete in-level scope. Platform routing remains independent.
-Platform `unsupported_test_groups` records group -> reason gaps in the existing
+Platform `ignored_test_groups` records group -> reason gaps in the existing
 QA coverage. They appear in plans, workflow summaries and platform reports, and
 cannot be claimed as tested. A group with an unavailable dependency is also
 unavailable. These documented gaps do not block runs on other supported groups;
@@ -70,7 +295,7 @@ Full plans retain the original QA scope; no unconfigured vendor tests are added.
 The four execution suites retain multi-device serial isolation and their
 platform-specific timeouts. FA compatibility and benchmarks are L3 and remain
 blocked by runner/baseline requirements; L4 acceptance retains explicit gaps.
-Plans record selection, platform support, execution groups, excluded and blocked
+Plans record selection, platform support, execution groups, ignored and blocked
 ledgers. See `.flagcicd/project.yaml`.
 
 Requested runs: a PR comment `/ci run <platforms|all>` or `/test <platforms|all>`
@@ -196,7 +421,7 @@ CI until recovery validation supplies passing evidence. The shared blockwise
 GEMM target remains selected. Whole-file and partial exclusions are currently
 recorded in the Iluvatar shell configuration; a per-target coverage-gap schema
 and report is follow-up work, and passing group results do not imply complete
-coverage of those excluded targets.
+coverage of those ignored targets.
 
 The Megatron checkout retry is shared by all platforms: partial-clone checkout
 may download blobs from the promisor remote, so it now retries up to three times
@@ -204,7 +429,27 @@ with a five-second delay, just like clone and fetch. Exhausted retries still fai
 
 The unit evidence report checks unit/preflight groups only; compatibility,
 benchmark and release groups remain subject to the final platform gate.
-Iluvatar quarantine rules are audited inline before keyword deselection. Each
+Iluvatar ignore rules are audited inline before pytest keyword filtering. Each
 rule must match some but not all collected tests; matched node IDs are logged.
 This detects missing selectors but does not prove historical quarantine membership
 is unchanged. Review the logged node IDs after upstream parameter changes.
+
+### Plugin discovery compatibility
+
+The plugin-unit preset forces `TE_FL_PREFER=vendor` for NPU backend files before
+imports.
+
+Isolated pytest exit code 5 is accepted only when the newly generated JUnit
+report contains skipped cases exclusively, with no failures or errors. Empty
+collections remain failures; skipped cases do not provide passing gate evidence.
+Each invocation logs its exit code and elapsed time. Unit jobs default to no
+whole-suite retries; integration/compat jobs retain their existing retry policy.
+FlagOps upload is advisory and explicitly skips when its API token is absent;
+coverage collection, artifacts and required coverage checks remain enabled.
+
+Plugin tests are not quarantined in test code or launcher scripts. A failure
+caused by this repository stays a failure until it is fixed; a failure that
+cannot pass on a platform is listed in that platform's `ignored_tests` as
+described in "Ignoring a test on one platform". The shared
+workflow passes its platform identity explicitly; the MetaX standalone
+environment sets the same identity.

@@ -31,8 +31,11 @@ inputs:
     default: 'false'
 
 outputs:
+  plan_artifact:
+    description: 'Artifact containing the complete plan.json'
+    value: flagcicd-plan-${{ steps.plan.outputs.stage }}
   plan:
-    description: 'Full plan JSON (compact)'
+    description: 'Legacy compact JSON output; use plan_artifact for workflow transport'
     value: ${{ steps.plan.outputs.plan }}
   plan_hash:
     description: 'Plan hash'

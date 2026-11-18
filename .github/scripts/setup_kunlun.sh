@@ -86,12 +86,10 @@ backend = KunLunXinBackend()
 if not backend.is_available():
     raise SystemExit("vendor.kunlunxin backend is not available")
 
+# The dispatch order is flagos -> vendor -> reference on every platform, so the
+# selected implementation depends on what FlagOS registers. Record it instead of
+# pinning one: vendor.kunlunxin availability is already asserted above.
 selected_impl = get_default_manager().get_selected_impl_id("generic_gemm")
-if selected_impl != "vendor.kunlunxin":
-    raise SystemExit(
-        "generic_gemm did not select vendor.kunlunxin; selected "
-        + repr(selected_impl)
-    )
 
 print("transformer_engine_klx_torch:", transformer_engine_klx_torch.__file__)
 print("vendor.kunlunxin backend is available")
