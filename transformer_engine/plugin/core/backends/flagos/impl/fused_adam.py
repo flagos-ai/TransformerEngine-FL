@@ -210,16 +210,12 @@ def multi_tensor_adam_fl(
 
     is_adamw = mode == 1
 
-    for i in range(num_tensors):
-        g = tensor_lists[0][i]
-        model_param = tensor_lists[1][i]
-        m = tensor_lists[2][i]
-        v = tensor_lists[3][i]
-        p_master = tensor_lists[4][i] if num_lists == 5 else None
-        param_to_update = p_master if p_master is not None else model_param
+    # Coalesce the small native multi-tensor chunks to limit Python/kernel
+    # launch overhead, while capping FP32 intermediates for large parameters.
+    chunk_elems = min(max(chunk_size, 1 << 20), 1 << 22)
 
-        if not g.is_contiguous():
-            g = g.contiguous()
+    def update_chunk(g, model_param, m, v, p_master):
+        param_to_update = p_master if p_master is not None else model_param
 
         # Compute the update in FP32, then round each stored moment once. BF16
         # moments must not round the intermediate mul before the add.
@@ -248,6 +244,30 @@ def multi_tensor_adam_fl(
 
         if p_master is not None:
             flag_gems.copy_(model_param, p_master.to(dtype=model_param.dtype))
+
+    for i in range(num_tensors):
+        g = tensor_lists[0][i]
+        model_param = tensor_lists[1][i]
+        m = tensor_lists[2][i]
+        v = tensor_lists[3][i]
+        p_master = tensor_lists[4][i] if num_lists == 5 else None
+
+        if not g.is_contiguous():
+            g = g.contiguous()
+
+        mutable = (model_param, m, v) if p_master is None else (model_param, m, v, p_master)
+        if all(t.is_contiguous() for t in mutable):
+            flat = [t.view(-1) for t in (g, *mutable)]
+            for start in range(0, g.numel(), chunk_elems):
+                stop = start + chunk_elems
+                slices = [t[start:stop] for t in flat]
+                update_chunk(
+                    slices[0], slices[1], slices[2], slices[3],
+                    slices[4] if p_master is not None else None,
+                )
+        else:
+            # Preserve the original in-place semantics for strided tensors.
+            update_chunk(g, model_param, m, v, p_master)
 
 
 def multi_tensor_adam_param_remainder_fl(
