@@ -936,6 +936,10 @@ class TEFLBackendBase(ABC):
     ) -> Optional[List[torch.Tensor]]:
         raise NotImplementedError
 
+    def get_grouped_gemm_setup_workspace_size(self, num_tensors: int) -> int:
+        """Return the grouped GEMM pointer-setup workspace size in bytes."""
+        raise NotImplementedError
+
     def te_general_grouped_gemm_for_grouped_tensor(
         self,
         *args,
