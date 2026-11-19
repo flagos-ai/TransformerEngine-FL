@@ -1237,8 +1237,8 @@ class NPUBackend(TEFLBackendBase):
         D: Any,
         bias: Optional[Any],
         bias_scale: Optional[torch.Tensor],
-        alpha: torch.Tensor,
-        beta: torch.Tensor,
+        alpha: Optional[torch.Tensor],
+        beta: Optional[torch.Tensor],
         workspace_setup: torch.Tensor,
         workspace_cublas: torch.Tensor,
         use_split_accumulator: bool,
@@ -1257,6 +1257,8 @@ class NPUBackend(TEFLBackendBase):
 
         Only dense GroupedTensors (``quantizer is None``) are accepted. The
         quantizer fields are validated but never changed by this backend.
+        With alpha=beta=None, the operation uses alpha=1 and beta=0.
+        An output without storage adopts the native result in this mode.
         """
 
         del workspace_setup, workspace_cublas, use_split_accumulator, math_sm_count
@@ -1279,6 +1281,11 @@ class NPUBackend(TEFLBackendBase):
                 f"torch_npu.npu_grouped_matmul supports at most 128 groups, got {num_tensors}"
             )
 
+        allocate_output = D.rowwise_data is None
+        identity_epilogue = alpha is None and beta is None
+        if allocate_output and not identity_epilogue:
+            raise ValueError("An output without storage requires alpha=beta=None")
+
         rowwise_data: dict[str, torch.Tensor] = {}
         logical_shapes: dict[str, Tuple[int, int]] = {}
         for name, grouped_tensor in grouped_tensors.items():
@@ -1297,6 +1304,8 @@ class NPUBackend(TEFLBackendBase):
                 )
 
             data = getattr(grouped_tensor, "rowwise_data", None)
+            if name == "D" and allocate_output:
+                data = rowwise_data["A"].new_empty(0, dtype=grouped_tensor.fake_dtype)
             if not isinstance(data, torch.Tensor):
                 raise TypeError(f"{name}.rowwise_data must be a torch.Tensor")
             if data.device.type != "npu":
@@ -1310,7 +1319,9 @@ class NPUBackend(TEFLBackendBase):
             logical_shape = (int(logical_shape[0]), int(logical_shape[1]))
             if logical_shape[0] < 0 or logical_shape[1] <= 0:
                 raise ValueError(f"Invalid {name}.logical_shape: {logical_shape}")
-            if data.numel() != logical_shape[0] * logical_shape[1]:
+            if not (name == "D" and allocate_output) and (
+                data.numel() != logical_shape[0] * logical_shape[1]
+            ):
                 raise ValueError(
                     f"{name}.rowwise_data has {data.numel()} elements, but "
                     f"logical_shape={logical_shape} requires "
@@ -1349,19 +1360,20 @@ class NPUBackend(TEFLBackendBase):
                     f"{name} is {rowwise_data[name].dtype}"
                 )
 
-        for name, coefficient in (("alpha", alpha), ("beta", beta)):
-            if not isinstance(coefficient, torch.Tensor):
-                raise TypeError(f"{name} must be a torch.Tensor")
-            if coefficient.device != data_device:
-                raise ValueError(f"{name} must be on {data_device}, got {coefficient.device}")
-            if coefficient.dtype != torch.float32:
-                raise TypeError(f"{name} must have dtype torch.float32")
-            if coefficient.numel() not in (1, num_tensors):
-                raise ValueError(
-                    f"{name} must contain 1 or {num_tensors} values, got {coefficient.numel()}"
-                )
-        if alpha.numel() != beta.numel():
-            raise ValueError("alpha and beta must contain the same number of values")
+        if not identity_epilogue:
+            for name, coefficient in (("alpha", alpha), ("beta", beta)):
+                if not isinstance(coefficient, torch.Tensor):
+                    raise TypeError(f"{name} must be a torch.Tensor")
+                if coefficient.device != data_device:
+                    raise ValueError(f"{name} must be on {data_device}, got {coefficient.device}")
+                if coefficient.dtype != torch.float32:
+                    raise TypeError(f"{name} must have dtype torch.float32")
+                if coefficient.numel() not in (1, num_tensors):
+                    raise ValueError(
+                        f"{name} must contain 1 or {num_tensors} values, got {coefficient.numel()}"
+                    )
+            if alpha.numel() != beta.numel():
+                raise ValueError("alpha and beta must contain the same number of values")
 
         def require_uniform_first_dim(name: str) -> int:
             grouped_tensor = grouped_tensors[name]
@@ -1474,7 +1486,7 @@ class NPUBackend(TEFLBackendBase):
             else:
                 product = torch.matmul(x.transpose(0, 1), weight)
         elif d_rows == 0 or (layout == "NT" and a_rows == 0):
-            product = torch.zeros_like(rowwise_data["D"]).view(d_rows, d_cols)
+            product = torch.zeros((d_rows, d_cols), dtype=input_dtype, device=data_device)
         else:
             torch_npu = _get_torch_npu()
             if layout in ("TN", "NN"):
@@ -1502,14 +1514,17 @@ class NPUBackend(TEFLBackendBase):
                     torch.cumsum(split_sizes, dim=0),
                 )
 
-        if product.numel() != rowwise_data["D"].numel():
+        if product.numel() != d_rows * d_cols:
             raise RuntimeError(
                 "Unexpected NPU grouped GEMM output size: expected "
-                f"{rowwise_data['D'].numel()} elements, got {product.numel()}"
+                f"{d_rows * d_cols} elements, got {product.numel()}"
             )
 
         product_2d = product.reshape(d_rows, d_cols)
-        destination_2d = rowwise_data["D"].view(d_rows, d_cols)
+        if allocate_output:
+            destination_2d = product_2d.to(input_dtype)
+        else:
+            destination_2d = rowwise_data["D"].view(d_rows, d_cols)
 
         def expand_group_values(values: torch.Tensor) -> torch.Tensor:
             if values.numel() == 1:
@@ -1520,11 +1535,16 @@ class NPUBackend(TEFLBackendBase):
                 output_size=d_rows,
             ).view(d_rows, 1)
 
-        # The NPU GEMM result has already been rounded to D's dtype. Perform
-        # the alpha/beta combination in FP32 before the final in-place write.
-        combined = product_2d.float() * expand_group_values(alpha)
-        combined = combined + destination_2d.float() * expand_group_values(beta)
-        destination_2d.copy_(combined.to(destination_2d.dtype))
+        # Explicit alpha/beta scaling and accumulation are performed in FP32.
+        if identity_epilogue:
+            if not allocate_output:
+                destination_2d.copy_(product_2d)
+        else:
+            expanded_beta = expand_group_values(beta)
+            old_destination = torch.where(expanded_beta == 0, 0.0, destination_2d.float())
+            combined = product_2d.float() * expand_group_values(alpha)
+            combined = combined + old_destination * expanded_beta
+            destination_2d.copy_(combined.to(destination_2d.dtype))
 
         if bias is not None:
             bias_2d = bias_data.view(num_tensors, d_cols).float()
@@ -1538,4 +1558,6 @@ class NPUBackend(TEFLBackendBase):
                 expanded_bias = expanded_bias * bias_scale.view(d_rows, 1).float()
             destination_2d.copy_((destination_2d.float() + expanded_bias).to(input_dtype))
 
+        if allocate_output:
+            D.rowwise_data = destination_2d.reshape(-1)
         return D
