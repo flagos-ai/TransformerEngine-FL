@@ -525,6 +525,31 @@ class NPUBackend(TEFLBackendBase):
                 exp_avg_sq.copy_(work_exp_avg_sq.to(exp_avg_sq.dtype))
         return None
 
+    @torch.no_grad()
+    def multi_tensor_adam_param_remainder(
+        self,
+        chunk_size: int,
+        noop_flag: torch.Tensor,
+        tensor_lists: List[List[torch.Tensor]],
+        lr: float,
+        beta1: float,
+        beta2: float,
+        epsilon: float,
+        step: int,
+        mode: int,
+        bias_correction: int,
+        weight_decay: float,
+    ) -> None:
+        """Update BF16 weights and int16 remainders without full-size FP32 temporaries."""
+        del chunk_size  # The kernel bounds its launch grid independently of CUDA chunking.
+        if _noop_requested(noop_flag):
+            return
+        from .fused_adam import adam_param_remainder
+
+        adam_param_remainder(
+            tensor_lists, lr, beta1, beta2, epsilon, step, mode, bias_correction, weight_decay
+        )
+
     def multi_tensor_unscale_l2norm(
         self,
         chunk_size: int,
