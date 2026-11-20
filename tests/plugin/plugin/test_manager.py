@@ -647,7 +647,7 @@ def test_moe_permutation_pair_obeys_policy(monkeypatch, policy, expected):
         ("moe_permute_with_routing_map", "moe_unpermute_with_routing_map"), functions
     ):
         registry.register_impl(
-            OpImpl(name, "vendor.npu.routing_map", BackendImplKind.VENDOR, fn, vendor="NPU")
+            OpImpl(name, "vendor.npu", BackendImplKind.VENDOR, fn, vendor="NPU")
         )
     module = TEFLModule(manager)
     with policy_context(SelectionPolicy.from_dict(**policy)):
@@ -682,11 +682,7 @@ def test_moe_permutation_pair_requires_both_compatible_endpoints(monkeypatch, mi
         registry.register_impl(
             OpImpl(
                 name,
-                (
-                    "other.encoding"
-                    if is_consumer and mismatch == "encoding"
-                    else "vendor.npu.routing_map"
-                ),
+                "other.encoding" if is_consumer and mismatch == "encoding" else "vendor.npu",
                 (
                     BackendImplKind.DEFAULT
                     if is_consumer and mismatch == "kind"
@@ -713,7 +709,7 @@ def test_moe_permutation_pair_execution_does_not_retry(monkeypatch):
     fail._supports_inputs = lambda *args: True
     for name in ("moe_permute_with_routing_map", "moe_unpermute_with_routing_map"):
         registry.register_impl(
-            OpImpl(name, "vendor.npu.routing_map", BackendImplKind.VENDOR, fail, vendor="NPU")
+            OpImpl(name, "vendor.npu", BackendImplKind.VENDOR, fail, vendor="NPU")
         )
     pair = TEFLModule(manager).get_moe_permutation_pair(None, None, None, 8, 2)
     for fn in pair:
@@ -743,8 +739,7 @@ def test_moe_calls_log_success_without_retry(monkeypatch, caplog, strict):
     for name in names:
         fn = MagicMock(side_effect=[error, result, result, error])
         fn._supports_inputs = lambda *args: True
-        impl_id = "vendor.npu.routing_map" if name.endswith("routing_map") else "vendor.npu"
-        registry.register_impl(OpImpl(name, impl_id, BackendImplKind.VENDOR, fn, vendor="NPU"))
+        registry.register_impl(OpImpl(name, "vendor.npu", BackendImplKind.VENDOR, fn, vendor="NPU"))
         registry.register_impl(create_mock_impl("reference.torch", BackendImplKind.REFERENCE, name))
 
     with policy_context(SelectionPolicy.from_dict(prefer="vendor")):

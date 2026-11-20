@@ -200,7 +200,7 @@ def register_builtins(registry) -> None:
         impls.append(
             OpImpl(
                 op_name=name,
-                impl_id="vendor.npu.routing_map",
+                impl_id="vendor.npu",
                 kind=BackendImplKind.VENDOR,
                 fn=_bind_is_available(fn, permutation.is_available),
                 vendor="NPU",
