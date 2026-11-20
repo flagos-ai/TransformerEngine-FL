@@ -619,3 +619,103 @@ def test_resolve_discards_obsolete_dispatch_cache_entries():
 
     keys = [key for key in mgr._dispatch_cache if key[0] == "bounded_dispatch_cache"]
     assert len(keys) == 1
+
+
+@pytest.mark.parametrize(
+    "policy,expected",
+    [
+        ({}, True),
+        ({"prefer": "vendor"}, True),
+        ({"allow_vendors": {"NPU"}}, True),
+        ({"deny_vendors": {"NPU"}}, False),
+        ({"allow_vendors": {"other"}}, False),
+        ({"per_op_order": {"moe_permute_with_routing_map": ["reference"]}}, False),
+        ({"per_op_order": {"moe_unpermute_with_routing_map": ["reference"]}}, False),
+        ({"strict": True, "deny_vendors": {"NPU"}}, False),
+    ],
+)
+def test_moe_permutation_pair_obeys_policy(monkeypatch, policy, expected):
+    from transformer_engine.plugin.core.ops import TEFLModule
+    from transformer_engine.plugin.core.policy import policy_context
+
+    registry = OpRegistry()
+    manager = OpManager(registry)
+    monkeypatch.setattr(manager, "ensure_initialized", lambda: None)
+    functions = [lambda *args: args, lambda *args: args]
+    functions[0]._supports_inputs = lambda *args: True
+    for name, fn in zip(
+        ("moe_permute_with_routing_map", "moe_unpermute_with_routing_map"), functions
+    ):
+        registry.register_impl(
+            OpImpl(name, "vendor.npu.routing_map", BackendImplKind.VENDOR, fn, vendor="NPU")
+        )
+    module = TEFLModule(manager)
+    with policy_context(SelectionPolicy.from_dict(**policy)):
+        pair = module.get_moe_permutation_pair(None, None, None, 8, 2)
+    assert pair == tuple(functions) if expected else pair is None
+    if pair is not None:
+        with policy_context(SelectionPolicy.from_dict(deny_vendors={"NPU"})):
+            assert pair[0]("fixed producer") == ("fixed producer",)
+            assert pair[1]("fixed consumer") == ("fixed consumer",)
+
+
+@pytest.mark.parametrize(
+    "mismatch", ["missing", "unavailable", "vendor", "kind", "encoding", "inputs"]
+)
+def test_moe_permutation_pair_requires_both_compatible_endpoints(monkeypatch, mismatch):
+    from transformer_engine.plugin.core.ops import TEFLModule
+    from transformer_engine.plugin.core.policy import policy_context
+
+    registry = OpRegistry()
+    manager = OpManager(registry)
+    monkeypatch.setattr(manager, "ensure_initialized", lambda: None)
+    for name in ("moe_permute_with_routing_map", "moe_unpermute_with_routing_map"):
+        is_consumer = name.startswith("moe_unpermute")
+        if mismatch == "missing" and is_consumer:
+            continue
+
+        def fn(*args):
+            raise RuntimeError("execution must propagate")
+
+        fn._supports_inputs = lambda *args: mismatch != "inputs"
+        fn._is_available = lambda consumer=is_consumer: not (mismatch == "unavailable" and consumer)
+        registry.register_impl(
+            OpImpl(
+                name,
+                (
+                    "other.encoding"
+                    if is_consumer and mismatch == "encoding"
+                    else "vendor.npu.routing_map"
+                ),
+                (
+                    BackendImplKind.DEFAULT
+                    if is_consumer and mismatch == "kind"
+                    else BackendImplKind.VENDOR
+                ),
+                fn,
+                vendor="other" if is_consumer and mismatch == "vendor" else "NPU",
+            )
+        )
+    with policy_context(SelectionPolicy.from_dict(prefer="vendor")):
+        assert TEFLModule(manager).get_moe_permutation_pair(None, None, None, 8, 2) is None
+
+
+def test_moe_permutation_pair_execution_does_not_retry(monkeypatch):
+    from transformer_engine.plugin.core.ops import TEFLModule
+
+    registry = OpRegistry()
+    manager = OpManager(registry)
+    monkeypatch.setattr(manager, "ensure_initialized", lambda: None)
+
+    def fail(*args):
+        raise RuntimeError("native execution failed")
+
+    fail._supports_inputs = lambda *args: True
+    for name in ("moe_permute_with_routing_map", "moe_unpermute_with_routing_map"):
+        registry.register_impl(
+            OpImpl(name, "vendor.npu.routing_map", BackendImplKind.VENDOR, fail, vendor="NPU")
+        )
+    pair = TEFLModule(manager).get_moe_permutation_pair(None, None, None, 8, 2)
+    for fn in pair:
+        with pytest.raises(RuntimeError, match="native execution failed"):
+            fn(None)
