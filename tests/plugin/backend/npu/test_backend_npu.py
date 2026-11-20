@@ -1214,3 +1214,301 @@ class TestNPUGroupedGEMMAccuracy:
         assert torch.allclose(
             npu_D0, ref_D0, atol=1e-2, rtol=1e-2
         ), f"accumulate grouped gemm: max_diff={max_diff:.6e}"
+
+
+# Native routing-map indices form a private, fixed-topk pair; dense TE maps stay unchanged.
+@pytest.fixture
+def native_permutation_stub(monkeypatch):
+    from types import SimpleNamespace
+    from transformer_engine.plugin.core.backends.vendor.npu import permutation
+
+    calls = {name: 0 for name in ("permute", "permute_grad", "unpermute", "unpermute_grad")}
+
+    def permute(tokens, routing_map, *, probs, num_out_tokens, drop_and_pad):
+        assert not torch.is_grad_enabled()
+        assert not drop_and_pad
+        calls["permute"] += 1
+        token_ids = routing_map.T.nonzero(as_tuple=True)[1]
+        assert token_ids.numel() == num_out_tokens
+        return (
+            tokens.index_select(0, token_ids),
+            probs.T.masked_select(routing_map.T) if probs is not None else None,
+            token_ids.argsort(stable=True).to(torch.int32),
+        )
+
+    def permute_grad(grad, probs_grad, indices, routing_map, experts, tokens, drop_and_pad):
+        assert probs_grad is None and not drop_and_pad
+        assert routing_map.shape == (tokens, experts)
+        calls["permute_grad"] += 1
+        return grad[indices.long()].reshape(tokens, -1, grad.shape[1]).sum(1), None
+
+    def unpermute(tokens, indices, restore_shape, *, probs, routing_map, drop_and_pad):
+        assert not torch.is_grad_enabled()
+        assert probs is None and not drop_and_pad
+        calls["unpermute"] += 1
+        return tokens[indices.long()].reshape(restore_shape[0], -1, restore_shape[1]).sum(1)
+
+    def unpermute_grad(grad, indices, token_ids, route, tokens, probs, drop_and_pad, shape):
+        assert indices is token_ids and tokens is None and probs is None and not drop_and_pad
+        assert tuple(grad.shape) == tuple(shape)
+        calls["unpermute_grad"] += 1
+        output = grad.new_empty((indices.numel(), grad.shape[1]))
+        output[indices.long()] = grad.repeat_interleave(indices.numel() // grad.shape[0], dim=0)
+        return output, None
+
+    monkeypatch.setattr(
+        permutation,
+        "torch_npu",
+        SimpleNamespace(
+            npu_moe_token_permute_with_routing_map=permute,
+            npu_moe_token_permute_with_routing_map_grad=permute_grad,
+            npu_moe_token_unpermute_with_routing_map=unpermute,
+            npu_moe_token_unpermute_with_routing_map_grad=unpermute_grad,
+        ),
+    )
+    return permutation, calls
+
+
+def _native_permutation_inputs(n=7, e=8, k=2, h=17, noncontiguous=False, device="cpu"):
+    generator = torch.Generator().manual_seed(233 + n)
+    route = torch.zeros(n, e, dtype=torch.bool)
+    chosen = (torch.arange(n)[:, None] + torch.arange(k)[None, :]) % (e - 2)
+    route.scatter_(1, chosen, True)
+    route = route[:, torch.randperm(e, generator=generator)]
+    values = (
+        torch.randn(n, h, dtype=torch.bfloat16, generator=generator),
+        route,
+        torch.rand(n, e, generator=generator),
+    )
+    if noncontiguous:
+        values = tuple(
+            torch.empty((n + 1, value.shape[1] * 2 + 1), dtype=value.dtype, device=device)[
+                1:, 1::2
+            ].copy_(value.to(device))
+            for value in values
+        )
+    else:
+        values = tuple(value.to(device) for value in values)
+    return values
+
+
+def _native_permutation_reference(tokens, route, probs):
+    token_ids = route.T.nonzero(as_tuple=True)[1]
+    return (
+        tokens.index_select(0, token_ids),
+        probs.T.masked_select(route.T) if probs is not None else None,
+        token_ids.argsort(stable=True),
+    )
+
+
+def _check_native_permutation_gradients(permute, unpermute, inputs, used, token_grad=True):
+    tokens, route, probs = inputs
+    tokens = tokens.detach().requires_grad_(token_grad)
+    probs = probs.detach().requires_grad_() if probs is not None else None
+    reference_tokens = tokens.detach().cpu().requires_grad_(token_grad)
+    reference_probs = probs.detach().cpu().requires_grad_() if probs is not None else None
+    n, h = tokens.shape
+    k = int(route[0].sum().cpu())
+    output, permuted_probs, indices = permute(tokens, route, probs, n * k)
+    ref_output, ref_probs, ref_indices = _native_permutation_reference(
+        reference_tokens, route.cpu(), reference_probs
+    )
+    torch.testing.assert_close(output.cpu(), ref_output, atol=0, rtol=0)
+    torch.testing.assert_close(indices.cpu().long(), ref_indices)
+    assert indices.dtype == torch.int32 and indices.ndim == 1 and indices.numel() == n * k
+    if probs is None:
+        assert permuted_probs is None
+    else:
+        assert permuted_probs.dtype == torch.float32
+        torch.testing.assert_close(permuted_probs.cpu(), ref_probs, atol=0, rtol=0)
+    if used == "probs":
+        loss = permuted_probs.square().sum()
+        reference_loss = ref_probs.square().sum()
+    else:
+        if used == "both":
+            output = (output.float() * permuted_probs[:, None]).to(tokens.dtype)
+            ref_output = (ref_output.float() * ref_probs[:, None]).to(tokens.dtype)
+        restored = unpermute(output, indices, tokens.shape, route)
+        reference = ref_output[ref_indices].reshape(n, k, h).sum(1)
+        torch.testing.assert_close(restored.cpu(), reference, atol=0, rtol=0)
+        gradient = torch.arange(n * h).reshape(n, h).remainder(5).float() - 2
+        loss = (restored.float() * gradient.to(tokens.device)).sum()
+        reference_loss = (reference.float() * gradient).sum()
+    leaves = [x for x in (tokens, probs) if x is not None and x.requires_grad]
+    reference_leaves = [
+        x for x in (reference_tokens, reference_probs) if x is not None and x.requires_grad
+    ]
+    actual = torch.autograd.grad(loss, leaves, allow_unused=True)
+    expected = torch.autograd.grad(reference_loss, reference_leaves, allow_unused=True)
+    for grad, ref_grad in zip(actual, expected):
+        assert (grad is None) == (ref_grad is None)
+        if grad is not None:
+            assert grad.dtype == ref_grad.dtype
+            torch.testing.assert_close(grad.cpu(), ref_grad, atol=1e-5, rtol=1e-5)
+
+
+class TestNativePermutationCPU:
+    @pytest.mark.parametrize(
+        "used,token_grad,with_probs",
+        [
+            ("both", True, True),
+            ("tokens", True, True),
+            ("probs", True, True),
+            ("probs", False, True),
+            ("tokens", True, False),
+        ],
+    )
+    @pytest.mark.parametrize("noncontiguous", [False, True])
+    def test_gradients_and_unused_outputs(
+        self, native_permutation_stub, used, token_grad, with_probs, noncontiguous
+    ):
+        native, calls = native_permutation_stub
+        tokens, route, probs = _native_permutation_inputs(noncontiguous=noncontiguous)
+        _check_native_permutation_gradients(
+            native.permute,
+            native.unpermute,
+            (tokens, route, probs if with_probs else None),
+            used,
+            token_grad,
+        )
+        assert calls["permute_grad"] == (0 if used == "probs" else 1)
+        assert calls["unpermute_grad"] == (0 if used == "probs" else 1)
+
+    def test_probability_higher_order_without_token_gradient(self, native_permutation_stub):
+        native, calls = native_permutation_stub
+        tokens, route, probs = _native_permutation_inputs(noncontiguous=True)
+        probs.requires_grad_()
+        _, permuted_probs, _ = native.permute(tokens, route, probs, tokens.shape[0] * 2)
+        first = torch.autograd.grad(permuted_probs.square().sum(), probs, create_graph=True)[0]
+        second = torch.autograd.grad(first.sum(), probs)[0]
+        torch.testing.assert_close(second, route.float() * 2, atol=0, rtol=0)
+        assert calls["permute_grad"] == 0
+
+    def test_saves_only_indices_and_existing_route(self, native_permutation_stub):
+        native, _ = native_permutation_stub
+        tokens, route, probs = _native_permutation_inputs()
+        tokens.requires_grad_()
+        _, _, indices = native.permute(tokens, route, probs, tokens.shape[0] * 2)
+        source = torch.randn(indices.numel(), tokens.shape[1], requires_grad=True)
+        saved = []
+        with torch.autograd.graph.saved_tensors_hooks(lambda t: saved.append(t) or t, lambda t: t):
+            restored = native.unpermute(source, indices, tokens.shape, route)
+        assert [tensor.data_ptr() for tensor in saved] == [indices.data_ptr(), route.data_ptr()]
+        restored.sum().backward()
+        torch.testing.assert_close(source.grad, torch.ones_like(source))
+
+    def test_cpu_and_missing_native_api_are_ineligible(self, native_permutation_stub, monkeypatch):
+        native, _ = native_permutation_stub
+        tokens, route, probs = _native_permutation_inputs()
+        assert not native.supports_inputs(tokens, route, probs, 14, 2)
+        assert native.is_available()
+        monkeypatch.delattr(native.torch_npu, "npu_moe_token_unpermute_with_routing_map_grad")
+        assert not native.is_available()
+
+
+@requires_npu
+class TestNativePermutationNPU:
+    @pytest.mark.parametrize("shape", [(7, 8, 2, 128), (129, 19, 3, 256)])
+    @pytest.mark.parametrize("noncontiguous", [False, True])
+    @pytest.mark.parametrize(
+        "used,token_grad,with_probs",
+        [
+            ("both", True, True),
+            ("tokens", True, True),
+            ("probs", True, True),
+            ("probs", False, True),
+            ("tokens", True, False),
+        ],
+    )
+    def test_native_pair_against_routing_reference(
+        self, monkeypatch, shape, noncontiguous, used, token_grad, with_probs
+    ):
+        from transformer_engine.plugin import tefl
+        from transformer_engine.plugin.core.policy import SelectionPolicy, policy_context
+
+        n, e, k, h = shape
+        tokens, route, probs = _native_permutation_inputs(n, e, k, h, noncontiguous, "npu")
+        if not with_probs:
+            probs = None
+        calls = {
+            name: 0
+            for name in (
+                "npu_moe_token_permute_with_routing_map",
+                "npu_moe_token_permute_with_routing_map_grad",
+                "npu_moe_token_unpermute_with_routing_map",
+                "npu_moe_token_unpermute_with_routing_map_grad",
+            )
+        }
+        for name in calls:
+            original = getattr(torch_npu, name)
+
+            def counted(*args, _name=name, _original=original, **kwargs):
+                calls[_name] += 1
+                return _original(*args, **kwargs)
+
+            monkeypatch.setattr(torch_npu, name, counted)
+        with policy_context(SelectionPolicy.from_dict(prefer="vendor", allow_vendors={"NPU"})):
+            pair = tefl.get_moe_permutation_pair(tokens, route, probs, n * k, k)
+        assert pair is not None
+        _check_native_permutation_gradients(*pair, (tokens, route, probs), used, token_grad)
+        assert calls["npu_moe_token_permute_with_routing_map"] == 1
+        assert calls["npu_moe_token_permute_with_routing_map_grad"] == (0 if used == "probs" else 1)
+        assert calls["npu_moe_token_unpermute_with_routing_map_grad"] == (
+            0 if used == "probs" else 1
+        )
+
+    @pytest.mark.parametrize("use_reentrant", [False, True])
+    def test_checkpoint_and_microbatch_contexts(self, use_reentrant):
+        from torch.utils.checkpoint import checkpoint
+        from transformer_engine.plugin import tefl
+
+        microbatches = [_native_permutation_inputs(device="npu") for _ in range(2)]
+        microbatches[1] = (microbatches[1][0], microbatches[1][1].roll(1, 1), microbatches[1][2])
+        losses, references, leaves, reference_leaves = [], [], [], []
+        for tokens, route, probs in microbatches:
+            tokens.requires_grad_()
+            probs.requires_grad_()
+            ref_tokens = tokens.detach().cpu().requires_grad_()
+            ref_probs = probs.detach().cpu().requires_grad_()
+            pair = tefl.get_moe_permutation_pair(tokens, route, probs, tokens.shape[0] * 2, 2)
+            assert pair is not None
+
+            def run(x, p, _route=route, _pair=pair):
+                y, permuted_probs, indices = _pair[0](x, _route, p, x.shape[0] * 2)
+                y = (y.float() * permuted_probs[:, None]).to(x.dtype)
+                return _pair[1](y, indices, x.shape, _route)
+
+            output = checkpoint(run, tokens, probs, use_reentrant=use_reentrant)
+            y, p, indices = _native_permutation_reference(ref_tokens, route.cpu(), ref_probs)
+            reference = (
+                (y.float() * p[:, None]).to(y.dtype)[indices].reshape(tokens.shape[0], 2, -1).sum(1)
+            )
+            losses.append(output.float().square().sum())
+            references.append(reference.float().square().sum())
+            leaves.extend([tokens, probs])
+            reference_leaves.extend([ref_tokens, ref_probs])
+        # Both contexts remain live together, then the same graph is replayed twice.
+        for repeat in range(2):
+            for value in leaves + reference_leaves:
+                value.grad = None
+            sum(losses).backward(retain_graph=repeat == 0)
+            sum(references).backward(retain_graph=repeat == 0)
+            for actual, expected in zip(leaves, reference_leaves):
+                torch.testing.assert_close(actual.grad.cpu(), expected.grad, atol=1e-5, rtol=1e-5)
+
+    def test_unweighted_combine_saves_no_source_activation(self):
+        from transformer_engine.plugin import tefl
+
+        tokens, route, probs = _native_permutation_inputs(h=128, device="npu")
+        pair = tefl.get_moe_permutation_pair(tokens, route, probs, tokens.shape[0] * 2, 2)
+        assert pair is not None
+        _, _, indices = pair[0](tokens, route, probs, tokens.shape[0] * 2)
+        source = torch.randn(
+            indices.numel(), tokens.shape[1], dtype=tokens.dtype, device="npu", requires_grad=True
+        )
+        saved = []
+        with torch.autograd.graph.saved_tensors_hooks(lambda t: saved.append(t) or t, lambda t: t):
+            output = pair[1](source, indices, tokens.shape, route)
+        assert [tensor.data_ptr() for tensor in saved] == [indices.data_ptr(), route.data_ptr()]
+        output.sum().backward()
+        torch.testing.assert_close(source.grad, torch.ones_like(source))

@@ -619,3 +619,145 @@ def test_resolve_discards_obsolete_dispatch_cache_entries():
 
     keys = [key for key in mgr._dispatch_cache if key[0] == "bounded_dispatch_cache"]
     assert len(keys) == 1
+
+
+@pytest.mark.parametrize(
+    "policy,expected",
+    [
+        ({}, True),
+        ({"prefer": "vendor"}, True),
+        ({"allow_vendors": {"NPU"}}, True),
+        ({"deny_vendors": {"NPU"}}, False),
+        ({"allow_vendors": {"other"}}, False),
+        ({"per_op_order": {"moe_permute_with_routing_map": ["reference"]}}, False),
+        ({"per_op_order": {"moe_unpermute_with_routing_map": ["reference"]}}, False),
+        ({"strict": True, "deny_vendors": {"NPU"}}, False),
+    ],
+)
+def test_moe_permutation_pair_obeys_policy(monkeypatch, policy, expected):
+    from transformer_engine.plugin.core.ops import TEFLModule
+    from transformer_engine.plugin.core.policy import policy_context
+
+    registry = OpRegistry()
+    manager = OpManager(registry)
+    monkeypatch.setattr(manager, "ensure_initialized", lambda: None)
+    functions = [lambda *args: args, lambda *args: args]
+    functions[0]._supports_inputs = lambda *args: True
+    for name, fn in zip(
+        ("moe_permute_with_routing_map", "moe_unpermute_with_routing_map"), functions
+    ):
+        registry.register_impl(
+            OpImpl(name, "vendor.npu", BackendImplKind.VENDOR, fn, vendor="NPU")
+        )
+    module = TEFLModule(manager)
+    with policy_context(SelectionPolicy.from_dict(**policy)):
+        pair = module.get_moe_permutation_pair(None, None, None, 8, 2)
+    assert (pair is not None) == expected
+    if pair is not None:
+        with policy_context(SelectionPolicy.from_dict(deny_vendors={"NPU"})):
+            assert pair[0]("fixed producer") == ("fixed producer",)
+            assert pair[1]("fixed consumer") == ("fixed consumer",)
+
+
+@pytest.mark.parametrize(
+    "mismatch", ["missing", "unavailable", "vendor", "kind", "encoding", "inputs"]
+)
+def test_moe_permutation_pair_requires_both_compatible_endpoints(monkeypatch, mismatch):
+    from transformer_engine.plugin.core.ops import TEFLModule
+    from transformer_engine.plugin.core.policy import policy_context
+
+    registry = OpRegistry()
+    manager = OpManager(registry)
+    monkeypatch.setattr(manager, "ensure_initialized", lambda: None)
+    for name in ("moe_permute_with_routing_map", "moe_unpermute_with_routing_map"):
+        is_consumer = name.startswith("moe_unpermute")
+        if mismatch == "missing" and is_consumer:
+            continue
+
+        def fn(*args):
+            raise RuntimeError("execution must propagate")
+
+        fn._supports_inputs = lambda *args: mismatch != "inputs"
+        fn._is_available = lambda consumer=is_consumer: not (mismatch == "unavailable" and consumer)
+        registry.register_impl(
+            OpImpl(
+                name,
+                "other.encoding" if is_consumer and mismatch == "encoding" else "vendor.npu",
+                (
+                    BackendImplKind.DEFAULT
+                    if is_consumer and mismatch == "kind"
+                    else BackendImplKind.VENDOR
+                ),
+                fn,
+                vendor="other" if is_consumer and mismatch == "vendor" else "NPU",
+            )
+        )
+    with policy_context(SelectionPolicy.from_dict(prefer="vendor")):
+        assert TEFLModule(manager).get_moe_permutation_pair(None, None, None, 8, 2) is None
+
+
+def test_moe_permutation_pair_execution_does_not_retry(monkeypatch):
+    from transformer_engine.plugin.core.ops import TEFLModule
+
+    registry = OpRegistry()
+    manager = OpManager(registry)
+    monkeypatch.setattr(manager, "ensure_initialized", lambda: None)
+
+    def fail(*args):
+        raise RuntimeError("native execution failed")
+
+    fail._supports_inputs = lambda *args: True
+    for name in ("moe_permute_with_routing_map", "moe_unpermute_with_routing_map"):
+        registry.register_impl(
+            OpImpl(name, "vendor.npu", BackendImplKind.VENDOR, fail, vendor="NPU")
+        )
+    pair = TEFLModule(manager).get_moe_permutation_pair(None, None, None, 8, 2)
+    for fn in pair:
+        with pytest.raises(RuntimeError, match="native execution failed"):
+            fn(None)
+
+
+@pytest.mark.parametrize("strict", ["0", "1"])
+def test_moe_calls_log_success_without_retry(monkeypatch, caplog, strict):
+    from transformer_engine.plugin.core import manager as manager_module
+    from transformer_engine.plugin.core.ops import TEFLModule
+    from transformer_engine.plugin.core.policy import policy_context
+
+    registry = OpRegistry()
+    mgr = OpManager(registry)
+    monkeypatch.setattr(mgr, "ensure_initialized", lambda: None)
+    monkeypatch.setenv("TE_FL_STRICT", strict)
+    monkeypatch.setattr(manager_module.logger, "_printed_once", set())
+    monkeypatch.setattr(manager_module.logger.logger, "propagate", True)
+    module = TEFLModule(mgr)
+    names = (
+        "moe_alltoallv_grouped_matmul", "moe_grouped_matmul_alltoallv",
+        "moe_permute_with_routing_map", "moe_unpermute_with_routing_map",
+    )
+    error = RuntimeError("native execution failed")
+    result = object()
+    for name in names:
+        fn = MagicMock(side_effect=[error, result, result, error])
+        fn._supports_inputs = lambda *args: True
+        registry.register_impl(OpImpl(name, "vendor.npu", BackendImplKind.VENDOR, fn, vendor="NPU"))
+        registry.register_impl(create_mock_impl("reference.torch", BackendImplKind.REFERENCE, name))
+
+    with policy_context(SelectionPolicy.from_dict(prefer="vendor")):
+        assert module.is_moe_fusion_available()
+        with patch.object(mgr, "call", wraps=mgr.call) as dispatch:
+            pair = module.get_moe_permutation_pair(None, None, None, 8, 2)
+            assert pair is not None and dispatch.call_count == 0
+            for name, invoke in zip(names, (getattr(module, names[0]), getattr(module, names[1]), *pair)):
+                impl, spare = mgr.resolve_candidates(name)
+                message = f"Op '{name}' using '{impl.impl_id}'"
+                for attempt in range(4):
+                    if attempt in (0, 3):
+                        with pytest.raises(RuntimeError) as raised:
+                            invoke(*([None] * 5))
+                        assert raised.value is error
+                    else:
+                        assert invoke(*([None] * 5)) is result
+                    assert caplog.text.count(message) == (0 if attempt == 0 else 1)
+                assert impl.fn.call_count == 4
+                spare.fn.assert_not_called()
+            assert dispatch.call_count == 16

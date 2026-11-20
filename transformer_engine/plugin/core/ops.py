@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, Type
 from enum import IntEnum
 from contextlib import nullcontext
+from functools import partial
 import torch
 
 from .logger_manager import get_logger
@@ -1907,6 +1908,68 @@ class TEFLModule:
     @property
     def __all__(self):
         return self.__dir__()
+
+    def is_moe_fusion_available(self, group=None, device=None) -> bool:
+        """Check selected compute implementations and optionally their communicator.
+
+        A group probe may initialize its communicator collectively; every group
+        rank must participate and agree on support before invoking fused compute.
+        """
+        for name in (
+            "moe_alltoallv_grouped_matmul",
+            "moe_grouped_matmul_alltoallv",
+        ):
+            try:
+                fn = self._manager.resolve(name)
+            except RuntimeError:
+                return False
+            if group is not None:
+                supports_group = getattr(fn, "_supports_group", None)
+                if supports_group is None or not supports_group(group, device):
+                    return False
+        return True
+
+    def get_moe_permutation_pair(self, tokens, routing_map, probs, num_out_tokens, topk):
+        """Resolve a compatible dropless pair once, or retain the caller's path.
+
+        The caller guarantees fixed positive topk and unweighted combine. Keep
+        the returned callables together: their private indices are not portable
+        to another implementation, even if policy changes before combine.
+        """
+        try:
+            permute = self._manager.resolve_candidates("moe_permute_with_routing_map")[0]
+            unpermute = self._manager.resolve_candidates("moe_unpermute_with_routing_map")[0]
+        except RuntimeError:
+            return None
+        if (permute.kind, permute.vendor, permute.impl_id) != (
+            unpermute.kind,
+            unpermute.vendor,
+            unpermute.impl_id,
+        ):
+            return None
+        supports = getattr(permute.fn, "_supports_inputs", None)
+        if supports is None or not supports(tokens, routing_map, probs, num_out_tokens, topk):
+            return None
+        return partial(self._manager.call, permute), partial(self._manager.call, unpermute)
+
+    def moe_alltoallv_grouped_matmul(self, x, weights, group, send_counts, recv_counts):
+        """Exchange tokens then multiply expert weights; returns expert-ordered rows.
+
+        Counts are source/destination-by-expert entries. The caller must agree
+        on support across the EP group before invoking this collective.
+        Runtime errors propagate: retrying a collective could desynchronize ranks.
+        """
+        impl = self._manager.resolve_impl("moe_alltoallv_grouped_matmul")
+        return self._manager.call(impl, x, weights, group, send_counts, recv_counts)
+
+    def moe_grouped_matmul_alltoallv(self, x, weights, group, send_counts, recv_counts):
+        """Multiply expert weights then return rows in source dispatch order.
+
+        Uses the same count convention as moe_alltoallv_grouped_matmul.
+        Runtime errors propagate without retrying the collective.
+        """
+        impl = self._manager.resolve_impl("moe_grouped_matmul_alltoallv")
+        return self._manager.call(impl, x, weights, group, send_counts, recv_counts)
 
     def flash_attention(
         self,
