@@ -652,7 +652,7 @@ def test_moe_permutation_pair_obeys_policy(monkeypatch, policy, expected):
     module = TEFLModule(manager)
     with policy_context(SelectionPolicy.from_dict(**policy)):
         pair = module.get_moe_permutation_pair(None, None, None, 8, 2)
-    assert pair == tuple(functions) if expected else pair is None
+    assert (pair is not None) == expected
     if pair is not None:
         with policy_context(SelectionPolicy.from_dict(deny_vendors={"NPU"})):
             assert pair[0]("fixed producer") == ("fixed producer",)
@@ -719,3 +719,50 @@ def test_moe_permutation_pair_execution_does_not_retry(monkeypatch):
     for fn in pair:
         with pytest.raises(RuntimeError, match="native execution failed"):
             fn(None)
+
+
+@pytest.mark.parametrize("strict", ["0", "1"])
+def test_moe_calls_log_success_without_retry(monkeypatch, caplog, strict):
+    from transformer_engine.plugin.core import manager as manager_module
+    from transformer_engine.plugin.core.ops import TEFLModule
+    from transformer_engine.plugin.core.policy import policy_context
+
+    registry = OpRegistry()
+    mgr = OpManager(registry)
+    monkeypatch.setattr(mgr, "ensure_initialized", lambda: None)
+    monkeypatch.setenv("TE_FL_STRICT", strict)
+    monkeypatch.setattr(manager_module.logger, "_printed_once", set())
+    monkeypatch.setattr(manager_module.logger.logger, "propagate", True)
+    module = TEFLModule(mgr)
+    names = (
+        "moe_alltoallv_grouped_matmul", "moe_grouped_matmul_alltoallv",
+        "moe_permute_with_routing_map", "moe_unpermute_with_routing_map",
+    )
+    error = RuntimeError("native execution failed")
+    result = object()
+    for name in names:
+        fn = MagicMock(side_effect=[error, result, result, error])
+        fn._supports_inputs = lambda *args: True
+        impl_id = "vendor.npu.routing_map" if name.endswith("routing_map") else "vendor.npu"
+        registry.register_impl(OpImpl(name, impl_id, BackendImplKind.VENDOR, fn, vendor="NPU"))
+        registry.register_impl(create_mock_impl("reference.torch", BackendImplKind.REFERENCE, name))
+
+    with policy_context(SelectionPolicy.from_dict(prefer="vendor")):
+        assert module.is_moe_fusion_available()
+        with patch.object(mgr, "call", wraps=mgr.call) as dispatch:
+            pair = module.get_moe_permutation_pair(None, None, None, 8, 2)
+            assert pair is not None and dispatch.call_count == 0
+            for name, invoke in zip(names, (getattr(module, names[0]), getattr(module, names[1]), *pair)):
+                impl, spare = mgr.resolve_candidates(name)
+                message = f"Op '{name}' using '{impl.impl_id}'"
+                for attempt in range(4):
+                    if attempt in (0, 3):
+                        with pytest.raises(RuntimeError) as raised:
+                            invoke(*([None] * 5))
+                        assert raised.value is error
+                    else:
+                        assert invoke(*([None] * 5)) is result
+                    assert caplog.text.count(message) == (0 if attempt == 0 else 1)
+                assert impl.fn.call_count == 4
+                spare.fn.assert_not_called()
+            assert dispatch.call_count == 16

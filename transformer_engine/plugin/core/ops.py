@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, Type
 from enum import IntEnum
 from contextlib import nullcontext
+from functools import partial
 import torch
 
 from .logger_manager import get_logger
@@ -1949,7 +1950,7 @@ class TEFLModule:
         supports = getattr(permute.fn, "_supports_inputs", None)
         if supports is None or not supports(tokens, routing_map, probs, num_out_tokens, topk):
             return None
-        return permute.fn, unpermute.fn
+        return partial(self._manager.call, permute), partial(self._manager.call, unpermute)
 
     def moe_alltoallv_grouped_matmul(self, x, weights, group, send_counts, recv_counts):
         """Exchange tokens then multiply expert weights; returns expert-ordered rows.
@@ -1958,8 +1959,8 @@ class TEFLModule:
         on support across the EP group before invoking this collective.
         Runtime errors propagate: retrying a collective could desynchronize ranks.
         """
-        fn = self._manager.resolve("moe_alltoallv_grouped_matmul")
-        return fn(x, weights, group, send_counts, recv_counts)
+        impl = self._manager.resolve_impl("moe_alltoallv_grouped_matmul")
+        return self._manager.call(impl, x, weights, group, send_counts, recv_counts)
 
     def moe_grouped_matmul_alltoallv(self, x, weights, group, send_counts, recv_counts):
         """Multiply expert weights then return rows in source dispatch order.
@@ -1967,8 +1968,8 @@ class TEFLModule:
         Uses the same count convention as moe_alltoallv_grouped_matmul.
         Runtime errors propagate without retrying the collective.
         """
-        fn = self._manager.resolve("moe_grouped_matmul_alltoallv")
-        return fn(x, weights, group, send_counts, recv_counts)
+        impl = self._manager.resolve_impl("moe_grouped_matmul_alltoallv")
+        return self._manager.call(impl, x, weights, group, send_counts, recv_counts)
 
     def flash_attention(
         self,
