@@ -645,21 +645,21 @@ class NPUBackend(TEFLBackendBase):
                 else torch.bfloat16
             )
 
-        # Handle 3D tensors by flattening to 2D (matching reference semantics)
+        # Flatten leading activation dimensions before applying the GEMM layout.
         original_B_shape = None
-        if B.ndim == 3:
+        if B.ndim > 2:
             original_B_shape = B.shape
             B = B.reshape(-1, B.shape[-1])
-        if A.ndim == 3:
+        if A.ndim > 2:
             A = A.reshape(-1, A.shape[-1])
 
         # Core GEMM: general_gemm(A, B, usage_a, usage_b, out_dtype, bias=None)
         # We pass bias=None here and handle bias/gelu ourselves to match reference semantics
         out = gemm_mod.general_gemm(B, A, usage_a, usage_b, torch_out_dtype, bias=None)
 
-        # Restore 3D shape: a non-transposed B contributes its outer dimensions to the output
+        # Only a non-transposed B contributes activation dimensions to the output.
         if original_B_shape is not None and not transB:
-            out = out.view(original_B_shape[0], original_B_shape[1], -1)
+            out = out.reshape(*original_B_shape[:-1], out.shape[-1])
 
         if alpha != 1.0:
             out = out * alpha
