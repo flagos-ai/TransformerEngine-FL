@@ -43,6 +43,13 @@ def register_builtins(registry) -> None:
 
     is_avail = backend.is_available
 
+    from . import moe, permutation
+
+    def bind_moe_group(fn):
+        wrapped = _bind_is_available(fn, moe.is_moe_available)
+        wrapped._supports_group = moe.supports_moe_group
+        return wrapped
+
     impls = [
         # FlashAttention class getter
         OpImpl(
@@ -170,43 +177,39 @@ def register_builtins(registry) -> None:
             vendor="NPU",
             priority=100,
         ),
+        OpImpl(
+            op_name="moe_alltoallv_grouped_matmul",
+            impl_id="vendor.npu",
+            kind=BackendImplKind.VENDOR,
+            fn=bind_moe_group(moe.alltoallv_grouped_matmul),
+            vendor="NPU",
+            priority=100,
+        ),
+        OpImpl(
+            op_name="moe_grouped_matmul_alltoallv",
+            impl_id="vendor.npu",
+            kind=BackendImplKind.VENDOR,
+            fn=bind_moe_group(moe.grouped_matmul_alltoallv),
+            vendor="NPU",
+            priority=100,
+        ),
+        OpImpl(
+            op_name="moe_permute_with_routing_map",
+            impl_id="vendor.npu",
+            kind=BackendImplKind.VENDOR,
+            fn=_bind_is_available(permutation.permute, permutation.is_available),
+            vendor="NPU",
+            priority=100,
+        ),
+        OpImpl(
+            op_name="moe_unpermute_with_routing_map",
+            impl_id="vendor.npu",
+            kind=BackendImplKind.VENDOR,
+            fn=_bind_is_available(permutation.unpermute, permutation.is_available),
+            vendor="NPU",
+            priority=100,
+        ),
     ]
-
-    from . import moe
-
-    for name, fn in (
-        ("moe_alltoallv_grouped_matmul", moe.alltoallv_grouped_matmul),
-        ("moe_grouped_matmul_alltoallv", moe.grouped_matmul_alltoallv),
-    ):
-        fn = _bind_is_available(fn, moe.is_moe_available)
-        fn._supports_group = moe.supports_moe_group
-        impls.append(
-            OpImpl(
-                op_name=name,
-                impl_id="vendor.npu",
-                kind=BackendImplKind.VENDOR,
-                fn=fn,
-                vendor="NPU",
-                priority=100,
-            )
-        )
-
-    from . import permutation
-
-    for name, fn in (
-        ("moe_permute_with_routing_map", permutation.permute),
-        ("moe_unpermute_with_routing_map", permutation.unpermute),
-    ):
-        impls.append(
-            OpImpl(
-                op_name=name,
-                impl_id="vendor.npu",
-                kind=BackendImplKind.VENDOR,
-                fn=_bind_is_available(fn, permutation.is_available),
-                vendor="NPU",
-                priority=100,
-            )
-        )
 
     impls.extend(_triton_permutation_impls(is_avail))
 
