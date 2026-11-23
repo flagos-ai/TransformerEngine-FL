@@ -28,6 +28,8 @@ class OpImpl:
     priority: int = 0
     supported_dtypes: Optional[Set[str]] = None
     min_arch: Optional[str] = None
+    # Do not retry implementations that can partially mutate state before raising.
+    allow_fallback: bool = True
 
     def __post_init__(self):
         if self.kind == BackendImplKind.VENDOR and not self.vendor:

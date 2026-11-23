@@ -371,10 +371,12 @@ class FusedAdam(torch.optim.Optimizer):
             and param.dtype == torch.bfloat16
         )
 
-        if store_param_remainders:
-            assert unscaled_state.dtype == torch.int16
-        else:
-            assert unscaled_state.dtype == torch.float32
+        expected_dtype = torch.int16 if store_param_remainders else torch.float32
+        if unscaled_state.dtype != expected_dtype:
+            raise ValueError(
+                f"FusedAdam {state_name} expects {expected_dtype}, got {unscaled_state.dtype}; "
+                "checkpoint master weights must use the same store_param_remainders setting."
+            )
         state = self.state[param]
         if state_name not in state:
             self._initialize_state(param, state_name, False, store_param_remainders)
@@ -450,13 +452,16 @@ class FusedAdam(torch.optim.Optimizer):
                 [1], dtype=torch.float32, device=param.device
             )
 
-    def initialize_state(self, param, store_param_remainders):
+    def initialize_state(self, param, store_param_remainders: Optional[bool] = None):
         """Initialize optimizer states.
 
         Arguments:
             param (torch.nn.Parameter): One of parameters in this optimizer.
-            store_param_remainders (bool): Store trailing remainder bits.
+            store_param_remainders (bool, optional): Store trailing remainder bits.
+                Defaults to the optimizer setting for BF16 parameters.
         """
+        if store_param_remainders is None:
+            store_param_remainders = self.store_param_remainders and param.dtype == torch.bfloat16
         self._initialize_state(param, "exp_avg", zero_buffer=True)
         self._initialize_state(param, "exp_avg_sq", zero_buffer=True)
         if self.master_weights:
@@ -513,8 +518,6 @@ class FusedAdam(torch.optim.Optimizer):
         """Override the load_state_dict() of pytorch. Since pytorch's load_state_dict forces the
         state to be the same dtype as param, We need to manully set the state again.
         """
-        super().load_state_dict(state_dict)
-
         groups = self.param_groups
         saved_groups = deepcopy(state_dict["param_groups"])
         id_map = dict(
@@ -523,6 +526,20 @@ class FusedAdam(torch.optim.Optimizer):
                 chain.from_iterable(g["params"] for g in groups),
             )
         )
+        # The BF16 model parameter is part of the remainder representation. A numeric
+        # cast between an FP32 master and int16 low bits is not a format conversion.
+        for k, v in state_dict["state"].items():
+            if k in id_map and v.get("master_param") is not None:
+                param = id_map[k]
+                expects_remainders = self.store_param_remainders and param.dtype == torch.bfloat16
+                has_remainders = v["master_param"].dtype == torch.int16
+                if expects_remainders != has_remainders:
+                    raise ValueError(
+                        "FusedAdam checkpoint master_param format does not match "
+                        "store_param_remainders; restore with the same setting."
+                    )
+        super().load_state_dict(state_dict)
+
         for k, v in state_dict["state"].items():
             if k in id_map:
                 param = id_map[k]

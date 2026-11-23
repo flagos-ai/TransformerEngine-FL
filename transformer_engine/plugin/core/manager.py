@@ -432,7 +432,7 @@ class OpManager:
             try:
                 return cached_impl.fn(*args, **kwargs)
             except Exception as e:
-                if enable_fallback:
+                if enable_fallback and cached_impl.allow_fallback:
                     logger.warning_once(
                         f"Cached implementation '{cached_impl.impl_id}' failed for op"
                         f" '{op_name}': {e}"
@@ -497,6 +497,8 @@ class OpManager:
                 return result
 
             except Exception as e:
+                if not impl.allow_fallback:
+                    raise
                 last_error = e
                 if idx < len(candidates) - 1:
                     logger.warning_once(
