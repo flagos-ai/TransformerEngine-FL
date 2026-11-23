@@ -34,7 +34,7 @@ def register_builtins(registry) -> None:
     Args:
         registry: Registry to register into
     """
-    from .npu import NPUBackend
+    from .npu import NPUBackend, is_moe_available, routing_map_available, supports_moe_group
 
     backend = NPUBackend()
 
@@ -43,11 +43,9 @@ def register_builtins(registry) -> None:
 
     is_avail = backend.is_available
 
-    from . import moe, permutation
-
     def bind_moe_group(fn):
-        wrapped = _bind_is_available(fn, moe.is_moe_available)
-        wrapped._supports_group = moe.supports_moe_group
+        wrapped = _bind_is_available(fn, is_moe_available)
+        wrapped._supports_group = supports_moe_group
         return wrapped
 
     impls = [
@@ -181,7 +179,7 @@ def register_builtins(registry) -> None:
             op_name="moe_alltoallv_grouped_matmul",
             impl_id="vendor.npu",
             kind=BackendImplKind.VENDOR,
-            fn=bind_moe_group(moe.alltoallv_grouped_matmul),
+            fn=bind_moe_group(backend.alltoallv_grouped_matmul),
             vendor="NPU",
             priority=100,
         ),
@@ -189,7 +187,7 @@ def register_builtins(registry) -> None:
             op_name="moe_grouped_matmul_alltoallv",
             impl_id="vendor.npu",
             kind=BackendImplKind.VENDOR,
-            fn=bind_moe_group(moe.grouped_matmul_alltoallv),
+            fn=bind_moe_group(backend.grouped_matmul_alltoallv),
             vendor="NPU",
             priority=100,
         ),
@@ -197,7 +195,7 @@ def register_builtins(registry) -> None:
             op_name="moe_permute_with_routing_map",
             impl_id="vendor.npu",
             kind=BackendImplKind.VENDOR,
-            fn=_bind_is_available(permutation.permute, permutation.is_available),
+            fn=_bind_is_available(backend.moe_permute_with_routing_map, routing_map_available),
             vendor="NPU",
             priority=100,
         ),
@@ -205,7 +203,7 @@ def register_builtins(registry) -> None:
             op_name="moe_unpermute_with_routing_map",
             impl_id="vendor.npu",
             kind=BackendImplKind.VENDOR,
-            fn=_bind_is_available(permutation.unpermute, permutation.is_available),
+            fn=_bind_is_available(backend.moe_unpermute_with_routing_map, routing_map_available),
             vendor="NPU",
             priority=100,
         ),

@@ -10,10 +10,14 @@ by delegating to transformer_engine_npu (pip-installed from TransformerEngineNPU
 
 from __future__ import annotations
 
+from dataclasses import replace
+from functools import partial
 from typing import Any, List, Optional, Tuple, Union
 import os
 
 import torch
+import torch.distributed as dist
+from torch.autograd.function import once_differentiable
 
 from ....ops import TEFLBackendBase, NVTE_Fused_Attn_Backend, DType
 from .flash_attention import NPUFlashAttention
@@ -83,11 +87,358 @@ def _get_tenpu_gemm():
     return transformer_engine_npu.pytorch.ops.gemm
 
 
+def _communicator(group, device):
+    backend = group._get_backend(device)
+    backend_name = backend.name()
+    if backend_name == "hccl":
+        return backend.get_hccl_comm_name(dist.get_rank())
+    if backend_name == "flagcx":
+        import flagcx
+
+        get_name = getattr(flagcx, "get_hccl_comm_name", None)
+        if get_name is not None:
+            return get_name(backend, device.index)
+    return None
+
+
+def supports_moe_group(group, device):
+    """Probe the existing communicator; all EP ranks must participate."""
+    return _communicator(group, device) is not None
+
+
+def _group_sizes(counts, experts, device):
+    return torch.tensor(counts, dtype=torch.int64, device=device).reshape(-1, experts).sum(0)
+
+
+def _weight_gradient(grad, x, sizes):
+    return _get_torch_npu().npu_grouped_matmul(
+        [grad.t()], [x], group_list=sizes, group_list_type=1, split_item=3, group_type=2
+    )[0]
+
+
+class _AllToAllVGroupedMatmul(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, weight, group, send_counts, recv_counts):
+        name = _communicator(group, x.device)
+        if name is None:
+            raise NotImplementedError("MoE fusion requires an HCCL communicator")
+        output, _, permuted = _get_torch_npu().npu_alltoallv_gmm(
+            x,
+            weight,
+            name,
+            group.size(),
+            send_counts,
+            recv_counts,
+            trans_gmm_weight=True,
+            permute_out_flag=ctx.needs_input_grad[1],
+        )
+        ctx.save_for_backward(permuted, weight)
+        ctx.group, ctx.name = group, name
+        ctx.send_counts, ctx.recv_counts = send_counts, recv_counts
+        return output
+
+    @staticmethod
+    @once_differentiable
+    def backward(ctx, grad):
+        x, weight = ctx.saved_tensors
+        grad = grad.contiguous()
+        dx, _ = _get_torch_npu().npu_gmm_alltoallv(
+            grad,
+            weight,
+            ctx.name,
+            ctx.group.size(),
+            ctx.recv_counts,
+            ctx.send_counts,
+        )
+        dw = None
+        if ctx.needs_input_grad[1]:
+            sizes = _group_sizes(ctx.recv_counts, weight.shape[0], grad.device)
+            dw = _weight_gradient(grad, x, sizes)
+        return dx if ctx.needs_input_grad[0] else None, dw, None, None, None
+
+
+class _GroupedMatmulAllToAllV(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, weight, group, send_counts, recv_counts):
+        name = _communicator(group, x.device)
+        if name is None:
+            raise NotImplementedError("MoE fusion requires an HCCL communicator")
+        output, _ = _get_torch_npu().npu_gmm_alltoallv(
+            x,
+            weight,
+            name,
+            group.size(),
+            recv_counts,
+            send_counts,
+            trans_gmm_weight=True,
+        )
+        ctx.save_for_backward(x, weight)
+        ctx.group, ctx.name = group, name
+        ctx.send_counts, ctx.recv_counts = send_counts, recv_counts
+        return output
+
+    @staticmethod
+    @once_differentiable
+    def backward(ctx, grad):
+        x, weight = ctx.saved_tensors
+        dx, _, permuted = _get_torch_npu().npu_alltoallv_gmm(
+            grad.contiguous(),
+            weight,
+            ctx.name,
+            ctx.group.size(),
+            ctx.send_counts,
+            ctx.recv_counts,
+            permute_out_flag=ctx.needs_input_grad[1],
+        )
+        dw = None
+        if ctx.needs_input_grad[1]:
+            sizes = _group_sizes(ctx.recv_counts, weight.shape[0], grad.device)
+            dw = _weight_gradient(permuted, x, sizes)
+        return dx if ctx.needs_input_grad[0] else None, dw, None, None, None
+
+
+def _packed_weight(weights, dtype):
+    # Stack only the legacy tuple input; preserve the parent Parameter's gradient path.
+    weight = weights if isinstance(weights, torch.Tensor) else torch.stack(tuple(weights))
+    return weight.to(dtype).contiguous()
+
+
+def is_moe_available():
+    try:
+        torch_npu = _get_torch_npu()
+    except ImportError:
+        return False
+    return all(
+        callable(getattr(torch_npu, name, None))
+        for name in (
+            "npu_alltoallv_gmm",
+            "npu_gmm_alltoallv",
+            "npu_grouped_matmul",
+        )
+    )
+
+
+_NATIVE_APIS = (
+    "npu_moe_token_permute_with_routing_map",
+    "npu_moe_token_permute_with_routing_map_grad",
+    "npu_moe_token_unpermute_with_routing_map",
+    "npu_moe_token_unpermute_with_routing_map_grad",
+)
+
+
+def routing_map_available():
+    """Require both endpoints and their official gradient APIs."""
+    try:
+        torch_npu = _get_torch_npu()
+    except ImportError:
+        return False
+    return all(
+        callable(getattr(torch_npu, op, None)) for op in _NATIVE_APIS
+    )
+
+
+def _supports_routing_map_inputs(tokens, routing_map, probs, num_out_tokens, topk):
+    """Check metadata; the caller guarantees exactly topk routes per token."""
+    if torch.compiler.is_compiling() or tokens.device.type != "npu":
+        return False
+    if tokens.ndim != 2 or tokens.dtype not in (torch.bfloat16, torch.float32):
+        return False
+    if (
+        routing_map.ndim != 2
+        or routing_map.dtype != torch.bool
+        or routing_map.device != tokens.device
+        or routing_map.shape[0] != tokens.shape[0]
+    ):
+        return False
+    num_tokens, hidden_size = tokens.shape
+    num_experts = routing_map.shape[1]
+    # Native non-pad indices are int32, with documented 24-bit N/E and k < 512.
+    if not (0 < num_tokens < 16777215 and 0 < num_experts < 16777215 and hidden_size > 0):
+        return False
+    if not (type(topk) is int and 0 < topk < 512 and topk <= num_experts):
+        return False
+    if type(num_out_tokens) is not int or num_out_tokens != num_tokens * topk:
+        return False
+    if num_out_tokens > torch.iinfo(torch.int32).max:
+        return False
+    return probs is None or (
+        probs.shape == routing_map.shape
+        and probs.device == tokens.device
+        and probs.dtype == torch.float32
+    )
+
+
+class _Permute(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, tokens, routing_map, probs, num_out_tokens):
+        output, permuted_probs, indices = _get_torch_npu().npu_moe_token_permute_with_routing_map(
+            tokens, routing_map, probs=probs, num_out_tokens=num_out_tokens, drop_and_pad=False
+        )
+        ctx.save_for_backward(indices, routing_map)
+        ctx.mark_non_differentiable(indices)
+        ctx.set_materialize_grads(False)
+        return output, permuted_probs, indices
+
+    @staticmethod
+    def backward(ctx, grad_tokens, grad_probs, _grad_indices):
+        indices, routing_map = ctx.saved_tensors
+        num_tokens, num_experts = routing_map.shape
+        tokens_grad = probs_grad = None
+        if ctx.needs_input_grad[0] and grad_tokens is not None:
+            tokens_grad, _ = _get_torch_npu().npu_moe_token_permute_with_routing_map_grad(
+                grad_tokens.contiguous(), None, indices, routing_map, num_experts, num_tokens, False
+            )
+        if ctx.needs_input_grad[2] and grad_probs is not None:
+            # Keep FP32 router gradients independent of the BF16 token-gradient kernel.
+            probs_grad = grad_probs.new_zeros((num_experts, num_tokens))
+            probs_grad.masked_scatter_(routing_map.T, grad_probs.contiguous())
+            probs_grad = probs_grad.T
+        return tokens_grad, None, probs_grad, None
+
+
+class _Unpermute(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, tokens, indices, restore_shape, routing_map):
+        output = _get_torch_npu().npu_moe_token_unpermute_with_routing_map(
+            tokens,
+            indices,
+            list(restore_shape),
+            probs=None,
+            routing_map=routing_map,
+            drop_and_pad=False,
+        )
+        # The public native autograd may save tokens even without merge weights.
+        ctx.save_for_backward(indices, routing_map)
+        ctx.restore_shape = restore_shape
+        return output
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        indices, routing_map = ctx.saved_tensors
+        # TorchNPU's non-padding derivative uses sorted_indices for both index arguments.
+        tokens_grad, _ = _get_torch_npu().npu_moe_token_unpermute_with_routing_map_grad(
+            grad_output.contiguous(),
+            indices,
+            indices,
+            routing_map,
+            None,
+            None,
+            False,
+            list(ctx.restore_shape),
+        )
+        return tokens_grad, None, None, None
+
+
+def is_moe_fusion_available(group=None, device=None):
+    """Probe locally first. All EP ranks must participate in the group probe."""
+    from ....manager import get_default_manager
+
+    manager = get_default_manager()
+    for name in ("moe_alltoallv_grouped_matmul", "moe_grouped_matmul_alltoallv"):
+        try:
+            fn = manager.resolve(name)
+        except RuntimeError:
+            return False
+        if group is not None:
+            supports_group = getattr(fn, "_supports_group", None)
+            if supports_group is None or not supports_group(group, device):
+                return False
+    return True
+
+
+def supports_moe_counts(counts, hidden_size, element_size):
+    """Check both collective directions from the shared [source, expert] CPU counts."""
+    ep_size = counts.size(0)
+    if hidden_size <= 0 or counts.max().item() >= 65536:
+        return False
+    # FC1 dispatch and FC2 combine exchange hidden-size rows in opposite directions.
+    sent = counts.sum(dim=1)
+    received = counts.reshape(ep_size, ep_size, -1).sum(dim=(0, 2))
+    min_rows = min(sent.min().item(), received.min().item())
+    max_rows = max(sent.max().item(), received.max().item())
+    return min_rows * hidden_size * element_size >= 2 * 1024**2 and max_rows < 52428800
+
+
+def get_moe_permutation_pair(tokens, routing_map, probs, num_out_tokens, topk):
+    """Keep both endpoints on the implementation that owns the private indices."""
+    from ....manager import get_default_manager
+    from ....policy import get_policy, policy_context
+
+    manager = get_default_manager()
+    names = ("moe_permute_with_routing_map", "moe_unpermute_with_routing_map")
+    policy = get_policy()
+    try:
+        permute, unpermute = (manager.resolve_candidates(name)[0] for name in names)
+    except RuntimeError:
+        return None
+    if (permute.kind, permute.vendor, permute.impl_id) != (
+        unpermute.kind, unpermute.vendor, unpermute.impl_id
+    ):
+        return None
+    supports = getattr(permute.fn, "_supports_inputs", None)
+    if supports is None or not supports(tokens, routing_map, probs, num_out_tokens, topk):
+        return None
+
+    generation = manager.registry.generation
+    sole_pair = all(len(manager.registry.get_implementations(name)) == 1 for name in names)
+    order = dict(policy.per_op_order)
+    order.update((name, (f"impl:{permute.impl_id}",)) for name in names)
+    pinned = replace(policy, per_op_order=tuple(sorted(order.items())))
+
+    def call(name, *args, **kwargs):
+        # Preserve normal dispatch caching when there is only one registered pair.
+        if sole_pair and get_policy() is policy and manager.registry.generation == generation:
+            return manager.call(name, *args, **kwargs)
+        with policy_context(pinned):
+            return manager.call(name, *args, **kwargs)
+
+    return partial(call, names[0]), partial(call, names[1])
+
+
 class NPUBackend(TEFLBackendBase):
     """NPU backend delegating to transformer_engine_npu + torch_npu."""
 
     def is_available(self) -> bool:
         return _check_npu_available()
+
+    @staticmethod
+    def alltoallv_grouped_matmul(x, weights, group, send_counts, recv_counts):
+        """Exchange expert tokens and apply FC1; differentiate inputs and weights."""
+        return _AllToAllVGroupedMatmul.apply(
+            x.contiguous(),
+            _packed_weight(weights, x.dtype),
+            group,
+            tuple(send_counts),
+            tuple(recv_counts),
+        )
+
+    @staticmethod
+    def grouped_matmul_alltoallv(x, weights, group, send_counts, recv_counts):
+        """Apply FC2 and return tokens to their source ranks, including backward."""
+        return _GroupedMatmulAllToAllV.apply(
+            x.contiguous(),
+            _packed_weight(weights, x.dtype),
+            group,
+            tuple(send_counts),
+            tuple(recv_counts),
+        )
+
+    @staticmethod
+    def moe_permute_with_routing_map(tokens, routing_map, probs, num_out_tokens):
+        """Return expert-major tokens/probabilities and paired native int32 indices."""
+        return _Permute.apply(
+            tokens.contiguous(),
+            routing_map.contiguous(),
+            probs.contiguous() if probs is not None else None,
+            num_out_tokens,
+        )
+
+    @staticmethod
+    def moe_unpermute_with_routing_map(tokens, indices, restore_shape, routing_map):
+        """Sum routed rows without merge weights or saving the source activation."""
+        return _Unpermute.apply(
+            tokens.contiguous(), indices, tuple(restore_shape), routing_map.contiguous()
+        )
 
     # ===================== Attention =====================
 
@@ -1023,3 +1374,6 @@ class NPUBackend(TEFLBackendBase):
 
         _ = math_sm_count  # CUDA-only tuning knob.
         return bias
+
+
+NPUBackend.moe_permute_with_routing_map._supports_inputs = _supports_routing_map_inputs
