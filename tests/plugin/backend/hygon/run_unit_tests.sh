@@ -20,19 +20,6 @@ If no suite is specified, all suites are run.
 EOF
 }
 
-join_with_or() {
-    local result=""
-    local item
-    for item in "$@"; do
-        if [ -z "$result" ]; then
-            result="$item"
-        else
-            result="$result or $item"
-        fi
-    done
-    printf '%s' "$result"
-}
-
 python_has_module() {
     "$PYTHON" - "$1" <<'PY'
 import importlib
@@ -61,14 +48,6 @@ install_python_package() {
     "$PYTHON" -m pip install "$package_spec"
 }
 
-skip_step() {
-    local label=$1
-    local reason=$2
-    echo "-------------------------------------------------------"
-    echo "[SKIP] Hygon/DTK: $label ($reason)"
-    echo "-------------------------------------------------------"
-}
-
 run_cmd() {
     local suite=$1
     local label=$2
@@ -92,13 +71,6 @@ run_pytest_step() {
     run_cmd "unittest" "$label" "$xml_name" "$@"
 }
 
-run_distributed_step() {
-    local label=$1
-    local xml_name=$2
-    shift 2
-    run_cmd "distributed" "$label" "$xml_name" "$@"
-}
-
 install_base_deps() {
     install_python_package pytest "${PYTEST_PACKAGE_SPEC:-pytest==8.2.1}"
 }
@@ -108,47 +80,20 @@ install_l0_deps() {
     install_python_package expecttest "${EXPECTTEST_PACKAGE_SPEC:-expecttest}"
 }
 
-install_onnx_deps() {
-    install_python_package onnxruntime "${ONNXRUNTIME_PACKAGE_SPEC:-onnxruntime}"
-    install_python_package onnxruntime_extensions "${ONNXRUNTIME_EXTENSIONS_PACKAGE_SPEC:-onnxruntime_extensions}"
-    install_base_deps
-}
-
-run_debug_suite() {
-    echo "===== START debug $(date '+%F %T') ====="
-    install_base_deps
-
-    if ! install_python_package nvdlfw_inspect.api "${NVINSPECT_PACKAGE_SPEC:-nvdlfw-inspect}" ||
-       ! python_has_module nvdlfw_inspect.api; then
-        echo "ERROR: Hygon debug tests require importable nvdlfw_inspect.api" >&2
+# debug, distributed and onnx run the shared qa scripts like every other
+# platform; Hygon differences live only in .github/configs/hygon.yml.
+run_shared_suite() {
+    local suite=$1 script=$2
+    echo "===== START $suite $(date '+%F %T') ====="
+    echo "[RUN][$suite] $script"
+    if ! XML_LOG_DIR="$XML_LOG_DIR" bash "$TE_PATH/$script"; then
         FAIL=1
-        FAILED_CASES+=("debug:nvdlfw_inspect dependency")
-        echo "===== END debug rc=1 $(date '+%F %T') ====="
-        return 0
+        FAILED_CASES+=("$suite:$script")
     fi
-
-    local feature_dirs="${NVTE_TEST_NVINSPECT_FEATURE_DIRS:-$TE_PATH/transformer_engine/debug/features}"
-    local configs_dir="${NVTE_TEST_NVINSPECT_CONFIGS_DIR:-$TE_PATH/tests/pytorch/debug/test_configs}"
-    local dummy_config="${NVTE_TEST_NVINSPECT_DUMMY_CONFIG_FILE:-$TE_PATH/tests/pytorch/debug/test_configs/dummy_feature.yaml}"
-
-    run_cmd "debug" "debug/test_config.py" "test_config.xml" \
-        "$PYTHON" -m pytest -v -s "$TE_PATH/tests/pytorch/debug/test_config.py" \
-        --feature_dirs="$feature_dirs"
-    run_cmd "debug" "debug/test_log.py" "test_log.xml" \
-        "$PYTHON" -m pytest -v -s "$TE_PATH/tests/pytorch/debug/test_log.py" \
-        --feature_dirs="$feature_dirs" --configs_dir="$configs_dir"
-    run_cmd "debug" "debug/test_api_features.py" "test_api_features.xml" \
-        env NVTE_TORCH_COMPILE=0 "$PYTHON" -m pytest -v -s "$TE_PATH/tests/pytorch/debug/test_api_features.py" \
-        --no-header --feature_dirs="$feature_dirs" --configs_dir="$configs_dir"
-    run_cmd "debug" "test_sanity.py (nvinspect)" "test_sanity_2.xml" \
-        env NVTE_TEST_NVINSPECT_ENABLED=1 \
-        NVTE_TEST_NVINSPECT_CONFIG_FILE="$dummy_config" \
-        NVTE_TEST_NVINSPECT_FEATURE_DIRS="$feature_dirs" \
-        PYTORCH_JIT=0 NVTE_TORCH_COMPILE=0 NVTE_ALLOW_NONDETERMINISTIC_ALGO=0 \
-        "$PYTHON" -m pytest -v -s "$TE_PATH/tests/pytorch/test_sanity.py" --no-header
-
-    echo "===== END debug rc=$FAIL $(date '+%F %T') ====="
+    echo "===== END $suite rc=$FAIL $(date '+%F %T') ====="
 }
+
+run_debug_suite() { run_shared_suite debug qa/L0_pytorch_debug_unittest/test.sh; }
 
 run_unittest_suite() {
     echo "===== START unittest $(date '+%F %T') ====="
@@ -159,51 +104,27 @@ run_unittest_suite() {
     run_pytest_step "test_deferred_init.py" "pytest_test_deferred_init.xml" \
         "$PYTHON" -m pytest -s -v --tb=auto "$TE_PATH/tests/pytorch/test_deferred_init.py"
     run_pytest_step "test_jit.py" "pytest_test_jit.xml" \
-        "$PYTHON" -m pytest -s -v --tb=auto "$TE_PATH/tests/pytorch/test_jit.py" -k "not (test_torch_dynamo)"
+        "$PYTHON" -m pytest -s -v --tb=auto "$TE_PATH/tests/pytorch/test_jit.py"
 
-    local plugin_root="$TE_PATH/tests/plugin"
-    run_pytest_step "plugin/test_policy.py" "pytest_test_plugin_policy.xml" \
-        "$PYTHON" -m pytest -s -v --tb=auto "$plugin_root/plugin/test_policy.py"
-    run_pytest_step "plugin/test_manager.py" "pytest_test_plugin_manager.xml" \
-        "$PYTHON" -m pytest -s -v --tb=auto "$plugin_root/plugin/test_manager.py"
-    run_pytest_step "plugin/test_policy_selection.py" "pytest_test_plugin_policy_selection.xml" \
-        "$PYTHON" -m pytest -s -v --tb=auto "$plugin_root/plugin/test_policy_selection.py"
-    run_pytest_step "reference/test_lifecycle.py" "pytest_test_backend_reference.xml" \
-        "$PYTHON" -m pytest -s -v --tb=auto "$plugin_root/backend/reference/test_lifecycle.py"
-    run_pytest_step "reference/test_activation.py" "pytest_test_backend_reference_activation.xml" \
-        "$PYTHON" -m pytest -s -v --tb=auto "$plugin_root/backend/reference/test_activation.py"
-    run_pytest_step "reference/test_dropout.py" "pytest_test_backend_reference_dropout.xml" \
-        "$PYTHON" -m pytest -s -v --tb=auto "$plugin_root/backend/reference/test_dropout.py"
-    run_pytest_step "reference/test_gemm.py" "pytest_test_backend_reference_gemm.xml" \
-        "$PYTHON" -m pytest -s -v --tb=auto "$plugin_root/backend/reference/test_gemm.py"
+    # Attention targets verified passing on BW1000 without touching shared
+    # source: GQA and HF integration. The fused-attention suite and the
+    # attention-accuracy numerics remain out of scope; see
+    # ignored_test_groups.attention.
+    run_pytest_step "test_gqa.py" "pytest_test_gqa.xml" \
+        "$PYTHON" -m pytest -s -v --tb=auto "$TE_PATH/tests/pytorch/test_gqa.py"
+    run_pytest_step "test_hf_integration.py" "pytest_test_hf_integration.xml" \
+        "$PYTHON" -m pytest -s -v --tb=auto "$TE_PATH/tests/pytorch/test_hf_integration.py"
 
+    if ! TE_TEST_GROUP_PRESET=plugin-unit "$PYTHON" "$TE_PATH/tests/test_utils/run_ci_test_group.py"; then
+        FAIL=1
+        FAILED_CASES+=("unittest:plugin_core")
+    fi
     echo "===== END unittest rc=$FAIL $(date '+%F %T') ====="
 }
 
-run_distributed_suite() {
-    echo "===== START distributed $(date '+%F %T') ====="
-    install_base_deps
+run_distributed_suite() { run_shared_suite distributed qa/L1_pytorch_distributed_unittest/test.sh; }
 
-    run_distributed_step "attention/test_cp_utils.py" "pytest_test_cp_utils.xml" \
-        "$PYTHON" -m pytest -v -s "$TE_PATH/tests/pytorch/attention/test_cp_utils.py"
-
-    echo "===== END distributed rc=$FAIL $(date '+%F %T') ====="
-}
-
-run_onnx_suite() {
-    echo "===== START onnx $(date '+%F %T') ====="
-    install_onnx_deps
-
-    local skip_expr
-    skip_expr="$(join_with_or "${HYGON_ONNX_SKIP_GROUPS[@]}")"
-    skip_expr="not ($skip_expr)"
-    echo "[SKIP] Hygon/DTK ONNX groups: $skip_expr"
-    run_cmd "onnx" "test_onnx_export.py" "test_onnx_export.xml" \
-        env NVTE_UnfusedDPA_Emulate_FP8=1 \
-        "$PYTHON" -m pytest --tb=auto "$TE_PATH/tests/pytorch/test_onnx_export.py" -k "$skip_expr"
-
-    echo "===== END onnx rc=$FAIL $(date '+%F %T') ====="
-}
+run_onnx_suite() { run_shared_suite onnx qa/L1_pytorch_onnx_unittest/test.sh; }
 
 run_suite() {
     case "$1" in
@@ -239,4 +160,4 @@ if [ "$OVERALL_FAIL" -ne 0 ]; then
     exit 1
 fi
 
-echo "Selected Hygon/DTK reference-baseline tests passed (some optional groups might have been skipped)."
+echo "All selected Hygon/DTK reference-baseline test suites passed."

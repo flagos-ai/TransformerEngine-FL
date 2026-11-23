@@ -12,12 +12,27 @@ from transformer_engine.plugin.core.policy import reset_global_policy
 from transformer_engine.plugin.core.triton_dispatch import entry
 from transformer_engine.plugin.core.types import BackendImplKind, OpImpl
 
+# Every environment variable SelectionPolicy reads (plugin/core/policy.py).
+_POLICY_ENV = (
+    "TE_FL_PREFER",
+    "TE_FL_PREFER_VENDOR",
+    "TE_FL_STRICT",
+    "TE_FL_DENY_VENDORS",
+    "TE_FL_ALLOW_VENDORS",
+    "TE_FL_PER_OP",
+)
+
 
 @pytest.fixture
 def isolated_entry_state(monkeypatch):
     # Selection depends on the global policy, and sibling suites leave one
     # installed (test_policy_selection sets prefer=reference without
     # restoring it), which would silently change which impl wins here.
+    # Startup hooks can also seed TE_FL_* inside the interpreter (Enflame's
+    # enflame_te_bootstrap.pth does setdefault("TE_FL_PREFER", "reference")),
+    # so unsetting them outside the process is not enough.
+    for name in _POLICY_ENV:
+        monkeypatch.delenv(name, raising=False)
     reset_global_policy()
     monkeypatch.setattr(entry, "_native_functions", {})
     monkeypatch.setattr(entry, "_native_generation", 0)

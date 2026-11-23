@@ -148,10 +148,14 @@ test_groups:
     - transformer_engine/pytorch/graph.py
     - transformer_engine/pytorch/jit.py
     - transformer_engine/pytorch/torch_version.py
+    - transformer_engine/pytorch/cross_entropy.py
+    - transformer_engine/pytorch/triton/cross_entropy.py
+    - tests/pytorch/test_cross_entropy.py
     - tests/pytorch/test_deferred_init.py
     - tests/pytorch/test_sanity_import.py
     - tests/pytorch/test_jit.py
     - tests/pytorch/test_cuda_graphs.py
+    - tests/pytorch/test_cross_entropy.py
     - tests/pytorch/test_checkpoint.py
     - tests/pytorch/test_cpu_offloading*.py
     test_targets:
@@ -179,6 +183,9 @@ test_groups:
     - core
     paths:
     - transformer_engine/plugin/core/*.py
+    - transformer_engine/plugin/core/triton_dispatch/
+    - transformer_engine/plugin/core/backends/__init__.py
+    - transformer_engine/pytorch/triton/
     - transformer_engine/plugin/*.py
     - tests/plugin/plugin/
     test_targets:
@@ -201,8 +208,10 @@ test_groups:
     paths:
     - transformer_engine/plugin/core/backends/reference/
     - tests/plugin/backend/reference/
+    - tests/plugin/accuracy/
     test_targets:
     - tests/plugin/backend/reference/
+    - tests/plugin/accuracy/
     kind: unit
     required: true
     evidence: junit
@@ -342,7 +351,12 @@ test_groups:
     - tests/pytorch/test_gqa.py
     - tests/pytorch/test_hf_integration.py
     test_targets:
-    - tests/pytorch/attention/
+    - tests/pytorch/attention/test_attention.py
+    - tests/pytorch/attention/test_attention_with_cp.py
+    - tests/pytorch/attention/test_cu_seqlens_cache.py
+    - tests/pytorch/attention/test_flex_attention.py
+    - tests/pytorch/attention/test_kv_cache.py
+    - tests/pytorch/attention/test_linear_mxfp8_attention.py
     - tests/pytorch/test_fused_rope.py
     - tests/pytorch/test_gqa.py
     - tests/pytorch/test_hf_integration.py
@@ -441,6 +455,8 @@ test_groups:
     - transformer_engine/pytorch/numerics_debug.py
     - tests/pytorch/debug/
     - qa/L0_pytorch_debug_unittest/
+    test_targets:
+    - tests/pytorch/debug/
     kind: unit
     required: true
     evidence: junit
@@ -458,6 +474,8 @@ test_groups:
     - core
     paths:
     - transformer_engine/pytorch/distributed.py
+    - transformer_engine/pytorch/cross_entropy.py
+    - transformer_engine/pytorch/triton/cross_entropy.py
     - transformer_engine/pytorch/ep.py
     - transformer_engine/pytorch/newton_schulz.py
     - transformer_engine/pytorch/ops/basic/all_gather.py
@@ -473,6 +491,10 @@ test_groups:
     - tests/pytorch/attention/test_cp_utils.py
     - tests/plugin/backend/reference/test_context_parallel.py
     - qa/L1_pytorch_distributed_unittest/
+    test_targets:
+    - tests/pytorch/distributed/
+    - tests/pytorch/attention/test_cp_utils.py
+    - tests/plugin/backend/reference/test_context_parallel.py
     kind: unit
     required: true
     evidence: junit
@@ -493,6 +515,8 @@ test_groups:
     - transformer_engine/pytorch/onnx_extensions.py
     - tests/pytorch/test_onnx_export.py
     - qa/L1_pytorch_onnx_unittest/
+    test_targets:
+    - tests/pytorch/test_onnx_export.py
     kind: unit
     required: true
     evidence: junit

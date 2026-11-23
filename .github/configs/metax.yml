@@ -6,11 +6,8 @@ hardware_name: metax
 display_name: 'Metax Tests'
 checkout_submodules: recursive
 
-# CI image for Metax dev env
-# ci_image: localhost:5000/megatron-lm-with-te:v1
-
-# CI image for online env
-ci_image: harbor.baai.ac.cn/flagscale/megatron-lm-with-te:202603231839
+# Built from the MACA 3.7.2.1 base using docker/metax/Dockerfile.
+ci_image: harbor.baai.ac.cn/flagos-dev/transformer-engine-fl:v2.17.0-metax-ci
 
 # Runner labels for self-hosted Metax node
 # runner_labels:
@@ -29,6 +26,12 @@ container_volumes:
   - /nfs/metax_fs:/nfs/metax_fs
 
 # Container options
+# LD_LIBRARY_PATH comes from the image (MACA base: /opt/maca/lib:/opt/maca/mxgpu_llvm/lib).
+# Do not pass -e LD_LIBRARY_PATH here: docker receives these options unexpanded,
+# so a value here replaces the image's and torch then cannot load libmxomp.so.
+# MCore's current launcher accepts only nccl/gloo for --distributed-backend;
+# keep the platform runtime selector separate until the MetaX MCore image
+# supports an end-to-end mccl launcher contract.
 container_options: >-
   --hostname=te_cicd
   --ipc=host
@@ -40,7 +43,6 @@ container_options: >-
   --group-add video
   -e PLATFORM=metax
   -e TORCH_DISTRIBUTED_BACKEND=mccl
-  -e LD_LIBRARY_PATH=/opt/maca/lib:/usr/local/lib:$LD_LIBRARY_PATH
 
 # Platform-specific environment setup script
 setup_script: .github/scripts/setup_metax.sh
@@ -52,7 +54,7 @@ device_types:
 coverage:
   enabled: true
   required: false
-  python: /opt/conda/bin/python3
+  python: /opt/te-ci/bin/python3
   sources:
     - transformer_engine
   include:
@@ -96,7 +98,7 @@ test_matrix:
       - c550
     # Ignored test files for unit tests
     # These files will be skipped when running pytest
-    ignored_tests:
+    # ignored_tests belongs at the top level; see below.
       # example: tests/unit_tests/test_example.py
       # - tests/unit_tests/test_inference.py
       # - tests/unit_tests/test_rl_utils.py
@@ -106,10 +108,118 @@ test_matrix:
 paths_watch:
   - .github/configs/metax.yml
   - .github/scripts/setup_metax.sh
+  - docker/metax/
   - tests/plugin/backend/metax/
   - transformer_engine/plugin/core/backends/vendor/metax/
 
+# Plugin node quarantines. Remove each target when its restore condition holds.
+ignored_tests:
+  # FlagGems norm kernels miss the half-precision weight-gradient tolerance
+  # (2.9e-5 vs 1e-5 allowed, rel 1.8e-3 vs 1e-3) once the shared
+  # flagos -> vendor -> reference order selects default.flagos; the FP32 cases
+  # pass. Observed in run 43804752380.
+  # Owner: FlagGems norm. This was first recorded here and attributed to the
+  # FlagGems MACA backend, which was wrong: in run 43832203212 the six patterns
+  # below match the A100 failures one for one, 25 of 25, with no pattern left
+  # unmatched, and A100 runs flag_gems 5.4.0 rather than the MACA backend. The
+  # defect is in the FlagGems norm kernels themselves, so cuda.yml carries the
+  # same six entries and the same owner.
+  # Restore when the FP16/BF16 kernels reach the reference tolerance.
+  # Repro (CI image, TE_FL_PREFER=flagos from set_env.sh):
+  #   pytest tests/pytorch/test_fusible_ops.py -k "test_layer_norm or rmsnorm"
+  # Isolate the cause: rerun with
+  #   TE_FL_PER_OP="layernorm_bwd=vendor|reference;rmsnorm_bwd=vendor|reference"
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_layer_norm[*dtype1*]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_layer_norm[*dtype2*]
+  # The rmsnorm cases only miss it with zero_centered_gamma enabled; dtype2
+  # in_shape0-weight_shape0 passes, so it stays enabled.
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_rmsnorm[*-True-dtype1-*]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_rmsnorm[*-True-dtype2-in_shape0-weight_shape1]
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_rmsnorm[*-True-dtype2-in_shape1-*]
+  - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_backward_add_rmsnorm[True-dtype1-in_shape1-*]
+  # ONNX Runtime and TE disagree on the exported graphs once the norm layers run
+  # on default.flagos (output validation reports 3k-16k element mismatches).
+  # Likely the same norm kernels as above (not yet isolated); run 43804752380.
+  # Repro: pytest tests/pytorch/test_onnx_export.py -k "core_attention or transformer_layer"
+  - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_output_layernorm
+  - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_unfused_qkv_params
+  - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_zero_centered_gamma
+  # num_warps=32 exceeds the MACA compiler limit; restore after launch adaptation.
+  - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_cross_entropy_forward_and_backward_match_native_exactly
+  # The parallel cross-entropy launch also passes num_warps=32, while the
+  # current MetaX MACA compiler accepts at most 16 warps.
+  - tests/pytorch/distributed/test_parallel_cross_entropy.py
+  # mHC keyword arguments are incompatible with the current Autotuner reset_to_zero hook.
+  - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_mhc_apis_match_native_exactly
+  # Fixed-seed vendor dropout sampling currently falls outside its statistical bound.
+  - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_dropout[dtype0-shape2-None-True-0.5]
+  # The entries below were hard-coded per platform in qa/ (PRs #60, #73) and are
+  # moved here unchanged so that every ignore is visible in the plan. qa/ gave no
+  # reason for most of them and they were not re-verified in this move. Restore
+  # each once it passes on C550. The attention, RoPE, GQA and HF-integration
+  # files from the same lists are covered by the attention group ignore below.
+  # From the PLATFORM=metax lists in qa/L0_pytorch_unittest/test.sh (unit job)
+  # and qa/L0_pytorch_debug_unittest/test.sh (debug job). The debug job ran these
+  # files on C550 on 2026-11-17 (4116 + 741 + 13 passed), so they now apply to the
+  # unit job only; the debug failures are listed in the shared-flow block below.
+  - jobs: [pytorch_unit]
+    tests:
+      - tests/pytorch/test_numerics.py
+      - tests/pytorch/test_sanity.py
+  - tests/pytorch/test_fused_optimizer.py
+  - tests/pytorch/test_multi_tensor.py
+  - tests/pytorch/test_cpu_offloading.py
+  - tests/pytorch/test_cpu_offloading_v1.py
+  - tests/pytorch/test_checkpoint.py
+  - tests/pytorch/test_cuda_graphs.py
+  # qa/L0_pytorch_unittest/test.sh -k filter on MetaX.
+  - tests/pytorch/test_jit.py::test_torch_dynamo
+  # From qa/L1_pytorch_distributed_unittest/test.sh: run_numerics.py hardcodes a
+  # 30 s init_process_group timeout, and a container whose TE import takes ~35 s
+  # fails the NCCL store handshake before rank 0 publishes the unique id.
+  - tests/pytorch/distributed/test_numerics.py
+  - tests/pytorch/distributed/test_numerics_exact.py
+  # Shared-flow alignment (run of 2026-11-17 at deb7ee4d): debug, distributed
+  # and onnx now run the shared qa scripts. Each entry below failed, crashed or
+  # hung in that run on metax; each comment is the first error of the tests below it.
+  - jobs: [pytorch_debug]
+    tests:
+      # AssertionError: GEMM not possible
+      - tests/pytorch/test_numerics.py::test_transformer_layer_hidden_states_format[*-*-dtype1]
+      - tests/pytorch/test_numerics.py::test_transformer_layer_hidden_states_format[*-*-dtype2]
+      # AssertionError: Mismatch in tensor 4
+      - tests/pytorch/test_numerics.py::test_gpt_checkpointing[*-2-dtype2]
+      # AssertionError: Outputs not close enough in tensor at idx=N
+      - tests/pytorch/test_numerics.py::test_dpa_accuracy[*-*-dtype1]
+      - tests/pytorch/test_numerics.py::test_dpa_accuracy[*-*-dtype2]
+      - tests/pytorch/test_numerics.py::test_layernorm_accuracy[*-*-*-*-1-*]
+      - tests/pytorch/test_numerics.py::test_layernorm_accuracy[*-*-*-*-dtype1]
+      - tests/pytorch/test_numerics.py::test_layernorm_accuracy[*-*-*-*-dtype2]
+      - tests/pytorch/test_numerics.py::test_layernorm_accuracy[*-*-*-2-*]
+      - tests/pytorch/test_numerics.py::test_layernorm_accuracy[*-0.001-*-*-*]
+      # RuntimeError: All 1 implementation(s) failed for op='quantize'.
+      - tests/pytorch/debug/test_sanity.py::test_sanity_debug[fake_quant-*-mha_attention]
+      - tests/pytorch/debug/test_sanity.py::test_sanity_debug[fake_quant-*-transformer_layer]
+      # RuntimeError: All 3 implementation(s) failed for op='get_flash_attention_class'.
+      - tests/pytorch/test_sanity.py::test_sanity_amp_and_nvfuser[*-*-*-dtype0]
+  - jobs: [pytorch_onnx]
+    tests:
+      # ValueError: Output validation of <path> failed with 16013 errors
+      - tests/pytorch/test_onnx_export.py::test_export_core_attention[precision0-*-*-*]
+      # ValueError: Output validation of <path> failed with 16043 errors
+      - tests/pytorch/test_onnx_export.py::test_export_core_attention[precision3-*-*-*]
+      # ValueError: Output validation of <path> failed with 3123 errors
+      - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_activation[clamped_swiglu]
+      # ValueError: Output validation of <path> failed with 3144 errors
+      - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_activation[geglu]
+      # ValueError: Output validation of <path> failed with 3181 errors
+      - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_activation[reglu]
+      # ValueError: Output validation of <path> failed with 3332 errors
+      - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_recipe[precision0-*]
+      # ValueError: Output validation of <path> failed with 3378 errors
+      - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_activation[relu]
+
 # Current QA coverage gaps, recorded in the plan instead of claimed as passing.
-unsupported_test_groups:
-  attention: MetaX unit QA filters attention, RoPE, GQA, numerics and sanity attention targets; no matching attention testcase executes.
+ignored_test_groups:
+  attention: MetaX has not run its attention, RoPE, GQA, HF-integration or attention-numerics targets in CI (formerly filtered in qa/); no matching attention testcase executes.
   quantization: Current C550 CI skips every selected FP8, MXFP8 and NVFP4 target; no passing quantization evidence is available.

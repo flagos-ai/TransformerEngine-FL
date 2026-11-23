@@ -14,7 +14,10 @@ export NVTE_WITH_CUDA="${NVTE_WITH_CUDA:-0}"
 export NVTE_WITH_MACA="${NVTE_WITH_MACA:-0}"
 export TE_WITH_NCCL="${TE_WITH_NCCL:-0}"
 export NVTE_FRAMEWORK="${NVTE_FRAMEWORK:-pytorch}"
-export TE_FL_PREFER="${TE_FL_PREFER:-vendor}"
+# TE-FL uses one dispatch order on every platform: flagos -> vendor ->
+# reference (policy.py PREFER_DEFAULT). Do not pin a different preference
+# here; quarantine the failing cases in the platform config instead.
+export TE_FL_PREFER="${TE_FL_PREFER:-flagos}"
 export DISTRIBUTED_BACKEND="${DISTRIBUTED_BACKEND:-nccl}"
 export NVTE_FLASH_ATTN="${NVTE_FLASH_ATTN:-0}"
 export NVTE_FUSED_ATTN="${NVTE_FUSED_ATTN:-0}"

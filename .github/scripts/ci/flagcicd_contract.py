@@ -6,7 +6,8 @@ from __future__ import annotations
 import hashlib
 import fnmatch
 import json
-from pathlib import PurePosixPath
+import os
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 # Schema version constants
@@ -49,7 +50,11 @@ def split_test_target(target: str) -> tuple[str, str]:
 
 
 def test_target_matches(nodeid: str, target: str) -> bool:
-    """Match a canonical pytest node; bare functions/classes include their parameters."""
+    """Match a canonical pytest node; bare functions/classes include their parameters.
+
+    A bracketed parameter ID is literal unless it contains ``*`` or ``?``; those
+    two wildcards then match within the ID, e.g. ``test_f[*-1-dtype*]``.
+    """
     target_path, target_node = split_test_target(target)
     path, separator, node = nodeid.partition("::")
     path_matches = (
@@ -62,7 +67,15 @@ def test_target_matches(nodeid: str, target: str) -> bool:
     if not separator:
         return False
     if "[" in target_node:
-        return node == target_node  # Parameter IDs are literal, not glob character classes.
+        target_base, _, target_params = target_node.partition("[")
+        if not ("*" in target_params or "?" in target_params):
+            return node == target_node  # Parameter IDs are literal by default.
+        node_base, bracket, node_params = node.partition("[")
+        if not bracket or not node.endswith("]") or not target_node.endswith("]"):
+            return False
+        # Only * and ? are wildcards; "[" stays literal instead of opening a class.
+        pattern = target_params[:-1].replace("[", "[[]")
+        return node_base == target_base and fnmatch.fnmatchcase(node_params[:-1], pattern)
     base_node = node.split("[", 1)[0]
     parts = base_node.split("::")
     return any(
@@ -164,3 +177,15 @@ def load_plan(plan_json: str) -> dict[str, Any]:
     if errors:
         raise ValueError(f"Invalid plan: {'; '.join(errors)}")
     return plan
+
+
+def load_plan_from_env() -> dict[str, Any]:
+    """Read a workflow plan file, retaining JSON-env compatibility for callers."""
+    path = os.environ.get("FLAGCICD_PLAN_FILE")
+    if path:
+        try:
+            raw = Path(path).read_text(encoding="utf-8")
+        except OSError as exc:
+            raise ValueError(f"Cannot read plan file {path}: {exc}") from exc
+        return load_plan(raw)
+    return load_plan(os.environ.get("FLAGCICD_PLAN", ""))

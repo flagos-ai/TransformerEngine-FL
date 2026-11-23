@@ -20,5 +20,4 @@ readonly PLATFORM_PATCH_SCRIPT="tests/plugin/backend/musa/patch_megatron_mccl.py
 readonly PLATFORM_PYTEST_UNIT_MARKERS="not slow and not integration"
 readonly PLATFORM_PYTEST_INTEGRATION_MARKERS="integration"
 readonly PLATFORM_PYTEST_EXTRA_ARGS="--tb=short --verbose"
-readonly PLATFORM_PYTEST_DESELECT=""
 readonly PLATFORM_COVERAGE_ENABLED=true

@@ -86,11 +86,10 @@ backend = MUSABackend()
 if not backend.is_available():
     raise RuntimeError("transformer_engine vendor.musa backend is not available")
 
+# The dispatch order is flagos -> vendor -> reference on every platform, so the
+# selected implementation depends on what FlagOS registers. Record it instead of
+# pinning one: vendor.musa availability is already asserted above.
 selected_impl = OpManager().get_selected_impl_id("generic_gemm")
-if selected_impl != "vendor.musa":
-    raise RuntimeError(
-        "generic_gemm did not select vendor.musa; selected " + repr(selected_impl)
-    )
 
 print("required MUSA backend APIs:", ", ".join(required_symbols))
 print("vendor.musa backend is available")

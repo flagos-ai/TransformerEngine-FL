@@ -25,37 +25,12 @@ FAIL=0
 # because it is not available on PyPI.
 pip install pytest==8.2.1
 
-METAX_IGNORED_TESTS=(
-    "$TE_PATH/tests/pytorch/test_numerics.py"
-    "$TE_PATH/tests/pytorch/test_sanity.py"
-    "$TE_PATH/tests/pytorch/debug/test_sanity.py"
-)
-
-should_skip_on_metax() {
-    local test_path=$1
-
-    [ "$PLATFORM" = "metax" ] || return 1
-
-    local ignored_test
-    for ignored_test in "${METAX_IGNORED_TESTS[@]}"; do
-        if [ "$test_path" = "$ignored_test" ]; then
-            echo "[SKIP] Platform MetaX: Ignoring $test_path"
-            return 0
-        fi
-    done
-
-    return 1
-}
-
-
+# Platform ignores live in .github/configs/<platform>.yml (ignored_tests); the
+# CI runner applies them to every pytest call below. Do not filter here.
 run_test_step() {
     local xml_file=$1
     local test_path=$2
     local cmd=$3
-
-    if should_skip_on_metax "$test_path"; then
-        return 0
-    fi
 
     echo "-------------------------------------------------------"
     echo "[RUN] Executing: $test_path"
@@ -105,6 +80,6 @@ pytest -v -s --junitxml=$XML_LOG_DIR/test_sanity_zero_tokens.xml $TE_PATH/tests/
 # Step 8: Numerics 2
 run_test_step "test_numerics_2.xml" "$TE_PATH/tests/pytorch/test_numerics.py" \
 "NVTE_TEST_NVINSPECT_ENABLED=1 NVTE_TEST_NVINSPECT_CONFIG_FILE=$NVTE_TEST_NVINSPECT_DUMMY_CONFIG_FILE NVTE_TEST_NVINSPECT_FEATURE_DIRS=$NVTE_TEST_NVINSPECT_FEATURE_DIRS PYTORCH_JIT=0 NVTE_TORCH_COMPILE=0 NVTE_ALLOW_NONDETERMINISTIC_ALGO=0 NVTE_FUSED_ATTN=0 \
-pytest -v -s --junitxml=$XML_LOG_DIR/test_numerics_2.xml $TE_PATH/tests/pytorch/test_numerics.py -k \"not (test_linear_accuracy or test_layernorm_linear_accuracy or test_layernorm_mlp_accuracy or test_transformer_layer_hidden_states_format)\" --no-header"
+pytest -v -s --junitxml=$XML_LOG_DIR/test_numerics_2.xml $TE_PATH/tests/pytorch/test_numerics.py --no-header"
 
 exit $FAIL

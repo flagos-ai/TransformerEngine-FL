@@ -4,7 +4,7 @@ hardware_name: hygon
 display_name: 'Hygon DCU (DTK)'
 checkout_submodules: 'false'
 
-ci_image: harbor.baai.ac.cn/flagos-dev/transformerengine-fl:manual-20260717-hygon-dev
+ci_image: harbor.baai.ac.cn/flagos-dev/transformer-engine-fl:v2.17.0-hygon-ci
 
 runner_labels:
   - hg-8g-cicd-te
@@ -12,6 +12,9 @@ runner_labels:
 container_volumes:
   - /opt/hyhal:/opt/hyhal
 
+# One dispatch order on every platform: flagos -> vendor -> reference.
+# The current image still pins a different TE_FL_PREFER in its ENV, so the
+# option below passes it explicitly; drop it once the image is rebuilt.
 container_options: >-
   --privileged
   --ipc=host
@@ -22,6 +25,7 @@ container_options: >-
   --device=/dev/kfd
   --device=/dev/dri
   --group-add video
+  -e TE_FL_PREFER=flagos
 
 setup_script: .github/scripts/setup_hygon.sh
 
@@ -77,10 +81,93 @@ paths_watch:
   - transformer_engine/plugin/core/backends/vendor/hygon/
 
 # Missing test-group coverage is explicit; these entries do not claim hardware incapability.
-unsupported_test_groups:
-  debug: The current DTK reference backend lacks quantize and FP8 debug feature support; the full nvinspect debug suite is not adapted to Hygon.
-  normalization: Hygon unit QA runs deferred-init/JIT, plugin policy and reference lifecycle/activation/dropout/GEMM only; no normalization target is wired.
-  attention: Hygon unit QA does not run attention, RoPE, GQA or HF attention targets; CP utilities belong to the separate distributed group.
+ignored_test_groups:
+  attention: Hygon unit QA runs the GQA and HF-integration targets only. The fused-attention suite requires a fused backend built for CUDA, the attention-accuracy targets are blocked by the shared FP8 block-scaling capability check (torch.version.cuda is None on DTK), and FP8 variants require the quantize operator. CP utilities now belong to the distributed group and run there.
   quantization: Hygon unit QA has no recipe, quantized-tensor, FP8 or NVFP4 target.
-  optimizer: Hygon unit QA does not run fused optimizer, multi-tensor or reference optimizer targets.
-  vendor_backend: Hygon unit QA has no vendor backend or FlagOS backend targets; plugin manager tests only validate dispatch infrastructure.
+
+# These tests will be skipped when running pytest (file or file::node).
+# Only defects owned outside this repository belong here; give the reason,
+# owner and restore condition in a comment above each group.
+ignored_tests:
+  # FlagTree autotuning can repeat in-place mul_ on live Adam state, corrupting
+  # the result on the first tuned call (observed on Hygon). Restore after the
+  # runtime preserves in-place arguments during tuning.
+  - tests/plugin/backend/flagos/test_optimizer_numerical.py::test_multi_tensor_adam_matches_formula
+  # Hygon DCU launch limit: num_warps=32 exceeds the device thread limit.
+  - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_cross_entropy_forward_and_backward_match_native_exactly
+  # FlagTree/FlagTune: compiled graph tracing currently produces an invalid grid.
+  - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_dispatch_entry_does_not_shrink_the_compiled_graph
+  # The nvdlfw-inspect feature registry is not adapted to DTK and the
+  # quantize operator is missing; both surfaces fail these targets.
+  - tests/pytorch/debug/test_log.py
+  - tests/pytorch/test_sanity.py
+  # Hygon's current TE-FL registry has no quantize operator. These debug
+  # quantization paths call tex.quantize; restore after the backend exposes it.
+  - tests/pytorch/debug/test_api_features.py::test_per_tensor_scaling
+  - tests/pytorch/debug/test_api_features.py::test_fake_quant
+  - tests/pytorch/debug/test_api_features.py::test_statistics_collection
+  - tests/pytorch/debug/test_api_features.py::test_statistics_multi_run
+  # Shared-flow alignment (run of 2026-11-17 at deb7ee4d): debug, distributed
+  # and onnx now run the shared qa scripts. Each entry below failed, crashed or
+  # hung in that run on hygon; each comment is the first error of the tests below it.
+  - jobs: [pytorch_debug]
+    tests:
+      # AttributeError: Operator 'fused_amax_and_scale_update_after_reduction' not found
+      - tests/pytorch/debug/test_numerics.py::test_disable_fp8*
+      - tests/pytorch/debug/test_numerics.py::test_fake_quant_fp8
+      - tests/pytorch/debug/test_numerics.py::test_microbatching_per_tensor_scaling
+      - tests/pytorch/debug/test_numerics.py::test_per_tensor_scaling
+      - tests/pytorch/debug/test_sanity.py::test_sanity_debug[*-True-*]
+      # KERNEL VMFault in mm_kernel, process aborted (SIGABRT) with no JUnit result
+      - tests/pytorch/debug/test_numerics.py::test_logging_zero_numel_tensor
+      # SystemExit: 1
+      - tests/pytorch/debug/test_sanity.py::test_sanity_debug[fake_quant-*-mha_attention]
+      - tests/pytorch/debug/test_sanity.py::test_sanity_debug[fake_quant-*-transformer_layer]
+      # collection failure
+      - tests/pytorch/test_numerics.py
+  - jobs: [pytorch_distributed]
+    tests:
+      # AssertionError: torchrun exited with 1
+      - tests/pytorch/debug/test_distributed.py::test_debug_distributed
+      # collection failure
+      - tests/pytorch/distributed/test_numerics.py
+      - tests/pytorch/distributed/test_numerics_exact.py
+      - tests/pytorch/distributed/test_torch_fsdp2.py
+      # subprocess.CalledProcessError: Command '[PosixPath('/flagos/bin/python3'), '-m', 'torch.distributed.
+      - tests/pytorch/distributed/test_cast_master_weights_to_fp8.py::test_cast_master_weights_to_fp8
+      - tests/pytorch/distributed/test_fusible_ops.py::test_distributed_fuser_ops
+  - jobs: [pytorch_onnx]
+    tests:
+      # AttributeError: Operator 'fused_amax_and_scale_update_after_reduction' not found
+      - tests/pytorch/test_onnx_export.py::test_export_layernorm_mlp[*-fp8_recipe0]
+      - tests/pytorch/test_onnx_export.py::test_export_layernorm_mlp_activation
+      - tests/pytorch/test_onnx_export.py::test_export_layernorm_mlp_no*
+      - tests/pytorch/test_onnx_export.py::test_export_layernorm_mlp_return*
+      - tests/pytorch/test_onnx_export.py::test_export_layernorm_mlp_zero_centered_gamma
+      - tests/pytorch/test_onnx_export.py::test_export_linear_recipe[*-fp8_recipe0]
+      - tests/pytorch/test_onnx_export.py::test_export_linear_return_bias
+      - tests/pytorch/test_onnx_export.py::test_export_linear_use_bias
+      # AttributeError: Operator 'quantize' not found
+      - tests/pytorch/test_onnx_export.py::test_export_core_attention[*-*-*-fp8_recipe1]
+      - tests/pytorch/test_onnx_export.py::test_export_core_attention[*-*-*-fp8_recipe2]
+      - tests/pytorch/test_onnx_export.py::test_export_gpt_generation[*-fp8_recipe0]
+      - tests/pytorch/test_onnx_export.py::test_export_gpt_generation[*-fp8_recipe1]
+      - tests/pytorch/test_onnx_export.py::test_export_layernorm_linear_no*
+      - tests/pytorch/test_onnx_export.py::test_export_layernorm_linear_recipe[*-fp8_recipe0]
+      - tests/pytorch/test_onnx_export.py::test_export_layernorm_linear_recipe[*-fp8_recipe1]
+      - tests/pytorch/test_onnx_export.py::test_export_layernorm_linear_return*
+      - tests/pytorch/test_onnx_export.py::test_export_layernorm_linear_zero_centered_gamma
+      - tests/pytorch/test_onnx_export.py::test_export_layernorm_mlp[*-fp8_recipe1]
+      - tests/pytorch/test_onnx_export.py::test_export_linear_recipe[*-fp8_recipe1]
+      - tests/pytorch/test_onnx_export.py::test_export_multihead_attention_cross_attn
+      - tests/pytorch/test_onnx_export.py::test_export_multihead_attention_no*
+      - tests/pytorch/test_onnx_export.py::test_export_multihead_attention_recipe[*-fp8_recipe0]
+      - tests/pytorch/test_onnx_export.py::test_export_multihead_attention_recipe[*-fp8_recipe1]
+      - tests/pytorch/test_onnx_export.py::test_export_multihead_attention_unfused_qkv_params
+      - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_activation
+      - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_no_mask
+      - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_output_layernorm
+      - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_recipe[*-fp8_recipe0]
+      - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_recipe[*-fp8_recipe1]
+      - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_unfused_qkv_params
+      - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_zero_centered_gamma
