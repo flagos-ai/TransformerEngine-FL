@@ -20,5 +20,4 @@ readonly PLATFORM_INTEGRATION_TEST_SCRIPT="qa/L1_pytorch_mcore_integration/test.
 readonly PLATFORM_PYTEST_UNIT_MARKERS="not slow and not integration"
 readonly PLATFORM_PYTEST_INTEGRATION_MARKERS="integration"
 readonly PLATFORM_PYTEST_EXTRA_ARGS="--tb=short --verbose"
-readonly PLATFORM_PYTEST_DESELECT=""
 readonly PLATFORM_COVERAGE_ENABLED=true

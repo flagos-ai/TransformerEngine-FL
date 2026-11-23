@@ -105,4 +105,18 @@ compat_test_matrix:
 
 # Optional test group -> reason map for targets not wired into this platform QA.
 # A selected unsupported module is reported explicitly, never silently passed.
-unsupported_test_groups: {}
+ignored_test_groups: {}
+
+# Optional list of tests that cannot pass on this platform (file, directory,
+# function, class or parameter case). Give the reason, owner and restore
+# condition in a comment above each entry; see .github/scripts/ci/README.md,
+# "Ignoring a test on one platform".
+# ignored_tests:
+#   # Vendor runtime lacks the fused attention backend (owner: vendor team).
+#   # Restore when the backend ships in the CI image.
+#   - tests/pytorch/attention/test_attention.py
+#   - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_layer_norm[*dtype1*]
+#   # Cases that fail only in some jobs go in a group for those jobs.
+#   - jobs: [pytorch_debug]
+#     tests:
+#       - tests/pytorch/test_numerics.py::test_layernorm_accuracy[*-*-*-*-dtype1]

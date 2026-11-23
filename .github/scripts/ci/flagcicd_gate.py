@@ -23,13 +23,8 @@ def utc_now() -> str:
 
 def cmd_slice(args: argparse.Namespace) -> int:
     """Slice plan for one platform, output matrices."""
-    plan_json = os.environ.get("FLAGCICD_PLAN", "")
-    if not plan_json:
-        print("ERROR: FLAGCICD_PLAN environment variable required", file=sys.stderr)
-        return 1
-
     try:
-        plan = contract.load_plan(plan_json)
+        plan = contract.load_plan_from_env()
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
@@ -177,7 +172,7 @@ def cmd_group_report(args: argparse.Namespace) -> int:
     # Load inputs
     try:
         steps = json.loads(os.environ.get("FLAGCICD_STEPS", "{}"))
-        plan = contract.load_plan(os.environ.get("FLAGCICD_PLAN", ""))
+        plan = contract.load_plan_from_env()
     except (json.JSONDecodeError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
@@ -410,7 +405,15 @@ def parse_junit_status(junit_dir: str | None) -> tuple[str, str | None]:
         return "report_error", "junit_missing"
 
     def counts(node):
-        """Count leaf cases; validate optional summaries without double counting."""
+        """Count leaf cases; validate optional summaries without double counting.
+
+        Leaf <testcase> elements are the source of truth. pytest's
+        failures/errors/skipped summaries count outcome elements, so they must
+        match exactly. Its tests summary counts reports, and pytest>=9 subtests
+        report under their parent's testcase element without adding one, so
+        tests may exceed the testcase count, but never fall below it and never
+        be non-zero for a suite without testcases.
+        """
         if node.tag not in ("testsuite", "testsuites"):
             raise ValueError("Unsupported JUnit root")
         cases = list(node.iter("testcase"))
@@ -426,12 +429,16 @@ def parse_junit_status(junit_dir: str | None) -> tuple[str, str | None]:
                 continue
             subtree = list(suite.iter("testcase"))
             actual = [len(subtree)] + [
-                sum(case.find(tag) is not None for case in subtree)
+                sum(len(case.findall(tag)) for case in subtree)
                 for tag in ("failure", "error", "skipped")
             ]
             for key, value in zip(("tests", "failures", "errors", "skipped"), actual):
-                if key in suite.attrib and int(suite.attrib[key]) != value:
-                    raise ValueError(f"Inconsistent JUnit {key}")
+                if key not in suite.attrib:
+                    continue
+                summary = int(suite.attrib[key])
+                subtests_counted = key == "tests" and 0 < value < summary
+                if summary != value and not subtests_counted:
+                    raise ValueError(f"Inconsistent JUnit {key}: summary {summary}, actual {value}")
         return result
 
     totals = [0, 0, 0, 0]
@@ -442,7 +449,8 @@ def parse_junit_status(junit_dir: str | None) -> tuple[str, str | None]:
             for node in root.iter():
                 node.tag = node.tag.rsplit("}", 1)[-1]
             totals = [a + b for a, b in zip(totals, counts(root))]
-        except (ET.ParseError, OSError, ValueError):
+        except (ET.ParseError, OSError, ValueError) as exc:
+            print(f"ERROR: unusable JUnit report {xml_file}: {exc}", file=sys.stderr)
             return "report_error", "junit_parsing"
 
     total_tests, total_failures, total_errors, total_skipped = totals
@@ -507,16 +515,8 @@ def validate_test_group_reports(
 def cmd_platform(args: argparse.Namespace) -> int:
     """Aggregate group reports into platform report."""
     # Load plan
-    plan_json = os.environ.get("FLAGCICD_PLAN", "")
-    if not plan_json:
-        print(
-            "ERROR: FLAGCICD_PLAN environment variable is empty or not set",
-            file=sys.stderr,
-        )
-        return 1
-
     try:
-        plan = contract.load_plan(plan_json)
+        plan = contract.load_plan_from_env()
     except ValueError as exc:
         print(f"ERROR: Failed to load plan: {exc}", file=sys.stderr)
         return 1
@@ -713,7 +713,7 @@ def cmd_platform(args: argparse.Namespace) -> int:
         "groups": group_reports,
         "test_groups": logical_reports,
         "selected_test_groups": platform_entry.get("selected_test_groups", []),
-        "unsupported_test_groups": platform_entry.get("unsupported_test_groups", []),
+        "ignored_test_groups": platform_entry.get("ignored_test_groups", []),
         "errors": errors,
         "created_at": utc_now(),
     }
@@ -729,7 +729,7 @@ def cmd_gate(args: argparse.Namespace) -> int:
     """Global gate: validate all platform reports."""
     # Load plan and needs
     try:
-        plan = contract.load_plan(os.environ.get("FLAGCICD_PLAN", ""))
+        plan = contract.load_plan_from_env()
         needs = json.loads(os.environ.get("FLAGCICD_NEEDS", "{}"))
     except (ValueError, json.JSONDecodeError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
