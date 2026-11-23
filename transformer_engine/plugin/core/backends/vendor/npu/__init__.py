@@ -3,6 +3,7 @@
 #
 # See LICENSE for license information.
 
+from . import mc2
 from .npu import NPUBackend
 
-__all__ = ["NPUBackend"]
+__all__ = ["NPUBackend", "mc2"]
