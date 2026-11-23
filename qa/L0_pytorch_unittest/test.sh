@@ -129,6 +129,57 @@ run_test_step "pytest_test_hf_integration.xml" "$TE_PATH/tests/pytorch/test_hf_i
 run_test_step "pytest_test_checkpoint.xml" "$TE_PATH/tests/pytorch/test_checkpoint.py" \
 "NVTE_TEST_CHECKPOINT_ARTIFACT_PATH=$TE_PATH/artifacts/tests/pytorch/test_checkpoint python3 -m pytest --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_checkpoint.xml $TE_PATH/tests/pytorch/test_checkpoint.py" "test_checkpoint.py"
 
+# Additional functional tests found by the QA scope audit.
+run_test_step "pytest_test_backward_override.xml" "$TE_PATH/tests/pytorch/test_backward_override.py" \
+"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_backward_override.xml $TE_PATH/tests/pytorch/test_backward_override.py" "test_backward_override.py"
+
+run_test_step "pytest_test_custom_recipe.xml" "$TE_PATH/tests/pytorch/test_custom_recipe.py" \
+"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_custom_recipe.xml $TE_PATH/tests/pytorch/test_custom_recipe.py" "test_custom_recipe.py"
+
+run_test_step "pytest_test_float8_current_scaling_exact.xml" "$TE_PATH/tests/pytorch/test_float8_current_scaling_exact.py" \
+"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_float8_current_scaling_exact.xml $TE_PATH/tests/pytorch/test_float8_current_scaling_exact.py" "test_float8_current_scaling_exact.py"
+
+run_test_step "pytest_test_fused_router.xml" "$TE_PATH/tests/pytorch/test_fused_router.py" \
+"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_fused_router.xml $TE_PATH/tests/pytorch/test_fused_router.py" "test_fused_router.py"
+
+run_test_step "pytest_test_grouped_linear.xml" "$TE_PATH/tests/pytorch/test_grouped_linear.py" \
+"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_grouped_linear.xml $TE_PATH/tests/pytorch/test_grouped_linear.py" "test_grouped_linear.py"
+
+run_test_step "pytest_test_grouped_mlp.xml" "$TE_PATH/tests/pytorch/test_grouped_mlp.py" \
+"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_grouped_mlp.xml $TE_PATH/tests/pytorch/test_grouped_mlp.py" "test_grouped_mlp.py"
+
+run_test_step "pytest_test_grouped_tensor.xml" "$TE_PATH/tests/pytorch/test_grouped_tensor.py" \
+"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_grouped_tensor.xml $TE_PATH/tests/pytorch/test_grouped_tensor.py" "test_grouped_tensor.py"
+
+run_test_step "pytest_test_mhc.xml" "$TE_PATH/tests/pytorch/test_mhc.py" \
+"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_mhc.xml $TE_PATH/tests/pytorch/test_mhc.py" "test_mhc.py"
+
+run_test_step "pytest_test_nvfp4_fsdp2_hooks.xml" "$TE_PATH/tests/pytorch/test_nvfp4_fsdp2_hooks.py" \
+"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_nvfp4_fsdp2_hooks.xml $TE_PATH/tests/pytorch/test_nvfp4_fsdp2_hooks.py" "test_nvfp4_fsdp2_hooks.py"
+
+run_test_step "pytest_test_partial_cast.xml" "$TE_PATH/tests/pytorch/test_partial_cast.py" \
+"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_partial_cast.xml $TE_PATH/tests/pytorch/test_partial_cast.py" "test_partial_cast.py"
+
+run_test_step "pytest_test_qk_norm.xml" "$TE_PATH/tests/pytorch/test_qk_norm.py" \
+"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_qk_norm.xml $TE_PATH/tests/pytorch/test_qk_norm.py" "test_qk_norm.py"
+
+run_test_step "pytest_test_torch_compile.xml" "$TE_PATH/tests/pytorch/test_torch_compile.py" \
+"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_torch_compile.xml $TE_PATH/tests/pytorch/test_torch_compile.py" "test_torch_compile.py"
+
+run_test_step "pytest_test_mxfp8.xml" "$TE_PATH/tests/pytorch/mxfp8" \
+"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_mxfp8.xml $TE_PATH/tests/pytorch/mxfp8" "mxfp8"
+
+run_test_step "pytest_test_cu_seqlens_cache.xml" "$TE_PATH/tests/pytorch/attention/test_cu_seqlens_cache.py" \
+"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_cu_seqlens_cache.xml $TE_PATH/tests/pytorch/attention/test_cu_seqlens_cache.py" "test_cu_seqlens_cache.py"
+
+run_test_step "pytest_test_flex_attention.xml" "$TE_PATH/tests/pytorch/attention/test_flex_attention.py" \
+"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_flex_attention.xml $TE_PATH/tests/pytorch/attention/test_flex_attention.py" "test_flex_attention.py"
+
+# Keep MXFP8 attention correctness in unit QA. Timed speedup assertions are
+# outside this change; no performance QA or CI entry is added for now.
+run_test_step "pytest_test_linear_mxfp8_attention.xml" "$TE_PATH/tests/pytorch/attention/test_linear_mxfp8_attention.py" \
+"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_linear_mxfp8_attention.xml $TE_PATH/tests/pytorch/attention/test_linear_mxfp8_attention.py::TestLinearMXFP8Attention::test_accuracy $TE_PATH/tests/pytorch/attention/test_linear_mxfp8_attention.py::TestLinearMXFP8Attention::test_backward" "MXFP8 attention correctness"
+
 # ==============================================================================
 # New Step: Plugin Core
 # ==============================================================================

@@ -269,7 +269,7 @@ test_groups:
     - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_*norm*
     - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_backward_add_rmsnorm
     - tests/pytorch/test_fusible_ops.py::TestSequentialModules::test_layernorm_mlp
-    - tests/pytorch/layernorm_mlp/
+    # layernorm_mlp/ currently contains timed performance acceptance, deferred here.
     - tests/plugin/backend/*/test_rmsnorm.py
     - tests/plugin/backend/*/test_layernorm.py
     - tests/plugin/backend/npu/test_backend_npu.py::TestNPURMSNormAccuracy
@@ -352,7 +352,8 @@ test_groups:
     - tests/pytorch/attention/test_cu_seqlens_cache.py
     - tests/pytorch/attention/test_flex_attention.py
     - tests/pytorch/attention/test_kv_cache.py
-    - tests/pytorch/attention/test_linear_mxfp8_attention.py
+    - tests/pytorch/attention/test_linear_mxfp8_attention.py::TestLinearMXFP8Attention::test_accuracy
+    - tests/pytorch/attention/test_linear_mxfp8_attention.py::TestLinearMXFP8Attention::test_backward
     - tests/pytorch/test_fused_rope.py
     - tests/pytorch/test_gqa.py
     - tests/pytorch/test_hf_integration.py
@@ -379,6 +380,9 @@ test_groups:
     - transformer_engine/pytorch/quantized_tensor.py
     - transformer_engine/pytorch/float8_tensor.py
     - transformer_engine/pytorch/tensor/
+    - transformer_engine/pytorch/fp8.py
+    - transformer_engine/pytorch/quantization.py
+    - transformer_engine/pytorch/custom_recipes/
     - transformer_engine/pytorch/module/fp8_*.py
     - transformer_engine/pytorch/ops/basic/quantize.py
     - transformer_engine/common/recipe/
@@ -393,6 +397,8 @@ test_groups:
     - tests/pytorch/test_grouped_tensor*.py
     - tests/pytorch/test_partial_cast.py
     - tests/pytorch/test_backward_override.py
+    - tests/pytorch/test_nvfp4_fsdp2_hooks.py
+    - tests/pytorch/test_torch_compile.py
     test_targets:
     - tests/pytorch/test_recipe.py
     - tests/pytorch/test_custom_recipe.py
@@ -401,8 +407,54 @@ test_groups:
     - tests/pytorch/test_grouped_tensor*.py
     - tests/pytorch/test_partial_cast.py
     - tests/pytorch/test_backward_override.py
+    - tests/pytorch/test_nvfp4_fsdp2_hooks.py
+    - tests/pytorch/test_torch_compile.py
     - tests/pytorch/nvfp4/
     - tests/pytorch/mxfp8/
+    kind: unit
+    required: true
+    evidence: junit
+    coverage: true
+    resources:
+      class: multi_device
+      timeout_minutes: 90
+    execution:
+      matrix: unit_test_matrix
+      entry: pytorch_unit
+  - name: router
+    description: Functional MoE router scores, top-k selection and auxiliary losses.
+    level: L1
+    depends_on:
+    - core
+    paths:
+    - transformer_engine/pytorch/router.py
+    - transformer_engine/pytorch/csrc/extensions/router.cpp
+    - transformer_engine/common/fused_router/
+    - transformer_engine/common/include/transformer_engine/fused_router.h
+    - tests/pytorch/test_fused_router.py
+    test_targets:
+    - tests/pytorch/test_fused_router.py
+    kind: unit
+    required: true
+    evidence: junit
+    coverage: true
+    resources:
+      class: multi_device
+      timeout_minutes: 90
+    execution:
+      matrix: unit_test_matrix
+      entry: pytorch_unit
+  - name: mhc
+    description: Functional Triton manifold-constrained hyper-connection operators.
+    level: L1
+    depends_on:
+    - core
+    paths:
+    - transformer_engine/pytorch/triton/mhc.py
+    - transformer_engine/common/triton/mhc.py
+    - tests/pytorch/test_mhc.py
+    test_targets:
+    - tests/pytorch/test_mhc.py
     kind: unit
     required: true
     evidence: junit

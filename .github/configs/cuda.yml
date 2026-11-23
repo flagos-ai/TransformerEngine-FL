@@ -339,4 +339,13 @@ ignored_tests:
   # same full-world case is [8] there.
   - jobs: [pytorch_distributed]
     tests:
+      # CUDA-only quarantine moved from commented shared QA commands.
+      # Historical shared-flow run (2026-11-17, deb7ee4d) recorded
+      # test_current_device failure for sanity, and failures/collection errors
+      # or timeouts for overlap/userbuffers; not revalidated in this move.
+      # Owner: CUDA CI / distributed tests. Restore each file after it collects
+      # and passes on the CUDA CI image/devices without failure or timeout.
+      - tests/pytorch/distributed/test_sanity.py
+      - tests/pytorch/distributed/test_comm_gemm_overlap.py
+      - tests/pytorch/distributed/test_fusible_ops_with_userbuffers.py
       - tests/pytorch/distributed/test_fusible_ops.py::test_distributed_fuser_ops[8]

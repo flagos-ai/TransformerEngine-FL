@@ -238,6 +238,99 @@ class PlannerTests(unittest.TestCase):
                     {"preflight", "core", "plugin_core"},
                 )
 
+    def test_cuda_router_and_mhc_changes_select_their_functional_groups(self):
+        for changed, logical, target in (
+            ("tests/pytorch/test_fused_router.py", "router", "tests/pytorch/test_fused_router.py"),
+            (
+                "transformer_engine/pytorch/router.py",
+                "router",
+                "tests/pytorch/test_fused_router.py",
+            ),
+            ("tests/pytorch/test_mhc.py", "mhc", "tests/pytorch/test_mhc.py"),
+            ("transformer_engine/pytorch/triton/mhc.py", "mhc", "tests/pytorch/test_mhc.py"),
+            ("transformer_engine/common/triton/mhc.py", "mhc", "tests/pytorch/test_mhc.py"),
+        ):
+            with self.subTest(changed=changed):
+                plan = self.run_planner("pr", changed_files=json.dumps([changed]))
+                self.assertFalse(plan["group_selection"]["full_scope"])
+                self.assertIn(logical, plan["group_selection"]["groups"])
+                unit = next(
+                    g
+                    for g in plan["execution_groups"]
+                    if g["platform"] == "cuda" and g["group"] == "pytorch_unit"
+                )
+                self.assertIn(logical, unit["test_groups"])
+                self.assertIn(target, unit["exec"]["group_test_targets"][logical])
+                self.assertEqual(
+                    unit["exec"]["path"], "tests/plugin/backend/cuda/run_unit_tests.sh"
+                )
+                self.assertEqual(unit["exec"]["args"], ["unittest"])
+                qa = (ROOT / "qa/L0_pytorch_unittest/test.sh").read_text()
+                self.assertIn("$TE_PATH/" + target, qa)
+
+    def test_new_quantization_targets_route_and_preserve_cuda_capability_gap(self):
+        project = planner.load_project(ROOT / ".flagcicd/project.yaml")
+        quantization = next(g for g in project["test_groups"] if g["name"] == "quantization")
+        for target in (
+            "tests/pytorch/test_nvfp4_fsdp2_hooks.py",
+            "tests/pytorch/test_torch_compile.py",
+        ):
+            with self.subTest(target=target):
+                self.assertIn(target, quantization["paths"])
+                self.assertIn(target, quantization["test_targets"])
+                plan = self.run_planner("pr", changed_files=json.dumps([target]))
+                self.assertFalse(plan["group_selection"]["full_scope"])
+                self.assertIn("quantization", plan["group_selection"]["groups"])
+                cuda = next(p for p in plan["platforms"] if p["name"] == "cuda")
+                self.assertIn("quantization", {g["group"] for g in cuda["ignored_test_groups"]})
+                unit = next(
+                    g
+                    for g in plan["execution_groups"]
+                    if g["platform"] == "cuda" and g["group"] == "pytorch_unit"
+                )
+                self.assertNotIn("quantization", unit["test_groups"])
+                self.assertIn(target, unit["exec"]["ignored_test_targets"])
+
+    def test_deferred_performance_is_not_requested_as_unit_evidence(self):
+        project = planner.load_project(ROOT / ".flagcicd/project.yaml")
+        groups = {g["name"]: g for g in project["test_groups"]}
+        attention_targets = groups["attention"]["test_targets"]
+        mixed = "tests/pytorch/attention/test_linear_mxfp8_attention.py"
+        self.assertNotIn(mixed, attention_targets)
+        self.assertIn(mixed + "::TestLinearMXFP8Attention::test_accuracy", attention_targets)
+        self.assertIn(mixed + "::TestLinearMXFP8Attention::test_backward", attention_targets)
+        self.assertFalse(
+            any(
+                planner.contract.test_target_matches(
+                    mixed + "::TestLinearMXFP8Attention::test_performance", t
+                )
+                for t in attention_targets
+            )
+        )
+        self.assertNotIn("tests/pytorch/layernorm_mlp/", groups["normalization"]["test_targets"])
+        self.assertTrue(groups["pytorch_benchmark"].get("blocked"))
+
+    def test_restored_distributed_files_are_selected_but_quarantined_on_cuda(self):
+        files = [
+            "tests/pytorch/distributed/" + name
+            for name in (
+                "test_sanity.py",
+                "test_comm_gemm_overlap.py",
+                "test_fusible_ops_with_userbuffers.py",
+            )
+        ]
+        plan = self.run_planner("pr", changed_files=json.dumps(files))
+        self.assertEqual(plan["test_level"], "L2")
+        distributed = next(
+            g
+            for g in plan["execution_groups"]
+            if g["platform"] == "cuda" and g["group"] == "pytorch_distributed"
+        )
+        self.assertIn(
+            "tests/pytorch/distributed/", distributed["exec"]["group_test_targets"]["distributed"]
+        )
+        self.assertTrue(set(files) <= set(distributed["exec"]["ignored_test_targets"]))
+
     def test_logical_groups_share_an_execution_job_without_losing_evidence(self):
         plan = self.run_planner(
             "pr",
