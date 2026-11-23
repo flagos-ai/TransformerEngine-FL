@@ -143,6 +143,27 @@ ignored_test_groups:
 # Only defects owned outside this repository belong here; give the reason,
 # owner and restore condition in a comment above each group.
 ignored_tests:
+  - jobs: [pytorch_unit]
+    tests:
+      # A100 pilot, 2026-11-23 at 4dbe20f8, v2.17.0-cuda-ci image:
+      # reproduced twice with TE_FL_PREFER=flagos. This test requires bitwise
+      # equality (rtol=atol=0); 60.2% of output elements differ, max abs 9.47e-4.
+      # Routing BOTH generic_gemm and te_general_grouped_gemm to vendor.cuda
+      # passes; routing either alone still fails. FlagOS also reports fallback
+      # errors for empty operands and grouped bias shapes. Exact attribution
+      # remains open; do not treat the vendor pass as FlagOS validation.
+      # Owner: FlagOS/FlagGems GEMM and grouped-linear test maintainers.
+      # Restore when this exact case passes with the default CI dispatch order
+      # after the implementation or the test's backend-specific contract is fixed.
+      - 'tests/pytorch/test_grouped_linear.py::test_grouped_linear_accuracy[True-True-True-True-None-126m-1-3-torch.float32]'
+      # Same A100 pilot: reproduced twice during backward in FlagGems attention.
+      # Triton compilation fails at static_assert(BLOCK_N1 % BLOCK_M1 == 0).
+      # CUDA attention selection and unfused attention each pass this case;
+      # neither comparison validates the default FlagGems backward path.
+      # Owner: FlagGems attention/FlagOS attention integration maintainers.
+      # Restore when this case completes backward and its cache assertions pass
+      # with the default CI dispatch order, without overriding attention backends.
+      - tests/pytorch/attention/test_cu_seqlens_cache.py::test_cu_seqlens_cache_isolated_between_inference_and_train_forward
   # The new case specifically verifies the reverted pytorch/triton/pad.py
   # autotune-grid change. Keep the upstream fixed-grid implementation in this
   # PR and restore this case when the source change is intentionally accepted.
