@@ -291,25 +291,6 @@ class PlannerTests(unittest.TestCase):
                 self.assertNotIn("quantization", unit["test_groups"])
                 self.assertIn(target, unit["exec"]["ignored_test_targets"])
 
-    def test_deferred_performance_is_not_requested_as_unit_evidence(self):
-        project = planner.load_project(ROOT / ".flagcicd/project.yaml")
-        groups = {g["name"]: g for g in project["test_groups"]}
-        attention_targets = groups["attention"]["test_targets"]
-        mixed = "tests/pytorch/attention/test_linear_mxfp8_attention.py"
-        self.assertNotIn(mixed, attention_targets)
-        self.assertIn(mixed + "::TestLinearMXFP8Attention::test_accuracy", attention_targets)
-        self.assertIn(mixed + "::TestLinearMXFP8Attention::test_backward", attention_targets)
-        self.assertFalse(
-            any(
-                planner.contract.test_target_matches(
-                    mixed + "::TestLinearMXFP8Attention::test_performance", t
-                )
-                for t in attention_targets
-            )
-        )
-        self.assertNotIn("tests/pytorch/layernorm_mlp/", groups["normalization"]["test_targets"])
-        self.assertTrue(groups["pytorch_benchmark"].get("blocked"))
-
     def test_restored_distributed_files_are_selected_but_quarantined_on_cuda(self):
         files = [
             "tests/pytorch/distributed/" + name

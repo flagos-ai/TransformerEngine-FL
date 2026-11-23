@@ -269,7 +269,7 @@ test_groups:
     - tests/pytorch/test_fusible_ops.py::TestBasicOps::test_*norm*
     - tests/pytorch/test_fusible_ops.py::TestFusedOps::test_backward_add_rmsnorm
     - tests/pytorch/test_fusible_ops.py::TestSequentialModules::test_layernorm_mlp
-    # layernorm_mlp/ currently contains timed performance acceptance, deferred here.
+    - tests/pytorch/layernorm_mlp/
     - tests/plugin/backend/*/test_rmsnorm.py
     - tests/plugin/backend/*/test_layernorm.py
     - tests/plugin/backend/npu/test_backend_npu.py::TestNPURMSNormAccuracy
@@ -352,8 +352,7 @@ test_groups:
     - tests/pytorch/attention/test_cu_seqlens_cache.py
     - tests/pytorch/attention/test_flex_attention.py
     - tests/pytorch/attention/test_kv_cache.py
-    - tests/pytorch/attention/test_linear_mxfp8_attention.py::TestLinearMXFP8Attention::test_accuracy
-    - tests/pytorch/attention/test_linear_mxfp8_attention.py::TestLinearMXFP8Attention::test_backward
+    - tests/pytorch/attention/test_linear_mxfp8_attention.py
     - tests/pytorch/test_fused_rope.py
     - tests/pytorch/test_gqa.py
     - tests/pytorch/test_hf_integration.py
