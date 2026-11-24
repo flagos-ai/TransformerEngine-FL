@@ -34,7 +34,7 @@ def register_builtins(registry) -> None:
     Args:
         registry: Registry to register into
     """
-    from .npu import NPUBackend, is_moe_available, routing_map_available, supports_moe_group
+    from .npu import NPUBackend, is_moe_available, supports_moe_group
 
     backend = NPUBackend()
 
@@ -188,22 +188,6 @@ def register_builtins(registry) -> None:
             impl_id="vendor.npu",
             kind=BackendImplKind.VENDOR,
             fn=bind_moe_group(backend.grouped_matmul_alltoallv),
-            vendor="NPU",
-            priority=100,
-        ),
-        OpImpl(
-            op_name="moe_permute_with_routing_map",
-            impl_id="vendor.npu",
-            kind=BackendImplKind.VENDOR,
-            fn=_bind_is_available(backend.moe_permute_with_routing_map, routing_map_available),
-            vendor="NPU",
-            priority=100,
-        ),
-        OpImpl(
-            op_name="moe_unpermute_with_routing_map",
-            impl_id="vendor.npu",
-            kind=BackendImplKind.VENDOR,
-            fn=_bind_is_available(backend.moe_unpermute_with_routing_map, routing_map_available),
             vendor="NPU",
             priority=100,
         ),
