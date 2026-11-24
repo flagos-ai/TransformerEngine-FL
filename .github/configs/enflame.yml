@@ -105,6 +105,10 @@ ignored_tests:
       # Owner: Enflame vendor TE. Restore when the op runs on S60 and both pass.
       - tests/pytorch/test_fused_router.py::test_fused_scores_for_aux_loss
       - tests/pytorch/test_fused_router.py::test_score_for_aux_loss_bitmap_vs_bytemap
+      # S60 retest at c9c1c5a2: fused_moe_aux_loss dispatches a GCU400 kernel,
+      # raises topsErrorInvalidDeviceFunction (98), then aborts pytest.
+      # Restore when the vendor dispatch selects an S60 kernel and this test passes.
+      - tests/pytorch/test_fused_router.py::test_fused_moe_aux_loss
       # Vendor TopK returned values outside tolerance (6.2% mismatched, max
       # absolute error 0.15). The v2.17 ABI warning was also present.
       # Owner: Enflame TE adapter/vendor. Restore after this case passes by default.
@@ -114,6 +118,13 @@ ignored_tests:
       # Owner: FlagTree Enflame. Restore once the kernel compiles and both pass.
       - tests/pytorch/test_mhc.py::test_mhc_projection
       - tests/pytorch/test_mhc.py::test_mhc_combined
+      # S60 retest at c9c1c5a2: mHC scale failed to legalize tt.atomic_rmw.
+      # Restore when FlagTree compiles the scale kernel and the cases pass.
+      - tests/pytorch/test_mhc.py::test_mhc_scale
+      # Aggregate and expand/combine exceed the S60 grid.y limit of 255.
+      # Restore once their launch grids fit the limit and the cases pass.
+      - tests/pytorch/test_mhc.py::test_mhc_aggregate
+      - tests/pytorch/test_mhc.py::test_mhc_expand_combine
   # FlagTree Enflame backend: unpermute_with_mask_map_bwd_with_merging_probs aborts
   # after the forward passes. Restore when the backward kernel runs.
   - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_real_permutation_forward_backward_matches_pytorch
