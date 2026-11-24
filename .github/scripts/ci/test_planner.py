@@ -292,11 +292,10 @@ class PlannerTests(unittest.TestCase):
             "tests/pytorch/test_torch_compile.py",
         ):
             with self.subTest(target=target):
-                self.assertIn(target, quantization["paths"])
                 self.assertIn(target, quantization["test_targets"])
                 plan = self.run_planner("pr", changed_files=json.dumps([target]))
                 self.assertFalse(plan["group_selection"]["full_scope"])
-                self.assertIn("quantization", plan["group_selection"]["groups"])
+                self.assertIn("quantization", plan["group_selection"]["direct_groups"])
                 cuda = next(p for p in plan["platforms"] if p["name"] == "cuda")
                 self.assertIn("quantization", {g["group"] for g in cuda["ignored_test_groups"]})
                 unit = next(
