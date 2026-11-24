@@ -12,81 +12,26 @@ mkdir -p "$ROOT_LOG_DIR"
 SUMMARY="$ROOT_LOG_DIR/summary.tsv"
 printf 'suite\ttarget\treturncode\tstatus\treason\towner\trestore_condition\n' > "$SUMMARY"
 OVERALL_FAIL=0
-run_target() {
-  local suite="$1" target="$2"; shift 2
-  local name="${target//\//_}"; name="${name%.py}"
-  local log="$XML_LOG_DIR/${name}.log" xml="$XML_LOG_DIR/${name}.xml"
-  local timeout_seconds="${PPU_STEP_TIMEOUT:-7200}"
-  if ! [[ "$timeout_seconds" =~ ^[1-9][0-9]*$ ]]; then
-    echo "PPU_STEP_TIMEOUT must be a positive integer, got: $timeout_seconds" >&2
-    OVERALL_FAIL=1
-    printf '%s\t%s\t2\tfailed\t\t\t\n' "$suite" "$target" >> "$SUMMARY"
-    return
-  fi
-  local -a cmd=(
-    env TE_TEST_GROUP_PRESET=plugin-unit
-    "$PYTHON" "$TE_PATH/tests/test_utils/run_ci_test_group.py"
-    --target-env "$target"
-    "$PYTHON" -m pytest "$TE_PATH/$target" -v -s --tb=short -ra -o faulthandler_timeout=120 --junitxml="$xml"
-  )
-  cmd+=("$@")
-  echo "[RUN][$suite] $target"
-  rm -f "$xml"
-  local rc status
-  timeout --signal=TERM --kill-after=10s "${timeout_seconds}s" "${cmd[@]}" 2>&1 | tee "$log"
-  rc=${PIPESTATUS[0]}
-  status=passed
-  if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
-    status=timed_out
-    OVERALL_FAIL=1
-    "$PYTHON" - "$xml" "$target" "$timeout_seconds" <<'PY'
-import pathlib, sys, xml.etree.ElementTree as ET
 
-xml = pathlib.Path(sys.argv[1])
-target = sys.argv[2]
-timeout_seconds = sys.argv[3]
-suite = ET.Element('testsuite', name=target, tests='1', failures='0', errors='1', skipped='0')
-case = ET.SubElement(suite, 'testcase', name='runner_timeout')
-ET.SubElement(case, 'error', message=f'Target exceeded {timeout_seconds} seconds')
-ET.ElementTree(suite).write(xml, encoding='unicode', xml_declaration=True)
-PY
-    if [ "$?" -ne 0 ]; then
-      echo "Failed to write timeout JUnit report: $xml" >&2
-    fi
-  elif [ "$rc" -ne 0 ]; then
-    status=failed
-    OVERALL_FAIL=1
-  fi
-  local reason="" line
-  if [ "$rc" -eq 0 ]; then
-    while IFS= read -r line; do
-      case "$line" in
-        *"No test files in this invocation match the FlagCICD plan"* | \
-        *"No selected FlagCICD test nodes remain"*)
-          status=ignored
-          reason="Not selected or ignored by the FlagCICD plan"
-          break
-          ;;
-      esac
-    done < "$log"
-  fi
-  printf '%s\t%s\t%s\t%s\t%s\t\t\n' "$suite" "$target" "$rc" "$status" "$reason" >> "$SUMMARY"
-  echo "[EXIT $rc][$suite] $target (log: $log)"
-}
-# debug, distributed and onnx run the shared qa scripts like every other
-# platform; PPU differences live only in .github/configs/ppu.yml ignored_tests.
+# The platform launcher handles the device environment and delegates test scope to QA.
 shared_qa_script() {
   case "$1" in
     debug) echo qa/L0_pytorch_debug_unittest/test.sh ;;
+    unittest) echo qa/L0_pytorch_unittest/test.sh ;;
     distributed) echo qa/L1_pytorch_distributed_unittest/test.sh ;;
     onnx) echo qa/L1_pytorch_onnx_unittest/test.sh ;;
   esac
 }
 run_shared_suite() {
   local suite="$1" script rc status=passed
+  local timeout_seconds="${PPU_STEP_TIMEOUT:-7200}"
+  if [ "$suite" = unittest ]; then
+    # The common unittest QA contains many files. Use the unit job budget.
+    timeout_seconds="$PLATFORM_UNIT_TIMEOUT"
+  fi
   script="$(shared_qa_script "$suite")"
   echo "[RUN][$suite] $script"
-  timeout --signal=TERM --kill-after=10s "${PPU_STEP_TIMEOUT:-7200}s" \
+  timeout --signal=TERM --kill-after=10s "${timeout_seconds}s" \
     env XML_LOG_DIR="$XML_LOG_DIR" bash "$TE_PATH/$script" 2>&1 | tee "$XML_LOG_DIR/shared-suite.log"
   rc=${PIPESTATUS[0]}
   if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then status=timed_out; OVERALL_FAIL=1
@@ -95,7 +40,7 @@ run_shared_suite() {
   echo "[EXIT $rc][$suite] $script"
 }
 run_suite() {
-  local suite="$1" target
+  local suite="$1"
   local previous_visible="${CUDA_VISIBLE_DEVICES:-}"
   local previous_visible_set=0
   [ -n "${CUDA_VISIBLE_DEVICES+x}" ] && previous_visible_set=1
@@ -132,35 +77,7 @@ run_suite() {
   fi
   mkdir -p "$ROOT_LOG_DIR/$suite"
   local old_log="$XML_LOG_DIR"; XML_LOG_DIR="$ROOT_LOG_DIR/$suite"
-  if [ -n "$(shared_qa_script "$suite")" ]; then
-    run_shared_suite "$suite"
-    XML_LOG_DIR="$old_log"
-    if [ "$suite" = distributed ]; then
-      if [ "$previous_visible_set" -eq 1 ]; then export CUDA_VISIBLE_DEVICES="$previous_visible"
-      else unset CUDA_VISIBLE_DEVICES; fi
-    fi
-    return
-  fi
-  local -n targets="PPU_${suite^^}_TARGETS"
-  local -a expanded_targets=()
-  for target in "${targets[@]}"; do
-    if [ "$target" = tests/plugin ]; then
-      local plugin_target plugin_targets
-      plugin_targets=$(TE_TEST_GROUP_PRESET=plugin-unit "$PYTHON" "$TE_PATH/tests/test_utils/run_ci_test_group.py" --list-targets) || { OVERALL_FAIL=1; continue; }
-      while IFS= read -r plugin_target; do
-        [ -n "$plugin_target" ] && expanded_targets+=("$plugin_target")
-      done <<< "$plugin_targets"
-    else
-      expanded_targets+=("$target")
-    fi
-  done
-  for target in "${expanded_targets[@]}"; do
-    local -a extra=()
-    [ "$suite" = debug ] && extra+=(--feature_dirs=transformer_engine/debug/features --configs_dir=tests/pytorch/debug/test_configs/)
-    [ "$target" = tests/pytorch/test_cpu_offloading_v1.py ] && export NVTE_CPU_OFFLOAD_V1=1
-    [ "$target" = tests/pytorch/test_onnx_export.py ] && export NVTE_UnfusedDPA_Emulate_FP8=1
-    run_target "$suite" "$target" "${extra[@]}"
-  done
+  run_shared_suite "$suite"
   XML_LOG_DIR="$old_log"
   if [ "$suite" = distributed ]; then
     if [ "$previous_visible_set" -eq 1 ]; then
@@ -189,22 +106,13 @@ with summary.open() as f:
     next(f)
     for line in f:
         suite, target, rc, status, reason, owner, restore = line.rstrip('\n').split('\t')
-        xml = summary.parent / suite / (target.replace('/', '_').removesuffix('.py') + '.xml')
-        log = summary.parent / suite / (target.replace('/', '_').removesuffix('.py') + '.log')
+        log = summary.parent / suite / 'shared-suite.log'
         counts = {'tests': 0, 'failures': 0, 'errors': 0, 'skipped': 0}
         if target.startswith('qa/'):
             # A shared qa script writes one JUnit file per step into the suite dir.
-            log = summary.parent / suite / 'shared-suite.log'
             for report in sorted((summary.parent / suite).glob('*.xml')):
                 root = ET.parse(report)
                 for key in counts: counts[key] += sum(int(x.get(key, 0)) for x in root.iter('testsuite'))
-        elif status != 'ignored':
-            if not xml.is_file():
-                raise FileNotFoundError(f'Missing JUnit report: {xml}')
-            root = ET.parse(xml)
-            for key in counts: counts[key] = sum(int(x.get(key, 0)) for x in root.iter('testsuite'))
-            if status == 'passed' and counts['tests'] == 0:
-                raise ValueError(f'Passing target collected zero tests: {target}')
         counts['deselected'] = 0
         if log.exists():
             matches = re.findall(r'(\d+) deselected', log.read_text(errors='replace'))
