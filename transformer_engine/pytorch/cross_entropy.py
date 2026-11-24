@@ -10,12 +10,14 @@ import warnings
 import torch
 
 import transformer_engine.pytorch.triton.cross_entropy as triton_cross_entropy
+from transformer_engine.plugin.core.decorators import overridable
 
 __all__ = [
     "parallel_cross_entropy",
 ]
 
 
+@overridable
 class CrossEntropyFunction(torch.autograd.Function):
     """
     This class implements a custom autograd function for the Cross Entropy loss. The input tensor can be in BF16/FP32, the
