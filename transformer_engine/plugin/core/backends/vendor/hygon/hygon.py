@@ -681,6 +681,27 @@ class HygonBackend(TEFLBackendBase):
         use_split_accumulator: bool,
         math_sm_count: int,
     ) -> Optional[List[torch.Tensor]]:
+        from .expert_gemm import try_expert_gemm
+
+        if (
+            math_sm_count == 0
+            and D_type == DType.kBFloat16
+            and try_expert_gemm(
+                A,
+                transa,
+                B,
+                transb,
+                D,
+                m_splits,
+                bias,
+                single_output,
+                pre_gelu_out,
+                grad,
+                accumulate,
+                use_split_accumulator,
+            )
+        ):
+            return bias
         tex = self._get_tex()
         D_type = tex.DType(int(D_type)) if D_type is not None else None
         bias_type = tex.DType(int(bias_type)) if bias_type is not None else None
