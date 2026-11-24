@@ -16,5 +16,4 @@ readonly PLATFORM_INTEGRATION_TEST_SCRIPT=""
 readonly PLATFORM_PYTEST_UNIT_MARKERS="not slow and not integration"
 readonly PLATFORM_PYTEST_INTEGRATION_MARKERS="integration"
 readonly PLATFORM_PYTEST_EXTRA_ARGS="--tb=short --verbose"
-readonly PLATFORM_PYTEST_DESELECT=""
 readonly PLATFORM_COVERAGE_ENABLED=true

@@ -20,7 +20,9 @@ def main() -> int:
     text = config.read_text()
     old = '    distributed_backend: Literal["nccl", "gloo"] = "nccl"\n'
     new = '    distributed_backend: Literal["nccl", "gloo", "mccl"] = "mccl"\n'
-    if old in text:
+    if '"mccl"' in text:
+        print("Megatron distributed_backend already accepts mccl")
+    elif old in text:
         config.write_text(text.replace(old, new, 1))
         print("Patched Megatron distributed_backend to accept mccl")
     elif new not in text:
@@ -42,13 +44,13 @@ def main() -> int:
 
     if "cuda" in PLATFORMS.keys() and PLATFORMS["cuda"].is_available():
 """
-    if old in text:
+    if "native_vendor_names" in text or new in text:
+        print("Megatron platform selection already honors MUSA PLATFORM")
+    elif old in text:
         platform_manager.write_text(text.replace(old, new, 1))
         print("Patched Megatron platform selection to honor MUSA PLATFORM")
-    elif new not in text:
-        raise SystemExit("expected Megatron platform selection block not found")
     else:
-        print("Megatron platform selection already honors MUSA PLATFORM")
+        raise SystemExit("expected Megatron platform selection block not found")
     return 0
 
 

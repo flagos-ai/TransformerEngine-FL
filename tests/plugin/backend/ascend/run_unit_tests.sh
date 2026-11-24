@@ -20,10 +20,12 @@ run_suite() {
     local script
     local suite_status=0
     case "$suite" in
-        debug) script="qa/L0_pytorch_debug_unittest/test_ascend.sh" ;;
+        # debug, distributed and onnx run the shared qa scripts like every other
+        # platform; Ascend differences live only in .github/configs/ascend.yml.
+        debug) script="qa/L0_pytorch_debug_unittest/test.sh" ;;
         unittest) script="qa/L0_pytorch_unittest/test_ascend.sh" ;;
-        distributed) script="qa/L1_pytorch_distributed_unittest/test_ascend.sh" ;;
-        onnx) script="qa/L1_pytorch_onnx_unittest/test_ascend.sh" ;;
+        distributed) script="qa/L1_pytorch_distributed_unittest/test.sh" ;;
+        onnx) script="qa/L1_pytorch_onnx_unittest/test.sh" ;;
         -h | --help) usage; exit 0 ;;
         *)
             echo "Unsupported Ascend test suite: $suite" >&2
@@ -35,7 +37,11 @@ run_suite() {
     local suite_log_dir="$XML_LOG_ROOT/$suite"
     mkdir -p "$suite_log_dir"
     echo "===== START $suite ====="
-    if ! XML_LOG_DIR="$suite_log_dir" bash "$TE_PATH/$script"; then
+    # Shared PyTorch tests run on the unfused attention backend on Ascend, the
+    # same setting qa/L0_pytorch_unittest/test_ascend.sh applies to shared tests.
+    local -a attn_env=()
+    [ "$suite" != unittest ] && attn_env=(NVTE_FLASH_ATTN=0 NVTE_FUSED_ATTN=0 NVTE_UNFUSED_ATTN=1)
+    if ! env ${attn_env[@]+"${attn_env[@]}"} XML_LOG_DIR="$suite_log_dir" bash "$TE_PATH/$script"; then
         suite_status=1
         FAILED=1
         FAILED_SUITES+=("$suite")
