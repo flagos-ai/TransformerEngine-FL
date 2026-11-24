@@ -1,0 +1,4 @@
+interface:
+  display_name: "TE Upgrade Orchestrator"
+  short_description: "Orchestrate gated TransformerEngine upgrades"
+  default_prompt: "Use $te-upgrade-orchestrator to run the gated TransformerEngine-FL upstream upgrade workflow."

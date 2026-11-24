@@ -1,0 +1,4 @@
+interface:
+  display_name: "TE Fork Delta Classifier"
+  short_description: "Classify fork changes and upgrade conflict risks"
+  default_prompt: "Use $te-classify-fork-delta to inventory this TransformerEngine fork before an upstream upgrade."
