@@ -328,6 +328,58 @@ class NPUBackend(TEFLBackendBase):
         opt = _get_tenpu_optimizers()
         opt.multi_tensor_scale(chunk_size, noop_flag, tensor_lists, scale)
 
+    # NPU backend adaptation: keep the tensor scale on device and use ACLNN AMP foreach.
+
+    @torch.no_grad()
+    def multi_tensor_scale_tensor(
+        self,
+        chunk_size: int,
+        noop_flag: torch.Tensor,
+        tensor_lists: List[List[torch.Tensor]],
+        scale: torch.Tensor,
+    ) -> None:
+        if len(tensor_lists) != 2:
+            raise AssertionError("tensor_lists must contain 2 lists")
+
+        inputs, outputs = tensor_lists
+
+        if len(inputs) != len(outputs):
+            raise AssertionError("input/output tensor counts must match")
+
+        valid_pairs = [(x, y) for x, y in zip(inputs, outputs) if x.numel() > 0]
+
+        if not valid_pairs:
+            return
+
+        found_inf = noop_flag.to(torch.float32)
+
+        common_dtype = valid_pairs[0][0].dtype
+        need_fp32_temp = any(
+            x.dtype != common_dtype or y.dtype != common_dtype for x, y in valid_pairs
+        )
+
+        if need_fp32_temp:
+            grads = [x.to(dtype=torch.float32, copy=True) for x, _ in valid_pairs]
+
+        else:
+            for x, y in valid_pairs:
+                if x is not y:
+                    y.copy_(x)
+
+            grads = [y for _, y in valid_pairs]
+
+        torch._amp_foreach_non_finite_check_and_unscale_(
+            grads,
+            found_inf,
+            scale,
+        )
+
+        if need_fp32_temp:
+            for grad, (_, y) in zip(grads, valid_pairs):
+                y.copy_(grad)
+
+        noop_flag.copy_(found_inf)
+
     def multi_tensor_l2norm(
         self,
         chunk_size: int,

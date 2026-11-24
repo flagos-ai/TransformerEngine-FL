@@ -98,6 +98,15 @@ def register_builtins(registry) -> None:
             vendor="NPU",
             priority=100,
         ),
+        # Multi-tensor scale with a device-resident scale tensor
+        OpImpl(
+            op_name="multi_tensor_scale_tensor",
+            impl_id="vendor.npu",
+            kind=BackendImplKind.VENDOR,
+            fn=_bind_is_available(backend.multi_tensor_scale_tensor, is_avail),
+            vendor="NPU",
+            priority=100,
+        ),
         # Multi-tensor L2 norm
         OpImpl(
             op_name="multi_tensor_l2norm",
