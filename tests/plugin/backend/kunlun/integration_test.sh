@@ -16,8 +16,6 @@ export GLOBAL_BATCH_SIZE="${GLOBAL_BATCH_SIZE:-1}"
 export ENABLE_DIAGNOSTICS="${ENABLE_DIAGNOSTICS:-0}"
 export NCCL_ALGO="${NCCL_ALGO:-Ring}"
 export MCORE_PATH
-export MCORE_REPO_URL="${MCORE_REPO_URL:-https://github.com/flagos-ai/Megatron-LM-FL.git}"
-export MCORE_REF="${MCORE_REF:-175ae90ec92a9e6fea2d74ccd24d6a1835d3ae82}"
 export MCORE_ENTRYPOINT
 export MCORE_USE_CUDA_ENV_DEFAULTS=0
 

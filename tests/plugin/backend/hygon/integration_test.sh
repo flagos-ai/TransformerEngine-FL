@@ -5,8 +5,6 @@ set -euo pipefail
 
 export PLATFORM="hygon"
 export TE_FL_PREFER="${TE_FL_PREFER:-flagos}"
-export MCORE_REPO_URL="${MCORE_REPO_URL:-https://github.com/flagos-ai/Megatron-LM-FL.git}"
-export MCORE_REF="${MCORE_REF:-175ae90ec92a9e6fea2d74ccd24d6a1835d3ae82}"
 export DISTRIBUTED_BACKEND="${DISTRIBUTED_BACKEND:-nccl}"
 export NUM_LAYERS="${NUM_LAYERS:-2}"
 export HIDDEN_SIZE="${HIDDEN_SIZE:-128}"
