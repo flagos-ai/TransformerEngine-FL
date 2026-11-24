@@ -81,6 +81,9 @@ unit_test_matrix:
     args: [debug]
     timeout_minutes: 240
   - name: pytorch_unit
+    # Enable per-entry runner_labels and set env.TE_CI_CUDA_REQUIRE_GPU_ALLOCATION
+    # to "1" once that runner reserves the GPUs and injects TE_CI_CUDA_GPU_UUIDS
+    # into the job container. The list must contain the full allocation in order.
     runner: script
     path: tests/plugin/backend/cuda/run_unit_tests.sh
     args: [unittest]
