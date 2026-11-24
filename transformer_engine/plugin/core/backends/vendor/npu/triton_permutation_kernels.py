@@ -593,3 +593,59 @@ def _row_map_write(
             route_counts,
             token < num_tokens,
         )
+
+
+@triton.jit(do_not_specialize=["num_tokens", "num_out_tokens"])
+def _scatter_mask_map_rows(
+    inp,
+    row_map,
+    probs,
+    output,
+    output_probs,
+    num_tokens,
+    num_out_tokens,
+    stride_input_row,
+    stride_probs_token,
+    stride_probs_expert,
+    stride_map_token,
+    stride_map_slot,
+    EXPERTS: tl.constexpr,
+    PACKED: tl.constexpr,
+    WITH_PROBS: tl.constexpr,
+):
+    # A scalar destination keeps each store contiguous across the hidden axis.
+    HIDDEN: tl.constexpr = 2048
+    cols = tl.arange(0, HIDDEN)
+    for token in range(tl.program_id(0), num_tokens, tl.num_programs(0)):
+        if PACKED:
+            start = tl.load(row_map + token)
+            end = tl.load(row_map + token + 1)
+        else:
+            token_map = row_map + token.to(tl.int64) * stride_map_token
+            start = 0
+            end = tl.load(token_map + 2 * EXPERTS * stride_map_slot)
+        if start < end:
+            input_row = inp + token.to(tl.int64) * stride_input_row
+            values = tl.load(input_row + cols)
+            for route in range(start, end):
+                if PACKED:
+                    item = tl.load(row_map + num_tokens + 1 + route)
+                    destination = item >> 8
+                else:
+                    destination = tl.load(token_map + route * stride_map_slot)
+                if (destination >= 0) & (destination < num_out_tokens):
+                    if WITH_PROBS:
+                        if PACKED:
+                            expert = item & 255
+                        else:
+                            expert = tl.load(token_map + (EXPERTS + route) * stride_map_slot)
+                        prob = tl.load(
+                            probs
+                            + token.to(tl.int64) * stride_probs_token
+                            + expert * stride_probs_expert
+                        )
+                        out_values = tl.where(prob == 0, 0, values)
+                        tl.store(output_probs + destination, prob)
+                    else:
+                        out_values = values
+                    tl.store(output + destination.to(tl.int64) * HIDDEN + cols, out_values)

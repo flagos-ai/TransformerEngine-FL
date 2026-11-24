@@ -11,12 +11,63 @@ pytest.importorskip("torch_npu")
 pytestmark = pytest.mark.skipif(not torch.npu.is_available(), reason="NPU is required")
 
 from transformer_engine.pytorch.permutation import (
+    moe_permute,
+    moe_permute_with_probs,
     moe_sort_chunks_by_index,
     moe_sort_chunks_by_index_with_probs,
+    moe_unpermute,
 )
 from transformer_engine.plugin.core.backends.vendor.npu.triton_permutation import (
     _launch_row_gather,
 )
+from transformer_engine.plugin.core.backends.vendor.npu.triton_permutation_kernels import (
+    _scatter_mask_map_rows,
+)
+
+
+@pytest.mark.parametrize("with_probs", [False, True])
+def test_dense_row_scatter_public_api(monkeypatch, with_probs):
+    tokens, experts, routes, hidden = 1025, 19, 4, 2048
+    routing = np.zeros((tokens, experts), dtype=np.bool_)
+    rows = np.arange(tokens)[:, None]
+    routing[rows, (rows * 3 + np.arange(routes)) % experts] = True
+    expert_ids, source_rows = np.nonzero(routing.T)
+    source = torch.from_numpy(source_rows).to("npu")
+    expert = torch.from_numpy(expert_ids).to("npu")
+    device_routing = torch.from_numpy(routing).to("npu")
+    x = torch.randn((tokens, hidden + 8), device="npu", dtype=torch.bfloat16)[:, :hidden]
+    expected = x.index_select(0, source)
+    runs = []
+    launch = _scatter_mask_map_rows.run
+
+    def record_launch(*args, **kwargs):
+        runs.append(kwargs["PACKED"])
+        return launch(*args, **kwargs)
+
+    monkeypatch.setattr(_scatter_mask_map_rows, "run", record_launch)
+    if with_probs:
+        probs = torch.rand((tokens, experts * 2), device="npu")[:, ::2]
+        probs[:, ::3] = 0
+        output, output_probs, row_map = moe_permute_with_probs(
+            x, probs, device_routing, num_out_tokens=source_rows.size
+        )
+        expected_probs = probs[source, expert]
+        torch.testing.assert_close(output_probs, expected_probs, rtol=0, atol=0)
+        expected = torch.where(expected_probs[:, None] == 0, 0, expected)
+    else:
+        output, row_map = moe_permute(
+            x, device_routing, num_out_tokens=source_rows.size, map_type="mask"
+        )
+    assert runs == [False]
+    assert row_map.shape == (tokens, 2 * experts + 1)
+    torch.testing.assert_close(output, expected, rtol=0, atol=0)
+
+    permuted = output.detach().requires_grad_()
+    restored = moe_unpermute(permuted, row_map, restore_shape=x.shape)
+    grad = torch.randn_like(restored)
+    (actual_grad,) = torch.autograd.grad(restored, permuted, grad)
+    assert runs == [False, False]
+    torch.testing.assert_close(actual_grad, grad.index_select(0, source), rtol=0, atol=0)
 
 
 @pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])

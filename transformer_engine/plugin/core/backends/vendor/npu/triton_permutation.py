@@ -219,6 +219,35 @@ def permute_with_mask_map(
     if (
         pad_offsets is None
         and scale is None
+        and hidden_size == 2048
+        and num_out_tokens >= 4096
+        and _supports_row_tiles(inp, num_tokens, hidden_size)
+        and inp.dtype in (torch.float16, torch.bfloat16)
+    ):
+        from .triton_permutation_kernels import _scatter_mask_map_rows
+
+        _scatter_mask_map_rows[(min(num_tokens, 768),)](
+            inp,
+            row_id_map,
+            probs,
+            output,
+            permuted_probs,
+            num_tokens,
+            num_out_tokens,
+            inp.stride(0),
+            probs.stride(0) if probs is not None else 0,
+            probs.stride(1) if probs is not None else 0,
+            row_id_map.stride(0),
+            row_id_map.stride(1),
+            EXPERTS=num_experts,
+            PACKED=False,
+            WITH_PROBS=probs is not None,
+        )
+        return output, permuted_scale, permuted_probs
+
+    if (
+        pad_offsets is None
+        and scale is None
         and _supports_row_tiles(inp, num_out_tokens, hidden_size)
     ):
         from .triton_permutation_kernels import _pack_mask_map_routes
