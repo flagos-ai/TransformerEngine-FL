@@ -150,6 +150,12 @@ ignored_tests:
       - tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-1-dtype*]
       - tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-2-dtype*]
       - tests/pytorch/test_numerics.py::test_transformer_layer_hidden_states_format[*126m-2-dtype*]
+  - jobs: [pytorch_unit]
+    tests:
+      # The shared QA run failed because the baseline checkpoint .pt files
+      # were missing. Restore once PPU CI stages the baseline under
+      # artifacts/tests/pytorch/test_checkpoint/ and the targeted rerun passes.
+      - tests/pytorch/test_checkpoint.py
 
 # Current QA coverage gap, recorded in the plan instead of claimed as passing.
 ignored_test_groups:
