@@ -5,6 +5,13 @@
 : ${XML_LOG_DIR:=/logs}
 mkdir -p "$XML_LOG_DIR"
 
+# Allow a launcher to retain its configured Python interpreter for QA.
+if [[ -n "${QA_PYTHON_BIN:-}" ]]; then
+    python3() {
+        command "$QA_PYTHON_BIN" "$@"
+    }
+fi
+
 pip install pytest==8.2.1
 # solve test_fused_optimizer import error
 pip install expecttest
