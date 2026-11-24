@@ -220,6 +220,13 @@ ignored_tests:
       - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_activation[relu]
   - jobs: [pytorch_distributed]
     tests:
+      # Newton-Schulz fails during pytest collection on C550. The cuSolverMp
+      # probe looks for the TE core library in the standard install locations,
+      # while the MetaX vendor core is installed separately under /opt/metax-te.
+      # FileNotFoundError: Could not find shared object file for Transformer Engine core lib.
+      # Restore when MetaX supports distributed Newton-Schulz, the probe
+      # recognizes the MetaX build, and a targeted C550 rerun passes.
+      - tests/pytorch/distributed/test_newton_schulz.py
       # C550 four-device pilot (2026-11-24, 55a1854f, v2.17.0-metax-ci).
       # Sanity: TransformerLayer and DotProductAttention returned gradients
       # on the wrong device (cuda:0 vs cuda:3). Restore once both return
