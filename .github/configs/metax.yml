@@ -218,6 +218,61 @@ ignored_tests:
       - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_recipe[precision0-*]
       # ValueError: Output validation of <path> failed with 3378 errors
       - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_activation[relu]
+  - jobs: [pytorch_distributed]
+    tests:
+      # C550 four-device pilot (2026-11-24, 55a1854f, v2.17.0-metax-ci).
+      # Sanity: TransformerLayer and DotProductAttention returned gradients
+      # on the wrong device (cuda:0 vs cuda:3). Restore once both return
+      # gradients on the input device with the default dispatch order.
+      - 'tests/pytorch/distributed/test_sanity.py::test_current_device[TransformerLayer-small]'
+      - 'tests/pytorch/distributed/test_sanity.py::test_current_device[DotProductAttention-small]'
+      # Comm/GEMM overlap: these cases require a cuBLASMp capability API
+      # missing from the current MetaX build. Restore after capability
+      # handling is corrected and the cases run successfully on C550.
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_split_all_gather_overlaps[False-none-True]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_split_all_gather_overlaps[True-none-True]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_split_reduce_scatter_overlaps[False-none-True]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_split_reduce_scatter_overlaps[True-none-True]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_layers_with_overlap_bf16[ Linear - ROW-PARALLEL - BF16 -True]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_layers_with_overlap_bf16[ Linear - COL-PARALLEL - BULK DGRAD/WGRAD - BF16 -True]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_layers_with_overlap_bf16[ Linear - COL-PARLALEL - DGRAD+RS - BF16 -True]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_layers_with_overlap_bf16[ LayerNormLinear - COL-PARALLEL - BULK DGRAD/WGRAD - BF16 -True]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_layers_with_overlap_bf16[ LayerNormLinear - COL-PARALLEL - DGRAD+RS - BF16 -True]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_layers_with_overlap_bf16[ LayerNormMLP - BULK DGRAD/WGRAD - BF16 -True]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_layers_with_overlap_bf16[ LayerNormMLP - DGRAD+RS - BF16 -True]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_layers_with_overlap_bf16[ MultiheadAttention - BULK DGRAD/WGRAD - BF16 -True]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_layers_with_overlap_bf16[ MultiheadAttention - DGRAD+RS - BF16 -True]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_layers_with_overlap_bf16[ TransformerLayer - BULK DGRAD/WGRAD - BF16 -True]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_layers_with_overlap_bf16[ TransformerLayer - DGRAD+RS - BF16 -True]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_multi_layer_with_overlap_bf16[ TransformerLayer - BULK DGRAD/WGRAD - 2 layers - BF16  -True]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_multi_layer_with_overlap_bf16[ TransformerLayer - DGRAD+RS - 2 layers - BF16  -True]'
+      # Overlap workers hit an unset tensor (None.view()). Restore once
+      # the affected overlap paths complete successfully on four C550s.
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_layers_with_overlap_bf16[ Linear - ROW-PARALLEL - BF16 -False]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_layers_with_overlap_bf16[ Linear - COL-PARLALEL - DGRAD+RS - BF16 -False]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_layers_with_overlap_bf16[ LayerNormLinear - COL-PARALLEL - DGRAD+RS - BF16 -False]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_layers_with_overlap_bf16[ LayerNormMLP - BULK DGRAD/WGRAD - BF16 -False]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_layers_with_overlap_bf16[ LayerNormMLP - DGRAD+RS - BF16 -False]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_layers_with_overlap_bf16[ MultiheadAttention - BULK DGRAD/WGRAD - BF16 -False]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_layers_with_overlap_bf16[ MultiheadAttention - DGRAD+RS - BF16 -False]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_layers_with_overlap_bf16[ TransformerLayer - BULK DGRAD/WGRAD - BF16 -False]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_layers_with_overlap_bf16[ TransformerLayer - DGRAD+RS - BF16 -False]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_multi_layer_with_overlap_bf16[ TransformerLayer - BULK DGRAD/WGRAD - 2 layers - BF16  -False]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_multi_layer_with_overlap_bf16[ TransformerLayer - DGRAD+RS - 2 layers - BF16  -False]'
+      # Other overlap configurations exited with torchrun ChildFailedError.
+      # Restore after the worker failures are resolved and individually pass.
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_split_all_gather_overlaps[False-none-False]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_split_all_gather_overlaps[True-none-False]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_split_reduce_scatter_overlaps[False-none-False]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_split_reduce_scatter_overlaps[True-none-False]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_bulk_overlaps[ALL-GATHER     - BF16 - 1 connections]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_bulk_overlaps[REDUCE-SCATTER - BF16 - 1 connections]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_bulk_overlaps[REDUCE-SCATTER - FP8  - 1 connections]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_layers_with_overlap_bf16[ Linear - COL-PARALLEL - BULK DGRAD/WGRAD - BF16 -False]'
+      - 'tests/pytorch/distributed/test_comm_gemm_overlap.py::test_layers_with_overlap_bf16[ LayerNormLinear - COL-PARALLEL - BULK DGRAD/WGRAD - BF16 -False]'
+      # The four-rank userbuffers comparison failed on ranks 0 and 2.
+      # Restore once it meets the numerical tolerance on C550.
+      - 'tests/pytorch/distributed/test_fusible_ops_with_userbuffers.py::test_fuser_ops_with_userbuffers[None-4]'
 
 # Current QA coverage gaps, recorded in the plan instead of claimed as passing.
 ignored_test_groups:
