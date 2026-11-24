@@ -14,6 +14,8 @@ from typing import Any, List, Optional, Tuple, Union
 import os
 
 import torch
+import torch.distributed as dist
+from torch.autograd.function import once_differentiable
 
 from ....ops import TEFLBackendBase, NVTE_Fused_Attn_Backend, DType
 from .flash_attention import NPUFlashAttention
@@ -83,11 +85,194 @@ def _get_tenpu_gemm():
     return transformer_engine_npu.pytorch.ops.gemm
 
 
+def _communicator(group, device):
+    backend = group._get_backend(device)
+    backend_name = backend.name()
+    if backend_name == "hccl":
+        return backend.get_hccl_comm_name(dist.get_rank())
+    if backend_name == "flagcx":
+        import flagcx
+
+        get_name = getattr(flagcx, "get_hccl_comm_name", None)
+        if get_name is not None:
+            return get_name(backend, device.index)
+    return None
+
+
+def supports_moe_group(group, device):
+    """Probe the existing communicator; all EP ranks must participate."""
+    return _communicator(group, device) is not None
+
+
+def _group_sizes(counts, experts, device):
+    return torch.tensor(counts, dtype=torch.int64, device=device).reshape(-1, experts).sum(0)
+
+
+def _weight_gradient(grad, x, sizes):
+    return _get_torch_npu().npu_grouped_matmul(
+        [grad.t()], [x], group_list=sizes, group_list_type=1, split_item=3, group_type=2
+    )[0]
+
+
+class _AllToAllVGroupedMatmul(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, weight, group, send_counts, recv_counts):
+        name = _communicator(group, x.device)
+        if name is None:
+            raise NotImplementedError("MoE fusion requires an HCCL communicator")
+        output, _, permuted = _get_torch_npu().npu_alltoallv_gmm(
+            x,
+            weight,
+            name,
+            group.size(),
+            send_counts,
+            recv_counts,
+            trans_gmm_weight=True,
+            permute_out_flag=ctx.needs_input_grad[1],
+        )
+        ctx.save_for_backward(permuted, weight)
+        ctx.group, ctx.name = group, name
+        ctx.send_counts, ctx.recv_counts = send_counts, recv_counts
+        return output
+
+    @staticmethod
+    @once_differentiable
+    def backward(ctx, grad):
+        x, weight = ctx.saved_tensors
+        grad = grad.contiguous()
+        dx, _ = _get_torch_npu().npu_gmm_alltoallv(
+            grad,
+            weight,
+            ctx.name,
+            ctx.group.size(),
+            ctx.recv_counts,
+            ctx.send_counts,
+        )
+        dw = None
+        if ctx.needs_input_grad[1]:
+            sizes = _group_sizes(ctx.recv_counts, weight.shape[0], grad.device)
+            dw = _weight_gradient(grad, x, sizes)
+        return dx if ctx.needs_input_grad[0] else None, dw, None, None, None
+
+
+class _GroupedMatmulAllToAllV(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x, weight, group, send_counts, recv_counts):
+        name = _communicator(group, x.device)
+        if name is None:
+            raise NotImplementedError("MoE fusion requires an HCCL communicator")
+        output, _ = _get_torch_npu().npu_gmm_alltoallv(
+            x,
+            weight,
+            name,
+            group.size(),
+            recv_counts,
+            send_counts,
+            trans_gmm_weight=True,
+        )
+        ctx.save_for_backward(x, weight)
+        ctx.group, ctx.name = group, name
+        ctx.send_counts, ctx.recv_counts = send_counts, recv_counts
+        return output
+
+    @staticmethod
+    @once_differentiable
+    def backward(ctx, grad):
+        x, weight = ctx.saved_tensors
+        dx, _, permuted = _get_torch_npu().npu_alltoallv_gmm(
+            grad.contiguous(),
+            weight,
+            ctx.name,
+            ctx.group.size(),
+            ctx.send_counts,
+            ctx.recv_counts,
+            permute_out_flag=ctx.needs_input_grad[1],
+        )
+        dw = None
+        if ctx.needs_input_grad[1]:
+            sizes = _group_sizes(ctx.recv_counts, weight.shape[0], grad.device)
+            dw = _weight_gradient(permuted, x, sizes)
+        return dx if ctx.needs_input_grad[0] else None, dw, None, None, None
+
+
+def _packed_weight(weights, dtype):
+    # Stack only the legacy tuple input; preserve the parent Parameter's gradient path.
+    weight = weights if isinstance(weights, torch.Tensor) else torch.stack(tuple(weights))
+    return weight.to(dtype).contiguous()
+
+
+def is_moe_available():
+    try:
+        torch_npu = _get_torch_npu()
+    except ImportError:
+        return False
+    return all(
+        callable(getattr(torch_npu, name, None))
+        for name in (
+            "npu_alltoallv_gmm",
+            "npu_gmm_alltoallv",
+            "npu_grouped_matmul",
+        )
+    )
+
+
+def is_moe_fusion_available(group=None, device=None):
+    """Probe locally first. All EP ranks must participate in the group probe."""
+    from ....manager import get_default_manager
+
+    manager = get_default_manager()
+    for name in ("moe_alltoallv_grouped_matmul", "moe_grouped_matmul_alltoallv"):
+        try:
+            fn = manager.resolve(name)
+        except RuntimeError:
+            return False
+        if group is not None:
+            supports_group = getattr(fn, "_supports_group", None)
+            if supports_group is None or not supports_group(group, device):
+                return False
+    return True
+
+
+def supports_moe_counts(counts, hidden_size, element_size):
+    """Check both collective directions from the shared [source, expert] CPU counts."""
+    ep_size = counts.size(0)
+    if hidden_size <= 0 or counts.max().item() >= 65536:
+        return False
+    # FC1 dispatch and FC2 combine exchange hidden-size rows in opposite directions.
+    sent = counts.sum(dim=1)
+    received = counts.reshape(ep_size, ep_size, -1).sum(dim=(0, 2))
+    min_rows = min(sent.min().item(), received.min().item())
+    max_rows = max(sent.max().item(), received.max().item())
+    return min_rows * hidden_size * element_size >= 2 * 1024**2 and max_rows < 52428800
+
+
 class NPUBackend(TEFLBackendBase):
     """NPU backend delegating to transformer_engine_npu + torch_npu."""
 
     def is_available(self) -> bool:
         return _check_npu_available()
+
+    @staticmethod
+    def alltoallv_grouped_matmul(x, weights, group, send_counts, recv_counts):
+        """Exchange expert tokens and apply FC1; differentiate inputs and weights."""
+        return _AllToAllVGroupedMatmul.apply(
+            x.contiguous(),
+            _packed_weight(weights, x.dtype),
+            group,
+            tuple(send_counts),
+            tuple(recv_counts),
+        )
+
+    @staticmethod
+    def grouped_matmul_alltoallv(x, weights, group, send_counts, recv_counts):
+        """Apply FC2 and return tokens to their source ranks, including backward."""
+        return _GroupedMatmulAllToAllV.apply(
+            x.contiguous(),
+            _packed_weight(weights, x.dtype),
+            group,
+            tuple(send_counts),
+            tuple(recv_counts),
+        )
 
     # ===================== Attention =====================
 

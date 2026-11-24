@@ -34,7 +34,7 @@ def register_builtins(registry) -> None:
     Args:
         registry: Registry to register into
     """
-    from .npu import NPUBackend
+    from .npu import NPUBackend, is_moe_available, supports_moe_group
 
     backend = NPUBackend()
 
@@ -42,6 +42,11 @@ def register_builtins(registry) -> None:
         return
 
     is_avail = backend.is_available
+
+    def bind_moe_group(fn):
+        wrapped = _bind_is_available(fn, is_moe_available)
+        wrapped._supports_group = supports_moe_group
+        return wrapped
 
     impls = [
         # FlashAttention class getter
@@ -167,6 +172,22 @@ def register_builtins(registry) -> None:
             impl_id="vendor.npu",
             kind=BackendImplKind.VENDOR,
             fn=_bind_is_available(backend.te_general_grouped_gemm, is_avail),
+            vendor="NPU",
+            priority=100,
+        ),
+        OpImpl(
+            op_name="moe_alltoallv_grouped_matmul",
+            impl_id="vendor.npu",
+            kind=BackendImplKind.VENDOR,
+            fn=bind_moe_group(backend.alltoallv_grouped_matmul),
+            vendor="NPU",
+            priority=100,
+        ),
+        OpImpl(
+            op_name="moe_grouped_matmul_alltoallv",
+            impl_id="vendor.npu",
+            kind=BackendImplKind.VENDOR,
+            fn=bind_moe_group(backend.grouped_matmul_alltoallv),
             vendor="NPU",
             priority=100,
         ),
