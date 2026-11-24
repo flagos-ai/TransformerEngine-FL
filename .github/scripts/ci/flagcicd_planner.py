@@ -275,6 +275,11 @@ def validate_test_groups(project: dict) -> None:
 def select_test_groups(project: dict, changed: list[str], test_level: str, stage: str) -> dict:
     """Match test groups, add required baselines and recursively include dependencies."""
     catalog = {group["name"]: group for group in project["test_groups"]}
+    trigger_paths = {
+        name: group.get("paths", [])
+        + [contract.split_test_target(target)[0] for target in group.get("test_targets", [])]
+        for name, group in catalog.items()
+    }
     eligible = {
         name
         for name, group in catalog.items()
@@ -287,8 +292,8 @@ def select_test_groups(project: dict, changed: list[str], test_level: str, stage
     for path in code:
         matches = {
             name
-            for name, group in catalog.items()
-            if any(_path_matches(path, pattern) for pattern in group.get("paths", []))
+            for name, patterns in trigger_paths.items()
+            if any(_path_matches(path, pattern) for pattern in patterns)
         }
         direct.update(matches)
         if not matches and not any(_path_matches(path, pattern) for pattern in broad):

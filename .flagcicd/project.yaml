@@ -123,8 +123,9 @@ routing:
   - transformer_engine/plugin/core/policy.py
 
 # Each group owns its level, paths, dependencies, execution mapping and evidence.
-# test_targets accepts paths/globs and path::class/function selectors; mixed
-# files use node selectors so an unrelated passing test cannot certify a group.
+# test_targets accepts paths/globs and path::class/function selectors. Its file
+# paths also trigger the owning group; paths lists additional triggers.
+# Mixed files use node selectors so an unrelated passing test cannot certify a group.
 # Platform files only provide concrete launchers, environment and coverage gaps.
 # blocked groups stay in the plan ledger and are never reported as executed.
 test_groups:
@@ -430,7 +431,6 @@ test_groups:
     - transformer_engine/pytorch/csrc/extensions/router.cpp
     - transformer_engine/common/fused_router/
     - transformer_engine/common/include/transformer_engine/fused_router.h
-    - tests/pytorch/test_fused_router.py
     test_targets:
     - tests/pytorch/test_fused_router.py
     kind: unit
@@ -451,7 +451,6 @@ test_groups:
     paths:
     - transformer_engine/pytorch/triton/mhc.py
     - transformer_engine/common/triton/mhc.py
-    - tests/pytorch/test_mhc.py
     test_targets:
     - tests/pytorch/test_mhc.py
     kind: unit

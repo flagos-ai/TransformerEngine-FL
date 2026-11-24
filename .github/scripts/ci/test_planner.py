@@ -268,6 +268,22 @@ class PlannerTests(unittest.TestCase):
                 qa = (ROOT / "qa/L0_pytorch_unittest/test.sh").read_text()
                 self.assertIn("$TE_PATH/" + target, qa)
 
+    def test_test_targets_trigger_groups_by_file_path(self):
+        project = planner.load_project(ROOT / ".flagcicd/project.yaml")
+        router = next(group for group in project["test_groups"] if group["name"] == "router")
+        changed = "tests/pytorch/router/test_routing.py"
+        for target in (
+            "tests/pytorch/router/",
+            "tests/pytorch/router/test_*.py",
+            "tests/pytorch/router/test_routing.py::TestRouter::test_topk[small]",
+        ):
+            with self.subTest(target=target):
+                router["test_targets"] = [target]
+                selection = planner.select_test_groups(project, [changed], "L1", "pr")
+                self.assertEqual(selection["direct_groups"], ["router"])
+                self.assertFalse(selection["full_scope"])
+                self.assertEqual(router["test_targets"], [target])
+
     def test_new_quantization_targets_route_and_preserve_cuda_capability_gap(self):
         project = planner.load_project(ROOT / ".flagcicd/project.yaml")
         quantization = next(g for g in project["test_groups"] if g["name"] == "quantization")
