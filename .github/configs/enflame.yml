@@ -97,6 +97,23 @@ ignored_tests:
   - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_cross_entropy_forward_and_backward_match_native_exactly
   - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_grouped_dbias_functions_match_native_exactly
   - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_mhc_apis_match_native_exactly
+  - jobs: [pytorch_unit]
+    tests:
+      # Reproduced on two S60s at 82edcc51 in v2.17.0-enflame-ci-gems5.0.2-20261112.
+      # Vendor fused_score_for_moe_aux_loss_fwd reports GCU400-only support and
+      # aborts in pybind11 (exit 134). Both families call that forward op.
+      # Owner: Enflame vendor TE. Restore when the op runs on S60 and both pass.
+      - tests/pytorch/test_fused_router.py::test_fused_scores_for_aux_loss
+      - tests/pytorch/test_fused_router.py::test_score_for_aux_loss_bitmap_vs_bytemap
+      # Vendor TopK returned values outside tolerance (6.2% mismatched, max
+      # absolute error 0.15). The v2.17 ABI warning was also present.
+      # Owner: Enflame TE adapter/vendor. Restore after this case passes by default.
+      - 'tests/pytorch/test_fused_router.py::test_topk_softmax[1.2-4-False-8-128-2048-dtype0]'
+      # FlagTree failed to legalize tt.atomic_rmw in mHC projection and segfaulted
+      # (exit 139). Projection and combined both run that same forward kernel.
+      # Owner: FlagTree Enflame. Restore once the kernel compiles and both pass.
+      - tests/pytorch/test_mhc.py::test_mhc_projection
+      - tests/pytorch/test_mhc.py::test_mhc_combined
   # FlagTree Enflame backend: unpermute_with_mask_map_bwd_with_merging_probs aborts
   # after the forward passes. Restore when the backward kernel runs.
   - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_real_permutation_forward_backward_matches_pytorch
