@@ -14,25 +14,21 @@ printf 'suite\ttarget\treturncode\tstatus\treason\towner\trestore_condition\n' >
 OVERALL_FAIL=0
 
 # The platform launcher handles the device environment and delegates test scope to QA.
-shared_qa_script() {
-  case "$1" in
-    debug) echo qa/L0_pytorch_debug_unittest/test.sh ;;
-    unittest) echo qa/L0_pytorch_unittest/test.sh ;;
-    distributed) echo qa/L1_pytorch_distributed_unittest/test.sh ;;
-    onnx) echo qa/L1_pytorch_onnx_unittest/test.sh ;;
-  esac
-}
 run_shared_suite() {
   local suite="$1" script rc status=passed
   local timeout_seconds="${PPU_STEP_TIMEOUT:-7200}"
-  if [ "$suite" = unittest ]; then
-    # The common unittest QA contains many files. Use the unit job budget.
-    timeout_seconds="$PLATFORM_UNIT_TIMEOUT"
-  fi
-  script="$(shared_qa_script "$suite")"
+  case "$suite" in
+    debug) script="qa/L0_pytorch_debug_unittest/test.sh" ;;
+    unittest)
+      script="qa/L0_pytorch_unittest/test.sh"
+      timeout_seconds="$PLATFORM_UNIT_TIMEOUT"
+      ;;
+    distributed) script="qa/L1_pytorch_distributed_unittest/test.sh" ;;
+    onnx) script="qa/L1_pytorch_onnx_unittest/test.sh" ;;
+  esac
   echo "[RUN][$suite] $script"
-  timeout --signal=TERM --kill-after=10s "${timeout_seconds}s" \
-    env XML_LOG_DIR="$XML_LOG_DIR" bash "$TE_PATH/$script" 2>&1 | tee "$XML_LOG_DIR/shared-suite.log"
+  XML_LOG_DIR="$XML_LOG_DIR" timeout --signal=TERM --kill-after=10s "${timeout_seconds}s" \
+    bash "$TE_PATH/$script" 2>&1 | tee "$XML_LOG_DIR/shared-suite.log"
   rc=${PIPESTATUS[0]}
   if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then status=timed_out; OVERALL_FAIL=1
   elif [ "$rc" -ne 0 ]; then status=failed; OVERALL_FAIL=1; fi

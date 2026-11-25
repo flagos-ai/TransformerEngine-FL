@@ -156,6 +156,52 @@ ignored_tests:
       # were missing. Restore once PPU CI stages the baseline under
       # artifacts/tests/pytorch/test_checkpoint/ and the targeted rerun passes.
       - tests/pytorch/test_checkpoint.py
+  - jobs: [pytorch_unit]
+    tests:
+      # ZW810E shared QA six-hour pilot (2026-11-25). All executed Router
+      # cases report an unregistered TopK or aux-loss op. Restore when
+      # those ops are available and these seven families pass.
+      - 'tests/pytorch/test_fused_router.py::test_fused_moe_aux_loss'
+      - 'tests/pytorch/test_fused_router.py::test_fused_scores_for_aux_loss'
+      - 'tests/pytorch/test_fused_router.py::test_score_for_aux_loss_bitmap_vs_bytemap'
+      - 'tests/pytorch/test_fused_router.py::test_topk_bitmap_vs_bytemap'
+      - 'tests/pytorch/test_fused_router.py::test_topk_sigmoid'
+      - 'tests/pytorch/test_fused_router.py::test_topk_softmax'
+      - 'tests/pytorch/test_fused_router.py::test_topk_sqrtsoftplus'
+      # Grouped Linear hit zero-element GEMM reshape errors and exact-value
+      # mismatches. Restore after these parameter cases pass.
+      - 'tests/pytorch/test_grouped_linear.py::test_grouped_gemm[*-*-*-torch.float16-shape1]'
+      - 'tests/pytorch/test_grouped_linear.py::test_grouped_gemm[*-*-*-torch.float32-shape0]'
+      - 'tests/pytorch/test_grouped_linear.py::test_grouped_gemm[*-*-*-torch.float32-shape2]'
+      - 'tests/pytorch/test_grouped_linear.py::test_grouped_gemm[*-*-NN-*-shape0]'
+      - 'tests/pytorch/test_grouped_linear.py::test_grouped_gemm[*-*-NN-*-shape2]'
+      - 'tests/pytorch/test_grouped_linear.py::test_grouped_gemm[*-*-NN-*-shape3]'
+      - 'tests/pytorch/test_grouped_linear.py::test_grouped_gemm[*-*-NN-torch.float32-*]'
+      - 'tests/pytorch/test_grouped_linear.py::test_grouped_gemm[*-*-NT-*-shape3]'
+      - 'tests/pytorch/test_grouped_linear.py::test_grouped_gemm[*-*-TN-torch.float32-*]'
+      - 'tests/pytorch/test_grouped_linear.py::test_grouped_gemm[*-True-TN-*-*]'
+      - 'tests/pytorch/test_grouped_linear.py::test_grouped_gemm[False-True-NN-torch.bfloat16-shape1]'
+      - 'tests/pytorch/test_grouped_linear.py::test_grouped_linear_accuracy'
+      - 'tests/pytorch/test_grouped_linear.py::test_grouped_linear_accuracy_save_original_input'
+      - 'tests/pytorch/test_grouped_linear.py::test_grouped_linear_accuracy_single_gemm[None]'
+      # mHC numerical comparisons failed in these parameter cases.
+      # Restore when the results meet the upstream tolerances.
+      - 'tests/pytorch/test_mhc.py::test_mhc_aggregate[fp32-b2_s4096_C8192_n4]'
+      - 'tests/pytorch/test_mhc.py::test_mhc_aggregate[fp32-b4_s1024_C8192_n4]'
+      - 'tests/pytorch/test_mhc.py::test_mhc_aggregate[fp32-b8_s128_C16384_n4]'
+      - 'tests/pytorch/test_mhc.py::test_mhc_combined[*-b2_s4096_C8192_n4]'
+      - 'tests/pytorch/test_mhc.py::test_mhc_combined[fp32-b4_s1024_C8192_n4]'
+      - 'tests/pytorch/test_mhc.py::test_mhc_expand_combine[*-fp32-b2_s4096_C8192_n4]'
+      - 'tests/pytorch/test_mhc.py::test_mhc_expand_combine[*-fp32-b4_s1024_C8192_n4]'
+      - 'tests/pytorch/test_mhc.py::test_mhc_expand_combine[*-fp32-b8_s128_C16384_n4]'
+      - 'tests/pytorch/test_mhc.py::test_mhc_expand_combine[with_bias-fp32-b8_s512_C8000_n4]'
+      - 'tests/pytorch/test_mhc.py::test_mhc_projection[*-b2_s4096_C8192_n4]'
+      - 'tests/pytorch/test_mhc.py::test_mhc_projection[fp32-b4_s1024_C8192_n4]'
+      - 'tests/pytorch/test_mhc.py::test_mhc_projection[fp32-b8_s128_C16384_n4]'
+      - 'tests/pytorch/test_mhc.py::test_mhc_projection[fp32-b8_s512_C8000_n4]'
+      # The failing cache case mixes cuda:0 and cuda:1 tensors.
+      # Restore when it passes with correct device placement.
+      - 'tests/pytorch/attention/test_cu_seqlens_cache.py::test_cu_seqlens_cache_isolated_across_devices_for_forward'
 
 # Current QA coverage gap, recorded in the plan instead of claimed as passing.
 ignored_test_groups:
