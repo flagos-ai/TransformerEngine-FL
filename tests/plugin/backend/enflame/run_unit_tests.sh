@@ -19,50 +19,35 @@ If no suite is specified, all suites are run.
 EOF
 }
 
-run_cmd() {
-    local suite=$1
-    local label=$2
-    shift 2
-    echo "-------------------------------------------------------"
-    echo "[RUN][$suite] $label"
-    echo "-------------------------------------------------------"
-    if ! "$@"; then
-        FAIL=1
-        FAILED_CASES+=("$suite:$label")
-        echo "Error: sub-test failed: $suite:$label"
-    fi
-}
-
 # The launcher prepares the Enflame environment and delegates test scope to QA.
-run_shared_suite() {
-    echo "===== START $1 ====="
-    run_cmd "$1" "$2" env XML_LOG_DIR="$XML_LOG_DIR" bash "$TE_PATH/$2"
-    echo "===== END $1 rc=$FAIL ====="
-}
-
-run_debug_suite() { run_shared_suite debug qa/L0_pytorch_debug_unittest/test.sh; }
-
-run_unittest_suite() {
-    QA_PYTHON_BIN="$PYTHON_BIN" run_shared_suite unittest qa/L0_pytorch_unittest/test.sh
-}
-
-run_distributed_suite() { run_shared_suite distributed qa/L1_pytorch_distributed_unittest/test.sh; }
-
-run_onnx_suite() { run_shared_suite onnx qa/L1_pytorch_onnx_unittest/test.sh; }
-
 run_suite() {
-    case "$1" in
-        debug) run_debug_suite ;;
-        unittest) run_unittest_suite ;;
-        distributed) run_distributed_suite ;;
-        onnx) run_onnx_suite ;;
+    local suite=$1 script
+    case "$suite" in
+        debug) script="qa/L0_pytorch_debug_unittest/test.sh" ;;
+        unittest)
+            script="qa/L0_pytorch_unittest/test.sh"
+            local -x QA_PYTHON_BIN="$PYTHON_BIN"
+            ;;
+        distributed) script="qa/L1_pytorch_distributed_unittest/test.sh" ;;
+        onnx) script="qa/L1_pytorch_onnx_unittest/test.sh" ;;
         -h|--help) usage; exit 0 ;;
         *)
-            echo "Unknown suite: $1" >&2
+            echo "Unknown suite: $suite" >&2
             usage >&2
             exit 2
             ;;
     esac
+
+    echo "===== START $suite ====="
+    echo "-------------------------------------------------------"
+    echo "[RUN][$suite] $script"
+    echo "-------------------------------------------------------"
+    if ! bash "$TE_PATH/$script"; then
+        FAIL=1
+        FAILED_CASES+=("$suite:$script")
+        echo "Error: sub-test failed: $suite:$script"
+    fi
+    echo "===== END $suite rc=$FAIL ====="
 }
 
 if [ "$#" -eq 0 ]; then
