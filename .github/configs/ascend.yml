@@ -90,10 +90,6 @@ paths_watch:
   - tests/plugin/backend/npu/
   - qa/L0_pytorch_unittest/test_ascend.sh
 
-# Missing test-group coverage is explicit; these entries do not claim hardware incapability.
-ignored_test_groups:
-  quantization: Ascend unit QA runs selected non-FP8 portable cases and vendor NPU tests; recipe/quantized-tensor/FP8/NVFP4 target groups are not wired.
-
 # These tests will be skipped when running pytest (file or file::node).
 # Only defects owned outside this repository belong here; give the reason,
 # owner and restore condition in a comment above each group.
