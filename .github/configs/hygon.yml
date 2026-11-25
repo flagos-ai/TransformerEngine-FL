@@ -83,6 +83,10 @@ paths_watch:
 # Missing test-group coverage is explicit; these entries do not claim hardware incapability.
 ignored_test_groups:
   attention: The shared unit QA is wired, but the fused-attention suite requires a fused backend built for CUDA, the attention-accuracy targets are blocked by the shared FP8 block-scaling capability check (torch.version.cuda is None on DTK), and FP8 variants require the quantize operator. CP utilities now belong to the distributed group and run there.
+  router: >-
+    All 933 executed Router cases failed on BW1000 because the current CI runtime
+    has no registered fused TopK or aux-loss operators. Restore after the
+    operators are available and a targeted Router rerun passes.
 
 # These tests will be skipped when running pytest (file or file::node).
 # Only defects owned outside this repository belong here; give the reason,
@@ -189,15 +193,6 @@ ignored_tests:
       # FP8 blockwise GEMM hits the same TypeError in the test body.
       # Restore after the DTK capability check and a targeted rerun pass.
       - 'tests/pytorch/test_float8_blockwise_gemm_exact.py'
-      # All executed Router cases report an unregistered TopK or aux-loss op.
-      # Restore when those ops are available and the seven families pass.
-      - 'tests/pytorch/test_fused_router.py::test_fused_moe_aux_loss'
-      - 'tests/pytorch/test_fused_router.py::test_fused_scores_for_aux_loss'
-      - 'tests/pytorch/test_fused_router.py::test_score_for_aux_loss_bitmap_vs_bytemap'
-      - 'tests/pytorch/test_fused_router.py::test_topk_bitmap_vs_bytemap'
-      - 'tests/pytorch/test_fused_router.py::test_topk_sigmoid'
-      - 'tests/pytorch/test_fused_router.py::test_topk_softmax'
-      - 'tests/pytorch/test_fused_router.py::test_topk_sqrtsoftplus'
       # Checkpoint requires baseline .pt files. FP8 cases also lack quantize.
       # Restore after CI stages the baselines and the supported cases pass.
       - 'tests/pytorch/test_checkpoint.py'
