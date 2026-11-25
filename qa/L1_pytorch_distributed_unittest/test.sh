@@ -21,6 +21,52 @@ DEBUG_TESTS_READY=0
 : ${XML_LOG_DIR:=/logs}
 mkdir -p "$XML_LOG_DIR"
 
+if [[ "${PLATFORM:-}" == ascend ]]; then
+    # The Ascend launcher supplies TE_TEST_PYTEST_COMMAND for NPU collection.
+    ascend_pytest() {
+        command python3 - "$@" <<'PY'
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+sys.path.insert(0, str(Path(os.environ["TE_PATH"]) / "tests/test_utils"))
+from run_ci_test_group import (
+    _all_reported_cases_skipped,
+    _pytest_command,
+    _selection_plugin_path,
+)
+
+report = next(
+    (Path(arg.split("=", 1)[1]) for arg in sys.argv[1:] if arg.startswith("--junitxml=")),
+    None,
+)
+if report is not None:
+    report.unlink(missing_ok=True)
+env = os.environ.copy()
+_selection_plugin_path(env)
+result = subprocess.run([*_pytest_command(True), *sys.argv[1:]], env=env, check=False)
+if result.returncode == 5 and report is not None and _all_reported_cases_skipped(report):
+    print(f"[SKIP] {report.name}: all reported cases skipped", flush=True)
+    raise SystemExit(0)
+raise SystemExit(128 - result.returncode if result.returncode < 0 else result.returncode)
+PY
+    }
+
+    python3() {
+        if [[ "${1:-}" == -m && "${2:-}" == pytest ]]; then
+            shift 2
+            ascend_pytest "$@"
+        else
+            command python3 "$@"
+        fi
+    }
+
+    pytest() {
+        ascend_pytest "$@"
+    }
+fi
+
 # The current CUDA 12.8 test container hits a fused-attention runtime loader
 # issue, so keep the distributed numerics suite on the unfused attention path.
 export NVTE_FLASH_ATTN="${NVTE_FLASH_ATTN:-0}"

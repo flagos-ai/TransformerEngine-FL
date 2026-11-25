@@ -34,8 +34,6 @@ distributed and ONNX suites to the four shared `qa/` scripts. Test targets
 belong in shared QA; platform exclusions belong in `.github/configs/<platform>.yml`.
 Launchers retain runtime/device checks, timeout handling and platform adapters.
 Ascend also runs its standalone NPU checkpoint round trip after shared unit QA.
-The older `qa/L0_pytorch_unittest/test_ascend.sh` remains available for manual
-reproduction but is no longer the CI unit entry point.
 
 All hardware integration launchers also invoke
 `qa/L1_pytorch_mcore_integration/test.sh` directly. Model defaults, communication
