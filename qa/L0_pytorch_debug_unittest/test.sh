@@ -11,9 +11,8 @@
 : ${XML_LOG_DIR:=/logs}
 mkdir -p "$XML_LOG_DIR"
 
-# Match the ordinary unit suite's LayerNorm routing while FlagGems precision
-# differs from the vendor implementation for FP16/BF16 inputs.
-export TE_FL_PER_OP="${TE_FL_PER_OP:+${TE_FL_PER_OP};}layernorm_fwd=vendor;layernorm_bwd=vendor"
+# Use reference LayerNorm for consistent FP16/BF16 results across platforms.
+export TE_FL_PER_OP="${TE_FL_PER_OP:+${TE_FL_PER_OP};}layernorm_fwd=reference;layernorm_bwd=reference"
 
 # Config with the dummy feature which prevents nvinspect from being disabled.
 # Nvinspect will be disabled if no feature is active.

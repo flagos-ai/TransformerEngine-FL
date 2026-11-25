@@ -95,6 +95,9 @@ ignored_tests:
   # legalized, so kernels using tl.atomic_add fail to compile (cross entropy),
   # hang while compiling (grouped dbias) or crash (mHC). Restore when atomics compile.
   - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_cross_entropy_forward_and_backward_match_native_exactly
+  # Distributed cross entropy uses a 64-bit type unsupported by GCU300 kernels.
+  # Restore after the Triton kernel uses supported types on this backend.
+  - tests/pytorch/distributed/test_parallel_cross_entropy.py
   - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_grouped_dbias_functions_match_native_exactly
   - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_mhc_apis_match_native_exactly
   # FlagTree Enflame backend: unpermute_with_mask_map_bwd_with_merging_probs aborts

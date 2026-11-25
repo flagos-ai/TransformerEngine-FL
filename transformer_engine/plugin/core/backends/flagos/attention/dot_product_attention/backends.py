@@ -286,13 +286,13 @@ class FlashAttentionFL(FlashAttentionBase):
         assert all(
             x.dtype in [torch.float16, torch.bfloat16] or isinstance(x, Float8Tensor)
             for x in [query_layer, key_layer, value_layer]
-        ), "FLAttention only supports FP16 and BF16 data types, or Float8Tensors."
+        ), "FlashAttentionFL only supports FP16 and BF16 data types, or Float8Tensors."
         assert (
             query_layer.device.type == te_device_type()
             and key_layer.device.type == te_device_type()
             and value_layer.device.type == te_device_type()
-        ), f"FLAttention only supports {te_device_type()} tensors."
-        assert qkv_layout in QKVLayouts, f"FLAttention does not support qkv_layout = {qkv_layout}!"
+        ), f"FlashAttentionFL only supports {te_device_type()} tensors."
+        assert qkv_layout in QKVLayouts, f"FlashAttentionFL does not support qkv_layout = {qkv_layout}!"
 
         cp_size = 1
         if isinstance(cp_group, dist_group_type):
@@ -301,7 +301,7 @@ class FlashAttentionFL(FlashAttentionBase):
             for group in cp_group:
                 cp_size *= get_distributed_world_size(group)
         context_parallel = cp_size > 1
-        assert not context_parallel, "FLAttention do not support context parallel now"
+        assert not context_parallel, "FlashAttentionFL do not support context parallel now"
 
         qkv_format, q_format, kv_format = dpa_utils.get_qkv_format(qkv_layout, inference_params)
 

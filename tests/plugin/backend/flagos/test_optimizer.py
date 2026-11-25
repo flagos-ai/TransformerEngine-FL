@@ -33,6 +33,13 @@ from transformer_engine.plugin.core.backends.flagos.impl.fused_adam import (
     multi_tensor_adam_param_remainder_fl,
 )
 
+
+@pytest.fixture(autouse=True)
+def mock_fused_adam_module_flag_gems(monkeypatch):
+    """Use the CPU mock even if fused_adam was imported before this test module."""
+    monkeypatch.setattr(sys.modules[multi_tensor_adam_fl.__module__], "flag_gems", mock_flag_gems)
+
+
 # ==============================================================================
 # Part 1: multi_tensor_adam_fl Core Matrix Tests
 # ==============================================================================

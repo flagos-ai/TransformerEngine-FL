@@ -88,6 +88,9 @@ paths_watch:
 
 # KunlunXin runtime gaps migrated from the old negative pytest selectors.
 ignored_tests:
+  # Distributed cross entropy exhausts KunlunXin uni_sram during Triton compilation.
+  # Restore after the kernel launch fits the device resource limits.
+  - tests/pytorch/distributed/test_parallel_cross_entropy.py
   # KunlunXin vendor extension/runtime reports different scale and overflow
   # semantics from the CUDA reference (including unsupported/altered frexp
   # behavior). Restore when vendor.kunlunxin matches the TE scale contract.
