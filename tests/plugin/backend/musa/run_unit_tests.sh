@@ -15,137 +15,24 @@ XML_LOG_ROOT="${XML_LOG_DIR}"
 FAILED=0
 OVERALL_FAILED=0
 
-run_pytest() {
-    local name=$1
-    local target=$2
-    shift 2
-
-    echo "-------------------------------------------------------"
-    echo "[RUN] ${name}: ${target}"
-    if ! python3 -m pytest -s -v --tb=auto \
-        --junitxml="${XML_LOG_DIR}/${name}.xml" \
-        "${target}" "$@"; then
-        echo "[FAIL] ${name}"
-        FAILED=1
-    fi
-}
-
-run_debug() {
-    local feature_dirs="${TE_PATH}/transformer_engine/debug/features"
-    local configs_dir="${TE_PATH}/tests/pytorch/debug/test_configs/"
-
-    NVTE_TORCH_COMPILE=0 \
-    TORCHDYNAMO_DISABLE=1 \
-    TORCH_COMPILE_DISABLE=1 \
-        run_pytest test_debug_sanity \
-        "${TE_PATH}/tests/pytorch/debug/test_sanity.py" \
-        --feature_dirs="${feature_dirs}"
-
-    run_pytest test_debug_config \
-        "${TE_PATH}/tests/pytorch/debug/test_config.py" \
-        --feature_dirs="${feature_dirs}"
-
-    run_pytest test_debug_numerics \
-        "${TE_PATH}/tests/pytorch/debug/test_numerics.py" \
-        --feature_dirs="${feature_dirs}"
-
-    run_pytest test_debug_log \
-        "${TE_PATH}/tests/pytorch/debug/test_log.py" \
-        --feature_dirs="${feature_dirs}" \
-        --configs_dir="${configs_dir}"
-
-    NVTE_TORCH_COMPILE=0 \
-        run_pytest test_debug_api_features \
-        "${TE_PATH}/tests/pytorch/debug/test_api_features.py" \
-        --no-header \
-        --feature_dirs="${feature_dirs}" \
-        --configs_dir="${configs_dir}"
-
-    run_pytest test_debug_perf \
-        "${TE_PATH}/tests/pytorch/debug/test_perf.py" \
-        --feature_dirs="${feature_dirs}" \
-        --configs_dir="${configs_dir}"
-}
-
-run_pytorch() {
-    local tests_root="${TE_PATH}/tests/pytorch"
-    run_pytest test_sanity "${tests_root}/test_sanity.py" --no-header
-
-    run_pytest test_recipe "${tests_root}/test_recipe.py"
-    run_pytest test_deferred_init "${tests_root}/test_deferred_init.py"
-
-    if ! TE_TEST_GROUP_PRESET=plugin-unit python3 \
-        "${TE_PATH}/tests/test_utils/run_ci_test_group.py"; then
-        echo "[FAIL] plugin-unit"
-        FAILED=1
-    fi
-
-    PYTORCH_JIT=0 \
-    NVTE_TORCH_COMPILE=0 \
-    NVTE_ALLOW_NONDETERMINISTIC_ALGO=0 \
-    NVTE_FUSED_ATTN=0 \
-        run_pytest test_numerics "${tests_root}/test_numerics.py" --no-header
-
-    run_pytest test_jit "${tests_root}/test_jit.py"
-    run_pytest test_fused_rope "${tests_root}/test_fused_rope.py"
-    run_pytest test_nvfp4 "${tests_root}/nvfp4"
-    run_pytest test_quantized_tensor "${tests_root}/test_quantized_tensor.py"
-    run_pytest test_float8blockwisetensor "${tests_root}/test_float8blockwisetensor.py"
-    run_pytest test_float8_blockwise_scaling_exact \
-        "${tests_root}/test_float8_blockwise_scaling_exact.py"
-    run_pytest test_float8_blockwise_gemm_exact \
-        "${tests_root}/test_float8_blockwise_gemm_exact.py"
-    run_pytest test_gqa "${tests_root}/test_gqa.py"
-
-    run_pytest test_fused_optimizer "${tests_root}/test_fused_optimizer.py"
-
-    run_pytest test_multi_tensor \
-        "${tests_root}/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv" \
-        --no-header
-
-    run_pytest test_fusible_ops "${tests_root}/test_fusible_ops.py"
-
-    run_pytest test_permutation "${tests_root}/test_permutation.py"
-    run_pytest test_cpu_offloading "${tests_root}/test_cpu_offloading.py"
-    NVTE_FLASH_ATTN=0 NVTE_CPU_OFFLOAD_V1=1 \
-        run_pytest test_cpu_offloading_v1 "${tests_root}/test_cpu_offloading_v1.py"
-    run_pytest test_attention "${tests_root}/attention/test_attention.py"
-    run_pytest test_kv_cache "${tests_root}/attention/test_kv_cache.py"
-    run_pytest test_hf_integration "${tests_root}/test_hf_integration.py"
-    NVTE_TEST_CHECKPOINT_ARTIFACT_PATH="${TE_PATH}/artifacts/tests/pytorch/test_checkpoint" \
-        run_pytest test_checkpoint "${tests_root}/test_checkpoint.py"
-
-}
-
-run_distributed() {
-    NVTE_FLASH_ATTN=0 \
-    NVTE_FUSED_ATTN=0 \
-    NVTE_UNFUSED_ATTN=1 \
-        run_pytest test_cp_utils \
-        "${TE_PATH}/tests/pytorch/attention/test_cp_utils.py"
-}
-
-run_onnx() {
-    NVTE_UnfusedDPA_Emulate_FP8=1 \
-        run_pytest test_onnx_export \
-        "${TE_PATH}/tests/pytorch/test_onnx_export.py" \
-        -k "test_export_layernorm_recipe or test_export_layernorm_zero_centered_gamma or test_export_layernorm_normalization or (test_export_core_attention and not arbitrary) or test_export_ctx_manager" \
-        --no-header
-}
-
 usage() {
     echo "Usage: $0 [debug] [unittest] [distributed] [onnx]"
     echo "If no suite is specified, all suites are run serially."
 }
 
+# Keep device/runtime adaptation in set_env.sh and exclusions in musa.yml.
 run_suite() {
+    local script
     case "$1" in
-        debug | pytorch_debug) run_debug ;;
-        unittest | pytorch | pytorch_unittest) run_pytorch ;;
-        distributed | pytorch_distributed_utils | pytorch_distributed_unittest)
-            run_distributed
+        debug | pytorch_debug)
+            script="qa/L0_pytorch_debug_unittest/test.sh"
+            local -x NVTE_TORCH_COMPILE=0 TORCHDYNAMO_DISABLE=1 TORCH_COMPILE_DISABLE=1
             ;;
-        onnx | pytorch_onnx_unittest) run_onnx ;;
+        unittest | pytorch | pytorch_unittest) script="qa/L0_pytorch_unittest/test.sh" ;;
+        distributed | pytorch_distributed_utils | pytorch_distributed_unittest)
+            script="qa/L1_pytorch_distributed_unittest/test.sh"
+            ;;
+        onnx | pytorch_onnx_unittest) script="qa/L1_pytorch_onnx_unittest/test.sh" ;;
         -h | --help) usage; exit 0 ;;
         *)
             echo "Unsupported MUSA test suite: $1" >&2
@@ -153,6 +40,12 @@ run_suite() {
             exit 2
             ;;
     esac
+
+    echo "[RUN] $script"
+    if ! bash "$TE_PATH/$script"; then
+        echo "[FAIL] $script"
+        FAILED=1
+    fi
 }
 
 if [ "$#" -eq 0 ]; then
