@@ -419,7 +419,8 @@ or missing tests. Unit reports are retained for 14 days.
 Iluvatar quantization-only recipe/tensor/NVFP4 targets are omitted from routine
 CI until recovery validation supplies passing evidence. The shared blockwise
 GEMM target remains selected. Whole-file and partial exclusions are currently
-recorded in the Iluvatar shell configuration; a per-target coverage-gap schema
+recorded in `.github/configs/iluvatar.yml`; unit targets come from shared QA.
+A per-target coverage-gap schema
 and report is follow-up work, and passing group results do not imply complete
 coverage of those ignored targets.
 
