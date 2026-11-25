@@ -15,7 +15,7 @@ readonly PLATFORM_UNIT_TEST_PATHS=(
     "tests/plugin/backend/reference"
     "tests/plugin/backend/flagos"
 )
-readonly PLATFORM_INTEGRATION_TEST_SCRIPT="tests/plugin/backend/kunlun/integration_test.sh"
+readonly PLATFORM_INTEGRATION_TEST_SCRIPT="qa/L1_pytorch_mcore_integration/test.sh"
 readonly PLATFORM_PYTEST_UNIT_MARKERS="not slow and not integration"
 readonly PLATFORM_PYTEST_INTEGRATION_MARKERS="integration"
 readonly PLATFORM_PYTEST_EXTRA_ARGS="--tb=short --verbose"

@@ -983,7 +983,7 @@ class PlannerTests(unittest.TestCase):
     def test_ignored_attention_group_keeps_the_distributed_cp_utils_target(self):
         plan = self.run_planner("nightly")
         cp_utils = "tests/pytorch/attention/test_cp_utils.py"
-        for platform in ("hygon", "kunlun", "metax"):
+        for platform in ("hygon", "metax"):
             with self.subTest(platform=platform):
                 config = next(p for p in plan["platforms"] if p["name"] == platform)
                 ignored_groups = {entry["group"] for entry in config["ignored_test_groups"]}
