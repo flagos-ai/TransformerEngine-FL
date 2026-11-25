@@ -5,10 +5,22 @@
 : ${XML_LOG_DIR:=/logs}
 mkdir -p "$XML_LOG_DIR"
 
-# Allow a launcher to retain its configured Python interpreter for QA.
-if [[ -n "${QA_PYTHON_BIN:-}" ]]; then
+# Retain the launcher's interpreter and optional import-time pytest adapter.
+# Plugin tests use run_ci_test_group.py directly so their isolation is preserved.
+if [[ -n "${QA_PYTHON_BIN:-}${TE_TEST_PYTEST_COMMAND:-}" ]]; then
     python3() {
-        command "$QA_PYTHON_BIN" "$@"
+        if [[ "${1:-}" == -m && "${2:-}" == pytest && -n "${TE_TEST_PYTEST_COMMAND:-}" ]]; then
+            shift 2
+            command "${QA_PYTHON_BIN:-python3}" -c '
+import os
+import shlex
+import sys
+command = shlex.split(os.environ["TE_TEST_PYTEST_COMMAND"].replace("{workspace}", os.environ.get("TE_PATH", "/opt/transformerengine")))
+os.execvpe(command[0], command + sys.argv[1:], os.environ)
+' "$@"
+        else
+            command "${QA_PYTHON_BIN:-python3}" "$@"
+        fi
     }
 fi
 
