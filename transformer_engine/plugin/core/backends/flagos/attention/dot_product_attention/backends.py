@@ -292,7 +292,9 @@ class FlashAttentionFL(FlashAttentionBase):
             and key_layer.device.type == te_device_type()
             and value_layer.device.type == te_device_type()
         ), f"FlashAttentionFL only supports {te_device_type()} tensors."
-        assert qkv_layout in QKVLayouts, f"FlashAttentionFL does not support qkv_layout = {qkv_layout}!"
+        assert (
+            qkv_layout in QKVLayouts
+        ), f"FlashAttentionFL does not support qkv_layout = {qkv_layout}!"
 
         cp_size = 1
         if isinstance(cp_group, dist_group_type):
