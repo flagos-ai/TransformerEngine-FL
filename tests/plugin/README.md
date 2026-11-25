@@ -29,8 +29,18 @@ to `qa/`.
 `config.sh` declares platform identity, device metadata, timeouts, test paths,
 coverage settings, and any patch or wrapper paths. `set_env.sh` exports
 `TE_PATH`, `PYTHONPATH`, device visibility, vendor library paths, and other
-runtime variables. Platform-specific suite selection remains inside the
-launcher when the vendor runtime requires it.
+runtime variables. All nine hardware launchers delegate debug, unittest,
+distributed and ONNX suites to the four shared `qa/` scripts. Test targets
+belong in shared QA; platform exclusions belong in `.github/configs/<platform>.yml`.
+Launchers retain runtime/device checks, timeout handling and platform adapters.
+Ascend also runs its standalone NPU checkpoint round trip after shared unit QA.
+The older `qa/L0_pytorch_unittest/test_ascend.sh` remains available for manual
+reproduction but is no longer the CI unit entry point.
+
+All hardware integration launchers also invoke
+`qa/L1_pytorch_mcore_integration/test.sh` directly. Model defaults, communication
+preflight checks and vendor compatibility setup live in `run_integration_tests.sh`;
+no intermediate platform `integration_test.sh` is used.
 
 The supported platform types are:
 
@@ -48,12 +58,14 @@ The test layout follows the implementation boundary:
 - `backend/reference/`: reference backend tests.
 - `backend/flagos/`: FlagOS backend tests that do not require a specific device.
 - `backend/npu/`: Ascend NPU tests, runtime compatibility patches, and the
-  backend-local pytest entry point used to run selected upstream tests.
+  backend-local pytest entry point used to run shared upstream tests.
 
 Ascend tests that need runtime compatibility setup are launched through
 `backend/npu/run_pytest.py`. The launcher applies the NPU runtime patch before
-pytest collects tests. Platform-specific behavior stays in `backend/npu/` and
-is not added to the common CI workflow.
+pytest collects tests. Shared unit QA honors `TE_TEST_PYTEST_COMMAND` for this
+adapter and `QA_PYTHON_BIN` for the launcher-selected interpreter. Plugin tests
+keep their per-file process isolation and environment rules. Platform-specific
+behavior stays in `backend/npu/` and is not added to the common CI workflow.
 
 Platforms that do not need an import-time adapter continue to use the normal
 `python -m pytest` path.

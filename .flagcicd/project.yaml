@@ -537,7 +537,7 @@ test_groups:
     - core
     paths:
     - qa/L1_pytorch_mcore_integration/
-    - tests/plugin/backend/*/integration_test.sh
+    - tests/plugin/backend/*/run_integration_tests.sh
     kind: integration
     required: true
     evidence: exit_code
