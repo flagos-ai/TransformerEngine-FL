@@ -245,3 +245,7 @@ ignored_tests:
 # evidence gate passes.
 ignored_test_groups:
   quantization: Current CoreX 4.5.0 CI skips all selected quantization targets (18674 skipped, zero passed in run 41381184040); no passing evidence is available. Restore after vendor/runtime adaptation yields passing quantization tests and the required-group evidence gate passes.
+  router: >-
+    All 933 executed Router cases failed on BI-V150 because ixte_torch lacks
+    the fused TopK and aux-loss bindings. Restore after the vendor extension
+    exposes those bindings and a targeted Router rerun passes.
