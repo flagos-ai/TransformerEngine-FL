@@ -350,3 +350,8 @@ ignored_tests:
 # Missing test-group coverage is explicit; these entries do not claim hardware incapability.
 ignored_test_groups:
   quantization: Shared quantization QA is wired, but no passing quantization evidence is available yet; previous recipe targets were all skipped by capability checks. Restore after recovery validation produces passing evidence.
+  router: >-
+    The P800 Router run had 933 failures, 120 skips, and zero passes because
+    the CI runtime did not register the fused TopK, auxiliary-loss score, or
+    MoE auxiliary-loss forward operators. Restore after these operators are
+    registered and a targeted run in the CI image produces passing JUnit evidence.
