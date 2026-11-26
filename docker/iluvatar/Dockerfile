@@ -28,7 +28,7 @@ ENV VIRTUAL_ENV=/flagos \
     TE_FL_SKIP_CUDA=1 NVTE_SKIP_SUBMODULE_CHECKS_DURING_BUILD=1 \
     NVTE_FRAMEWORK=pytorch NVTE_WITH_NCCL_EP=0 \
     TE_FL_PER_OP="generic_gemm=reference;multi_tensor_unscale_l2norm=reference" \
-    TE_FL_STRICT=1 NVTE_FLASH_ATTN=0 NVTE_FUSED_ATTN=0 NVTE_UNFUSED_ATTN=1 \
+    NVTE_FLASH_ATTN=0 NVTE_FUSED_ATTN=0 NVTE_UNFUSED_ATTN=1 \
     PYTHON_BIN=/flagos/bin/python PYTHONDONTWRITEBYTECODE=1
 # Preserve the complete audited wheelhouse, constraints and IXTE provenance.
 COPY --from=artifacts /opt/te-audit/wheelhouse/ /opt/te-audit/wheelhouse/
