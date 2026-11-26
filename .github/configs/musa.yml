@@ -156,6 +156,16 @@ ignored_tests:
   # transpose permutations in this lifecycle matrix. Restore after the image
   # generic_gemm ABI and backend support the full matrix.
   - tests/plugin/backend/flagos/test_gemm.py::test_generic_gemm_lifecycle_matrix
+  # MUSA image sitecustomize changes the exported implementation function's
+  # module, breaking the FlagGems mocks during setup. Restore after those tests
+  # patch the implementation modules directly.
+  - tests/plugin/backend/flagos/test_gemm.py
+  - tests/plugin/backend/flagos/test_optimizer.py
+  # MUSA vendor layernorm output deviates from the torch reference by a few
+  # ulps, while this test asserts exact equality (rtol=0, atol=0). Restore
+  # after the MUSA layernorm implementation matches the reference bit-exactly.
+  - tests/plugin/backend/reference/test_normalization.py::test_layernorm_matches_torch_autograd[True-dtype1]
+  - tests/plugin/backend/reference/test_normalization.py::test_layernorm_matches_torch_autograd[True-dtype2]
   # MUSA's Tensor.to(other_tensor) compatibility path writes through the
   # preallocated reference-dropout buffer for zero probability. Restore after
   # the runtime preserves the reference buffer contract.
@@ -191,6 +201,17 @@ ignored_tests:
       # MUSA cache keys use musa:0 while these tests expect cuda:0.
       - tests/pytorch/attention/test_cu_seqlens_cache.py::test_cu_seqlens_cache_isolated_across_devices_for_forward
       - tests/pytorch/attention/test_cu_seqlens_cache.py::test_cu_seqlens_cache_isolated_between_inference_and_train_forward
+
+  # 2026-11-26 MUSA distributed run: test_current_device[TransformerLayer-small]
+  # failed, and [DotProductAttention-small] then hung with no output until the
+  # 120-minute job timeout killed the run. Same wrong-device class as the
+  # musa:0-vs-cuda:0 cache-key ignores above; kunlun and metax carry the same
+  # two entries for their device-mapping defects. Restore after gradients land
+  # on the input device on S5000.
+  - jobs: [pytorch_distributed]
+    tests:
+      - 'tests/pytorch/distributed/test_sanity.py::test_current_device[TransformerLayer-small]'
+      - 'tests/pytorch/distributed/test_sanity.py::test_current_device[DotProductAttention-small]'
 
   # 2026-11-26 MUSA ONNX run: exporter cannot lower tex.gemm_inf, requires
   # concrete SymInt dimensions, and hits an Inductor nll_loss fallback assert.

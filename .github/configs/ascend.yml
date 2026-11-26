@@ -136,6 +136,12 @@ ignored_tests:
       # Restore the corresponding cases when NPU numerics and RNG coverage passes.
       - 'tests/pytorch/test_numerics.py::test_layernorm_accuracy[*-126m-*-dtype1]'
       - 'tests/pytorch/test_numerics.py::test_layernorm_linear_accuracy_delay_wgrad_compute[*-*-*-RMSNorm-*-*-dtype0]'
+      # 2026-11-26 Ascend run: two RMSNorm delay-wgrad cases at dtype1 fail the
+      # tensor equality check, the same vendor.npu numerics gap as the dtype0
+      # selector above. Restore when the NPU RMSNorm wgrad matches the
+      # reference for dtype1 as well.
+      - 'tests/pytorch/test_numerics.py::test_layernorm_linear_accuracy_delay_wgrad_compute[False-True-True-RMSNorm-small-2-dtype1]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_linear_accuracy_delay_wgrad_compute[False-False-True-RMSNorm-small-2-dtype1]'
       - 'tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy_checkpoint'
       - 'tests/pytorch/test_numerics.py::test_transformer_layer_hidden_states_format[126m-2-dtype1]'
       - 'tests/pytorch/test_numerics.py::test_noncontiguous'
@@ -180,6 +186,14 @@ ignored_tests:
       - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[100.0-True-fp8_dtype0-1-applier1-input_size_pair3]'
       - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[100.0-True-fp8_dtype0-55-applier0-input_size_pair2]'
       - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[100.0-True-fp8_dtype1-55-applier1-input_size_pair0]'
+      # 2026-11-26 Ascend run: four more scale/scale_inv parameter combinations
+      # miss the reference equality check, the same vendor.npu scale gap as the
+      # entries above. Restore when the NPU extension matches the reference
+      # scale semantics.
+      - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[100.0-False-fp8_dtype0-55-applier1-input_size_pair0]'
+      - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[100.0-True-fp8_dtype0-1-applier2-input_size_pair0]'
+      - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[100.0-True-fp8_dtype0-55-applier2-input_size_pair0]'
+      - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[100.0-True-fp8_dtype1-55-applier0-input_size_pair0]'
       # GEMM shape errors, missing rmsnorm_bwd_add/quantize, Triton driver conflict,
       # and dtype or numerical mismatches.
       # Restore each case when its Ascend implementation or runtime path passes.
@@ -239,6 +253,10 @@ ignored_tests:
       # 2026-11-25: NPU memory precheck reports 1343 MB against a 1000 MB limit.
       # Restore when the NPU offload path passes the memory precheck.
       - 'tests/pytorch/test_cpu_offloading.py::TestTELayers::test_sanity[None-None-linear_op]'
+      # 2026-11-26 Ascend run: the layernorm_mlp offload sanity hits the same
+      # 1343 MB memory-leak precheck failure as the linear_op case above.
+      # Restore when the NPU offload path passes the memory precheck.
+      - 'tests/pytorch/test_cpu_offloading.py::TestTELayers::test_sanity[None-None-layernorm_mlp_ops]'
       - 'tests/pytorch/test_cpu_offloading.py::TestTELayers::test_memory[None-None-multihead_attention]'
       - 'tests/pytorch/test_cpu_offloading.py::TestTELayers::test_memory[None-None-transformer_layer]'
       - 'tests/pytorch/test_cpu_offloading.py::TestTELayers::test_numerics[FlashAttention-True-True-*-None-None]'

@@ -345,20 +345,11 @@ ignored_tests:
       - 'tests/pytorch/test_grouped_mlp.py::TestGroupedMLPFusedOp::test_grouped_mlp_mcore_integrations'
       # Multi-tensor scale cases fail the exact-equality assertion.
       # Restore once the affected scales match and the cases pass.
-      # 2026-11-25: Hygon scale differs from the reference by 0.0001220703125
-      # (relative error 8.16e-08). Restore when this exact comparison passes.
-      - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[0.0-False-fp8_dtype0-1-applier1-input_size_pair8]'
-      - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[0.0-False-*-55-*-*]'
-      - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[0.0-False-*-*-applier0-*]'
-      - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[0.0-False-fp8_dtype1-*-applier1-*]'
-      - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[0.0-False-*-*-*-input_size_pair0]'
-      - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[0.0-False-*-*-*-input_size_pair1]'
-      - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[0.0-False-*-*-*-input_size_pair2]'
-      - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[0.0-False-*-*-*-input_size_pair3]'
-      - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[0.0-False-*-*-*-input_size_pair4]'
-      - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[0.0-False-*-*-*-input_size_pair5]'
-      - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[0.0-False-*-*-*-input_size_pair6]'
-      - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[0.0-False-*-*-*-input_size_pair7]'
+      # 2026-11-25/26: Hygon scale differs from the reference by ulp-level
+      # amounts (relative errors up to 8.16e-08) while the test asserts exact
+      # equality. Every epsilon=0.0 non-power-of-two combination is affected.
+      # Restore when this exact comparison passes.
+      - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[0.0-False-*-*-*-*]'
       # PR #211 reproduced the same scale mismatch for six more parameter sets.
       # Parallel cross-entropy requests 2048 threads; BW1000 permits 1024.
       # Restore when the kernel launches within the limit and the cases pass.

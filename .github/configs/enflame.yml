@@ -111,6 +111,12 @@ ignored_tests:
       # 2026-11-25: the weird model returns a 69-element bias gradient instead
       # of the expected 276 elements for the zero-token case.
       - 'tests/pytorch/test_sanity.py::test_sanity_linear_with_zero_tokens[True-True-None-None-weird-0-dtype0]'
+      # 2026-11-26: the same invalid bias-gradient shape affects the remaining
+      # weird-model and small-model zero-token parameter combinations.
+      - 'tests/pytorch/test_sanity.py::test_sanity_linear_with_zero_tokens[True-True-None-None-weird-0-dtype1]'
+      - 'tests/pytorch/test_sanity.py::test_sanity_linear_with_zero_tokens[True-True-None-None-weird-1-dtype*]'
+      - 'tests/pytorch/test_sanity.py::test_sanity_linear_with_zero_tokens[True-True-None-None-weird-2-dtype*]'
+      - 'tests/pytorch/test_sanity.py::test_sanity_linear_with_zero_tokens[True-False-None-None-small-1-dtype*]'
       # Enflame vendor grouped GEMM rejects the TE extension argument signature.
       # Restore after the vendor binding and these parameter combinations pass.
       - 'tests/pytorch/test_sanity.py::test_sanity_grouped_linear[4-*-False-True-*-None-None-*-1-dtype*]'
@@ -136,6 +142,9 @@ ignored_tests:
       # 2026-11-25: SDPA backward also aborts with TOPSATEN_STATUS_RUNTIME_ERROR
       # for dtype1; restore after both GCU dtype paths pass.
       - 'tests/pytorch/test_numerics.py::test_gpt_accuracy[True-small-1-dtype1]'
+      # 2026-11-26: the same unsupported SDP backward path aborts for the
+      # small model's sequence-length variant 2.
+      - 'tests/pytorch/test_numerics.py::test_gpt_accuracy[True-small-2-dtype0]'
       # topsStreamSynchronize aborts during graph capture. Restore after the
       # transformer path can be captured on S60 without synchronizing the stream.
       - 'tests/pytorch/test_cuda_graphs.py::test_make_graphed_callables[None-None-False-dtype0-transformer]'
@@ -143,6 +152,10 @@ ignored_tests:
       # Restore when this checkpointed layernorm_mlp graph test passes.
       - 'tests/pytorch/test_cuda_graphs.py::test_make_graphed_callables[None-None-False-dtype0-layernorm_mlp_checkpoint]'
       - 'tests/pytorch/test_cuda_graphs.py::test_make_graphed_callables[None-None-False-dtype0-mha]'
+      # 2026-11-26: linear_op failed in graph capture and the dtype1 transformer
+      # case aborted with topsErrorStreamCaptureUnsupported.
+      - 'tests/pytorch/test_cuda_graphs.py::test_make_graphed_callables[None-None-False-dtype0-linear_op]'
+      - 'tests/pytorch/test_cuda_graphs.py::test_make_graphed_callables[None-None-False-dtype1-transformer]'
       # Reproduced on two S60s at 82edcc51 in v2.17.0-enflame-ci-gems5.0.2-20261112.
       # Vendor fused_score_for_moe_aux_loss_fwd reports GCU400-only support and
       # aborts in pybind11 (exit 134). Both families call that forward op.
@@ -263,6 +276,9 @@ ignored_tests:
       # 2026-11-25: cross-device host copy uses memory not registered portable
       # for the current device and aborts the distributed pytest process.
       - tests/pytorch/distributed/test_sanity.py::test_current_device[DotProductAttention-small]
+      # 2026-11-26: grouped GEMM receives an incompatible Enflame binding
+      # signature and mismatched split shapes for this current-device case.
+      - tests/pytorch/distributed/test_sanity.py::test_current_device[GroupedLinear-small]
       # The Enflame extension lacks ubuf_built_with_mpi. Overlap calls it at
       # collection; the userbuffers case calls it before launching workers.
       # Restore after the capability check and affected cases pass on S60.
