@@ -50,9 +50,7 @@ def layernorm_fwd_torch(
     zero_centered_gamma: bool,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     odtype = _to_torch_dtype(odtype)
-    compute_dtype = (
-        torch.float32 if input.dtype in (torch.float16, torch.bfloat16) else input.dtype
-    )
+    compute_dtype = torch.float32 if input.dtype in (torch.float16, torch.bfloat16) else input.dtype
     gamma = (1.0 + weight if zero_centered_gamma else weight).to(compute_dtype)
     output, mean, rsigma = torch.native_layer_norm(
         input.to(compute_dtype),
@@ -74,9 +72,7 @@ def layernorm_bwd_torch(
     zero_centered_gamma: bool = False,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     input_dtype = x.dtype
-    compute_dtype = (
-        torch.float32 if x.dtype in (torch.float16, torch.bfloat16) else x.dtype
-    )
+    compute_dtype = torch.float32 if x.dtype in (torch.float16, torch.bfloat16) else x.dtype
     if mu.ndim < x.ndim:
         mu = mu.unsqueeze(-1)
     if rsigma.ndim < x.ndim:
