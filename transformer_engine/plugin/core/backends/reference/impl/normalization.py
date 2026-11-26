@@ -4,7 +4,6 @@
 
 from typing import Any, Optional, Tuple
 import torch
-import torch.nn.functional as F
 from ....ops import DType
 
 __all__ = [
@@ -51,27 +50,18 @@ def layernorm_fwd_torch(
     zero_centered_gamma: bool,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
     odtype = _to_torch_dtype(odtype)
-    mean = input.mean(dim=-1, keepdim=True)
-    var = input.var(dim=-1, keepdim=True, unbiased=False)
-    rsigma = torch.rsqrt(var + eps)
-
-    normalized = (input - mean) * rsigma
-
-    if zero_centered_gamma:
-        output = normalized * (1.0 + weight)
-    else:
-        output = normalized * weight
-
-    if bias is not None:
-        output = output + bias
-
-    if output.dtype != odtype:
-        output = output.to(odtype)
-
-    mean = mean.squeeze(-1)
-    rsigma = rsigma.squeeze(-1)
-
-    return output, mean, rsigma
+    compute_dtype = (
+        torch.float32 if input.dtype in (torch.float16, torch.bfloat16) else input.dtype
+    )
+    gamma = (1.0 + weight if zero_centered_gamma else weight).to(compute_dtype)
+    output, mean, rsigma = torch.native_layer_norm(
+        input.to(compute_dtype),
+        (input.shape[-1],),
+        gamma,
+        bias.to(compute_dtype) if bias is not None else None,
+        eps,
+    )
+    return output.to(odtype or input.dtype), mean.squeeze(-1), rsigma.squeeze(-1)
 
 
 def layernorm_bwd_torch(
@@ -83,30 +73,25 @@ def layernorm_bwd_torch(
     sm_margin: int = 0,
     zero_centered_gamma: bool = False,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    input_dtype = x.dtype
+    compute_dtype = (
+        torch.float32 if x.dtype in (torch.float16, torch.bfloat16) else x.dtype
+    )
     if mu.ndim < x.ndim:
         mu = mu.unsqueeze(-1)
     if rsigma.ndim < x.ndim:
         rsigma = rsigma.unsqueeze(-1)
-
-    x_normalized = (x - mu) * rsigma
-
-    N = x.shape[-1]
-
-    if zero_centered_gamma:
-        gamma_adj = 1.0 + gamma
-    else:
-        gamma_adj = gamma
-
-    dy_gamma = dy * gamma_adj
-
-    mean_dy_gamma = dy_gamma.mean(dim=-1, keepdim=True)
-
-    mean_dy_gamma_x = (dy_gamma * x_normalized).mean(dim=-1, keepdim=True)
-
-    dx = rsigma * (dy_gamma - mean_dy_gamma - x_normalized * mean_dy_gamma_x)
-
-    dgamma = (dy * x_normalized).sum(dim=tuple(range(dy.ndim - 1)))
-
-    dbeta = dy.sum(dim=tuple(range(dy.ndim - 1)))
-
-    return dx, dgamma, dbeta
+    gamma_adj = (1.0 + gamma if zero_centered_gamma else gamma).to(compute_dtype)
+    # Pass a tensor for bias: some PyTorch builds cannot handle None here.
+    dummy_bias = torch.zeros_like(gamma_adj)
+    dx, dgamma, dbeta = torch.ops.aten.native_layer_norm_backward.default(
+        dy.to(compute_dtype).contiguous(),
+        x.to(compute_dtype).contiguous(),
+        list(gamma.shape),
+        mu.to(compute_dtype).contiguous(),
+        rsigma.to(compute_dtype).contiguous(),
+        gamma_adj.contiguous(),
+        dummy_bias,
+        [True, True, True],
+    )
+    return dx.to(input_dtype), dgamma.to(gamma.dtype), dbeta.to(gamma.dtype)
