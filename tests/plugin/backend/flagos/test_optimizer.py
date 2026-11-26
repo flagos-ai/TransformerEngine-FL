@@ -33,6 +33,13 @@ from transformer_engine.plugin.core.backends.flagos.impl.fused_adam import (
     multi_tensor_adam_param_remainder_fl,
 )
 
+
+@pytest.fixture(autouse=True)
+def mock_fused_adam_module_flag_gems(monkeypatch):
+    """Use the CPU mock even if fused_adam was imported before this test module."""
+    monkeypatch.setattr(sys.modules[multi_tensor_adam_fl.__module__], "flag_gems", mock_flag_gems)
+
+
 # ==============================================================================
 # Part 1: multi_tensor_adam_fl Core Matrix Tests
 # ==============================================================================
@@ -102,6 +109,55 @@ def test_multi_tensor_adam_exceptions():
             [torch.randn(2)],
         ]
         multi_tensor_adam_fl(1024, noop_flag, tensor_lists, 0.01, 0.9, 0.99, 1e-8, 1, 0, 1, 0.0)
+
+
+@pytest.mark.parametrize("mode", [0, 1])
+@pytest.mark.parametrize("master_weights", [False, True])
+def test_multi_tensor_adam_chunks_match_full_tensor(monkeypatch, mode, master_weights):
+    """A large parameter must update correctly without full-size intermediates."""
+    n = (1 << 20) + 7
+    grad = torch.linspace(-0.5, 0.5, n)
+    master = torch.linspace(-1.0, 1.0, n)
+    model = master.to(torch.bfloat16) if master_weights else master.clone()
+    exp_avg = torch.full((n,), 0.125, dtype=torch.bfloat16)
+    exp_avg_sq = torch.full((n,), 0.25, dtype=torch.bfloat16)
+    before = master.clone() if master_weights else model.clone()
+
+    adam_grad = grad + 0.1 * before if mode == 0 else grad
+    next_avg = 0.9 * exp_avg.float() + 0.1 * adam_grad
+    next_avg_sq = 0.99 * exp_avg_sq.float() + 0.01 * adam_grad.square()
+    update = next_avg / (next_avg_sq.sqrt() + 1e-8)
+    expected = before * 0.999 if mode == 1 else before.clone()
+    expected.add_(update, alpha=-0.01)
+
+    sizes = []
+
+    def add(a, b, *, alpha=1):
+        sizes.append(a.numel())
+        return torch.add(a, b, alpha=alpha)
+
+    monkeypatch.setattr(mock_flag_gems, "add", add)
+    monkeypatch.setattr(mock_flag_gems, "mul", torch.mul)
+    monkeypatch.setattr(mock_flag_gems, "sqrt", torch.sqrt)
+    monkeypatch.setattr(mock_flag_gems, "true_divide", torch.true_divide)
+    monkeypatch.setattr(mock_flag_gems, "copy_", lambda dst, src: dst.copy_(src))
+    monkeypatch.setattr(mock_flag_gems, "mul_", lambda dst, scalar: dst.mul_(scalar))
+    monkeypatch.setattr(
+        mock_flag_gems, "add_", lambda dst, src, *, alpha: dst.add_(src, alpha=alpha)
+    )
+
+    lists = [[grad], [model], [exp_avg], [exp_avg_sq]]
+    if master_weights:
+        lists.append([master])
+    multi_tensor_adam_fl(65536, torch.tensor(0), lists, 0.01, 0.9, 0.99, 1e-8, 1, mode, 0, 0.1)
+
+    assert len(sizes) > 2
+    assert max(sizes) <= 1 << 20
+    torch.testing.assert_close(exp_avg, next_avg.to(torch.bfloat16))
+    torch.testing.assert_close(exp_avg_sq, next_avg_sq.to(torch.bfloat16))
+    torch.testing.assert_close(master if master_weights else model, expected)
+    if master_weights:
+        torch.testing.assert_close(model, expected.to(torch.bfloat16))
 
 
 # ==============================================================================

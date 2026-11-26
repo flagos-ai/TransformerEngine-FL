@@ -247,7 +247,10 @@ class OpManager:
             )
 
         # Get selection order (per-op or default)
-        order = policy.per_op_order_dict.get(op_name) or self._default_order(policy)
+        per_op_order = policy.per_op_order_dict
+        order = per_op_order.get(op_name) or per_op_order.get("*") or self._default_order(policy)
+        if policy.strict:
+            order = order[:1]
 
         # Select best implementation
         chosen: Optional[OpImpl] = None
@@ -330,7 +333,10 @@ class OpManager:
             )
 
         # Get selection order (per-op or default)
-        order = policy.per_op_order_dict.get(op_name) or self._default_order(policy)
+        per_op_order = policy.per_op_order_dict
+        order = per_op_order.get(op_name) or per_op_order.get("*") or self._default_order(policy)
+        if policy.strict:
+            order = order[:1]
 
         # Sort candidates by order tokens, then by priority
         sorted_candidates: list[OpImpl] = []
@@ -424,7 +430,7 @@ class OpManager:
         Raises:
             RuntimeError: If all implementations fail
         """
-        enable_fallback = os.getenv("TE_FL_STRICT", "1") != "0"
+        enable_fallback = not get_policy().strict
 
         cached_impl = self._get_cached_impl(op_name)
 
@@ -529,7 +535,7 @@ class OpManager:
         Returns:
             Result from the implementation
         """
-        enable_fallback = os.getenv("TE_FL_STRICT", "1") != "0"
+        enable_fallback = not get_policy().strict
 
         cached_impl = self._get_cached_impl(op_name)
 
@@ -550,31 +556,21 @@ class OpManager:
         last_impl_id = self._get_last_impl_id(op_name)
 
         if not enable_fallback:
-            selection_metadata = self._cache_metadata()
-            snap = self._registry.snapshot()
-            for impl in snap.impls_by_op.get(op_name, []):
-                try:
-                    impl_class = impl.fn()
-                    if impl_class == current_impl_class:
-                        result = call_impl_fn(impl_class)
-
-                        self._update_cache(op_name, impl, selection_metadata)
-
-                        if last_impl_id is None:
-                            logger.info_once(
-                                f"Op '{op_name}' using '{impl.impl_id}' "
-                                f"(kind={impl.kind.value}, vendor={impl.vendor})"
-                            )
-                        elif last_impl_id != impl.impl_id:
-                            logger.info_once(
-                                f"Op '{op_name}' switched from '{last_impl_id}' to '{impl.impl_id}'"
-                                f" (kind={impl.kind.value}, vendor={impl.vendor})"
-                            )
-                        return result
-                except Exception:
-                    continue
-
-            return call_impl_fn(current_impl_class)
+            impl = self.resolve_candidates(op_name)[0]
+            impl_class = impl.fn()
+            result = call_impl_fn(impl_class)
+            self._update_cache(op_name, impl, self._cache_metadata())
+            if last_impl_id is None:
+                logger.info_once(
+                    f"Op '{op_name}' using '{impl.impl_id}' "
+                    f"(kind={impl.kind.value}, vendor={impl.vendor})"
+                )
+            elif last_impl_id != impl.impl_id:
+                logger.info_once(
+                    f"Op '{op_name}' switched from '{last_impl_id}' to '{impl.impl_id}'"
+                    f" (kind={impl.kind.value}, vendor={impl.vendor})"
+                )
+            return result
 
         selection_metadata = self._cache_metadata()
         candidates = self.resolve_candidates(op_name)

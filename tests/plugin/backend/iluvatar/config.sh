@@ -33,7 +33,7 @@ readonly ILUVATAR_UNIT_TEST_TARGETS=(
     "tests/pytorch/test_multi_tensor.py"
     "tests/pytorch/test_fusible_ops.py"
     "tests/pytorch/test_permutation.py"
-    "tests/pytorch/test_parallel_cross_entropy.py"
+    "tests/pytorch/test_cross_entropy.py"
     "tests/pytorch/test_hf_integration.py"
     "tests/plugin"
 )

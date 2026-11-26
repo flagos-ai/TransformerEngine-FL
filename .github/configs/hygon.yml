@@ -95,6 +95,9 @@ ignored_tests:
   - tests/plugin/backend/flagos/test_optimizer_numerical.py::test_multi_tensor_adam_matches_formula
   # Hygon DCU launch limit: num_warps=32 exceeds the device thread limit.
   - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_cross_entropy_forward_and_backward_match_native_exactly
+  # Distributed cross entropy requests 2048 threads on BW1000 (limit 1024).
+  # Restore after the Triton launch size is adapted to the device.
+  - tests/pytorch/distributed/test_parallel_cross_entropy.py
   # FlagTree/FlagTune: compiled graph tracing currently produces an invalid grid.
   - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_dispatch_entry_does_not_shrink_the_compiled_graph
   # The nvdlfw-inspect feature registry is not adapted to DTK and the

@@ -10,6 +10,7 @@ command -v "${PYTHON_BIN:-python3}" >/dev/null || {
 source "$WORKSPACE/tests/plugin/backend/iluvatar/set_env.sh"
 # CI prefers FlagOS, with the per-op reference selections from set_env.sh.
 export TE_FL_PREFER="${TE_FL_PREFER:-flagos}"
+export TE_FL_STRICT=0
 export TE_FL_ALLOW_VENDORS=
 command -v ixsmi >/dev/null
 ixsmi
@@ -65,7 +66,7 @@ CHECK
 if [ -n "${GITHUB_ENV:-}" ]; then
     for key in PATH LD_LIBRARY_PATH PYTHONPATH TE_PATH PLATFORM IX_HOME CUDA_HOME \
         TE_FL_SKIP_CUDA NVTE_SKIP_SUBMODULE_CHECKS_DURING_BUILD NVTE_FRAMEWORK \
-        NVTE_WITH_NCCL_EP TE_FL_PREFER TE_FL_PER_OP TE_FL_ALLOW_VENDORS CUDA_VISIBLE_DEVICES TE_FL_STRICT \
+        NVTE_WITH_NCCL_EP TE_FL_PREFER TE_FL_STRICT TE_FL_PER_OP TE_FL_ALLOW_VENDORS CUDA_VISIBLE_DEVICES \
         NVTE_FLASH_ATTN NVTE_FUSED_ATTN NVTE_UNFUSED_ATTN PYTHON_BIN TE_LIB_PATH XML_LOG_DIR \
         PYTHONDONTWRITEBYTECODE ILUVATAR_NPROC_PER_NODE NVTE_TEST_CHECKPOINT_ARTIFACT_PATH; do
         printf '%s=%s\n' "$key" "${!key}" >> "$GITHUB_ENV"

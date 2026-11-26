@@ -210,32 +210,27 @@ def multi_tensor_adam_fl(
 
     is_adamw = mode == 1
 
-    for i in range(num_tensors):
-        g = tensor_lists[0][i]
-        model_param = tensor_lists[1][i]
-        m = tensor_lists[2][i]
-        v = tensor_lists[3][i]
-        p_master = tensor_lists[4][i] if num_lists == 5 else None
+    # Coalesce the small native multi-tensor chunks to limit Python/kernel
+    # launch overhead, while capping FP32 intermediates for large parameters.
+    chunk_elems = min(max(chunk_size, 1 << 20), 1 << 22)
+
+    def update_chunk(g, model_param, m, v, p_master):
         param_to_update = p_master if p_master is not None else model_param
 
-        if not g.is_contiguous():
-            g = g.contiguous()
-
-        # Adam moments are maintained in FP32. Promote low-precision gradients
-        # before both moment updates so the square is not rounded in BF16.
-        adam_grad = g.to(dtype=m.dtype)
+        # Compute the update in FP32, then round each stored moment once. BF16
+        # moments must not round the intermediate mul before the add.
+        adam_grad = g.float()
         if not is_adamw and weight_decay != 0:
             adam_grad = flag_gems.add(adam_grad, param_to_update, alpha=weight_decay)
 
-        flag_gems.mul_(m, beta1)
-        flag_gems.add_(m, adam_grad, alpha=1 - beta1)
-
+        next_m = flag_gems.add(flag_gems.mul(m.float(), beta1), adam_grad, alpha=1 - beta1)
         grad_squared = flag_gems.mul(adam_grad, adam_grad)
-        flag_gems.mul_(v, beta2)
-        flag_gems.add_(v, grad_squared, alpha=1 - beta2)
+        next_v = flag_gems.add(flag_gems.mul(v.float(), beta2), grad_squared, alpha=1 - beta2)
+        flag_gems.copy_(m, next_m.to(dtype=m.dtype))
+        flag_gems.copy_(v, next_v.to(dtype=v.dtype))
 
-        m_corr = m
-        v_corr = v
+        m_corr = next_m
+        v_corr = next_v
         if bias_correction == 1:
             m_corr = flag_gems.true_divide(m_corr, bias_correction1)
             v_corr = flag_gems.true_divide(v_corr, bias_correction2)
@@ -249,6 +244,33 @@ def multi_tensor_adam_fl(
 
         if p_master is not None:
             flag_gems.copy_(model_param, p_master.to(dtype=model_param.dtype))
+
+    for i in range(num_tensors):
+        g = tensor_lists[0][i]
+        model_param = tensor_lists[1][i]
+        m = tensor_lists[2][i]
+        v = tensor_lists[3][i]
+        p_master = tensor_lists[4][i] if num_lists == 5 else None
+
+        if not g.is_contiguous():
+            g = g.contiguous()
+
+        mutable = (model_param, m, v) if p_master is None else (model_param, m, v, p_master)
+        if all(t.is_contiguous() for t in mutable):
+            flat = [t.view(-1) for t in (g, *mutable)]
+            for start in range(0, g.numel(), chunk_elems):
+                stop = start + chunk_elems
+                slices = [t[start:stop] for t in flat]
+                update_chunk(
+                    slices[0],
+                    slices[1],
+                    slices[2],
+                    slices[3],
+                    slices[4] if p_master is not None else None,
+                )
+        else:
+            # Preserve the original in-place semantics for strided tensors.
+            update_chunk(g, model_param, m, v, p_master)
 
 
 def multi_tensor_adam_param_remainder_fl(

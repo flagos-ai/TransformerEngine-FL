@@ -101,9 +101,9 @@ run_test_step "pytest_test_fusible_ops.xml" "$TE_PATH/tests/pytorch/test_fusible
 run_test_step "pytest_test_permutation.xml" "$TE_PATH/tests/pytorch/test_permutation.py" \
 "python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_permutation.xml $TE_PATH/tests/pytorch/test_permutation.py" "test_permutation.py"
 
-# Step: Parallel Cross Entropy
-run_test_step "pytest_test_parallel_cross_entropy.xml" "$TE_PATH/tests/pytorch/test_parallel_cross_entropy.py" \
-"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_parallel_cross_entropy.xml $TE_PATH/tests/pytorch/test_parallel_cross_entropy.py" "test_parallel_cross_entropy.py"
+# Step: Cross Entropy
+run_test_step "pytest_test_cross_entropy.xml" "$TE_PATH/tests/pytorch/test_cross_entropy.py" \
+"python3 -m pytest -s -v --tb=auto --junitxml=$XML_LOG_DIR/pytest_test_cross_entropy.xml $TE_PATH/tests/pytorch/test_cross_entropy.py" "test_cross_entropy.py"
 
 # Step: CPU Offloading
 run_test_step "pytest_test_cpu_offloading.xml" "$TE_PATH/tests/pytorch/test_cpu_offloading.py" \

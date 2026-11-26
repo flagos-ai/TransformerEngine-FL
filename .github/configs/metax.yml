@@ -146,9 +146,12 @@ ignored_tests:
   - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_zero_centered_gamma
   # num_warps=32 exceeds the MACA compiler limit; restore after launch adaptation.
   - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_cross_entropy_forward_and_backward_match_native_exactly
+  # The single-GPU cross-entropy suite also launches with num_warps=32;
+  # MetaX accepts at most 16. Restore after the launch is adapted.
+  - tests/pytorch/test_cross_entropy.py
   # The parallel cross-entropy launch also passes num_warps=32, while the
   # current MetaX MACA compiler accepts at most 16 warps.
-  - tests/pytorch/test_parallel_cross_entropy.py
+  - tests/pytorch/distributed/test_parallel_cross_entropy.py
   # mHC keyword arguments are incompatible with the current Autotuner reset_to_zero hook.
   - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_mhc_apis_match_native_exactly
   # Fixed-seed vendor dropout sampling currently falls outside its statistical bound.

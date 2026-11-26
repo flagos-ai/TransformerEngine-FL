@@ -125,6 +125,9 @@ run_test_step() {
 # Kept disabled for every platform: in the 2026-11-17 run on 8 platforms (deb7ee4d) this step
 # failed on all of them (test_current_device), so it is not a platform difference.
 # python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_sanity.xml $TE_PATH/tests/pytorch/distributed/test_sanity.py || test_fail "test_sanity.py"
+run_test_step "pytest_test_parallel_cross_entropy.xml" "$TE_PATH/tests/pytorch/distributed/test_parallel_cross_entropy.py" \
+"python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_parallel_cross_entropy.xml $TE_PATH/tests/pytorch/distributed/test_parallel_cross_entropy.py" \
+"test_parallel_cross_entropy.py"
 run_test_step "pytest_test_numerics.xml" "$TE_PATH/tests/pytorch/distributed/test_numerics.py" \
 "python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_numerics.xml $TE_PATH/tests/pytorch/distributed/test_numerics.py" \
 "test_numerics.py"

@@ -107,7 +107,9 @@ def generic_gemm_fl(
         else:
             out1 = flag_gems.mm(B_comp, A_comp)
 
-    if shape_b_changed:
+    # Only restore B's token dimensions when they are the output's leading dimensions.
+    # With transB=True (weight gradient), the leading dimension is B's feature dimension.
+    if shape_b_changed and not transB:
         out1 = out1.view(s, b, -1)
 
     torch_out_dtype = _convert_dtype(output_dtype)
@@ -208,7 +210,8 @@ def te_general_grouped_gemm_fl(
 
             # Compute bias gradients if requested
             if has_bias:
-                bias_grad = flag_gems.sum_dim(out, dim=[0])
+                # A holds the output gradient; out is the weight gradient.
+                bias_grad = flag_gems.sum_dim(A[i], dim=[0])
                 if accumulate:
                     flag_gems.add_(bias[i], bias_grad)
                 else:
