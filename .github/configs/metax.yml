@@ -182,6 +182,18 @@ ignored_tests:
       # Grouped Linear FP32 differs from the sequential reference under
       # the zero-tolerance assertion. Restore when this C550 case passes.
       - 'tests/pytorch/test_grouped_linear.py::test_grouped_linear_accuracy[True-True-True-True-None-126m-1-3-torch.float32]'
+      # 2026-11-25: mHC cases fail on the C550 unit job with two root causes:
+      # projection/combined raise IndexError: tuple index out of range, and
+      # scale/sinkhorn/aggregate/expand_combine fail with
+      # AttributeError: module 'triton.language' has no attribute 'assume'
+      # (MetaX Triton lacks tl.assume). Restore after the MetaX runtime
+      # fixes the shape indexing and the Triton language gap.
+      - tests/pytorch/test_mhc.py::test_mhc_projection
+      - tests/pytorch/test_mhc.py::test_mhc_combined
+      - tests/pytorch/test_mhc.py::test_mhc_scale
+      - tests/pytorch/test_mhc.py::test_mhc_sinkhorn
+      - tests/pytorch/test_mhc.py::test_mhc_aggregate
+      - tests/pytorch/test_mhc.py::test_mhc_expand_combine
   - tests/pytorch/test_fused_optimizer.py
   - tests/pytorch/test_multi_tensor.py
   - tests/pytorch/test_cpu_offloading.py

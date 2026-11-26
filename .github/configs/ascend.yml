@@ -171,6 +171,15 @@ ignored_tests:
       - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[100.0-False-fp8_dtype1-1-applier2-input_size_pair0]'
       - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[100.0-False-fp8_dtype1-55-applier0-input_size_pair0]'
       - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[100.0-False-fp8_dtype1-55-applier2-input_size_pair4]'
+      # 2026-11-25: vendor.npu scale results differ for epsilon=100.
+      # Restore when the NPU extension matches the reference scale semantics.
+      - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[100.0-False-fp8_dtype1-1-applier1-input_size_pair0]'
+      - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[100.0-False-fp8_dtype1-55-applier1-input_size_pair7]'
+      - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[100.0-False-fp8_dtype1-55-applier2-input_size_pair0]'
+      - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[100.0-True-fp8_dtype0-1-applier1-input_size_pair0]'
+      - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[100.0-True-fp8_dtype0-1-applier1-input_size_pair3]'
+      - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[100.0-True-fp8_dtype0-55-applier0-input_size_pair2]'
+      - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[100.0-True-fp8_dtype1-55-applier1-input_size_pair0]'
       # GEMM shape errors, missing rmsnorm_bwd_add/quantize, Triton driver conflict,
       # and dtype or numerical mismatches.
       # Restore each case when its Ascend implementation or runtime path passes.
@@ -227,6 +236,9 @@ ignored_tests:
       - 'tests/pytorch/test_cpu_offloading.py::TestsDefaultOffloadSynchronizer::test_general'
       - 'tests/pytorch/test_cpu_offloading.py::TestsDefaultOffloadSynchronizer::test_memory'
       - 'tests/pytorch/test_cpu_offloading.py::TestTELayers::test_sanity[None-None-transformer_layer]'
+      # 2026-11-25: NPU memory precheck reports 1343 MB against a 1000 MB limit.
+      # Restore when the NPU offload path passes the memory precheck.
+      - 'tests/pytorch/test_cpu_offloading.py::TestTELayers::test_sanity[None-None-linear_op]'
       - 'tests/pytorch/test_cpu_offloading.py::TestTELayers::test_memory[None-None-multihead_attention]'
       - 'tests/pytorch/test_cpu_offloading.py::TestTELayers::test_memory[None-None-transformer_layer]'
       - 'tests/pytorch/test_cpu_offloading.py::TestTELayers::test_numerics[FlashAttention-True-True-*-None-None]'
@@ -324,6 +336,10 @@ ignored_tests:
       - tests/pytorch/debug/test_sanity.py::test_sanity_debug[log-*-mha_attention]
   - jobs: [pytorch_distributed]
     tests:
+      # 2026-11-25: worker fails LOCAL_SIZE <= torch.cuda.device_count().
+      # Restore when the Ascend adapter initializes the distributed workers
+      # and the two-device cast test passes on NPU.
+      - 'tests/pytorch/distributed/test_cast_master_weights_to_fp8.py::test_cast_master_weights_to_fp8[2]'
       # collection failure
       - tests/pytorch/debug/test_distributed.py
       - tests/pytorch/distributed/test_numerics.py
