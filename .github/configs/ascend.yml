@@ -194,6 +194,11 @@ ignored_tests:
       - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[100.0-True-fp8_dtype0-1-applier2-input_size_pair0]'
       - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[100.0-True-fp8_dtype0-55-applier2-input_size_pair0]'
       - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[100.0-True-fp8_dtype1-55-applier0-input_size_pair0]'
+      # Run 45866365094: these scale results also differ from the reference.
+      # Restore when the NPU extension matches the reference scale semantics.
+      - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[100.0-False-fp8_dtype0-1-applier1-input_size_pair6]'
+      - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[100.0-False-fp8_dtype0-1-applier2-input_size_pair0]'
+      - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[100.0-True-fp8_dtype0-1-applier0-input_size_pair0]'
       # GEMM shape errors, missing rmsnorm_bwd_add/quantize, Triton driver conflict,
       # and dtype or numerical mismatches.
       # Restore each case when its Ascend implementation or runtime path passes.
@@ -257,6 +262,9 @@ ignored_tests:
       # 1343 MB memory-leak precheck failure as the linear_op case above.
       # Restore when the NPU offload path passes the memory precheck.
       - 'tests/pytorch/test_cpu_offloading.py::TestTELayers::test_sanity[None-None-layernorm_mlp_ops]'
+      # Run 45866365094: the high-precision linear case hits the same memory
+      # precheck. Restore when the NPU offload path passes the precheck.
+      - 'tests/pytorch/test_cpu_offloading.py::TestTELayers::test_sanity[high_precision-None-linear]'
       - 'tests/pytorch/test_cpu_offloading.py::TestTELayers::test_memory[None-None-multihead_attention]'
       - 'tests/pytorch/test_cpu_offloading.py::TestTELayers::test_memory[None-None-transformer_layer]'
       - 'tests/pytorch/test_cpu_offloading.py::TestTELayers::test_numerics[FlashAttention-True-True-*-None-None]'

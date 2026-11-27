@@ -57,27 +57,48 @@ python3 -c "import transformer_engine; print('transformer_engine:', transformer_
 echo "===== Step 3: Verify MUSA Runtime ====="
 python3 - <<'PY'
 import importlib
+import os
+import subprocess
+import sys
 
 import torch
-import transformer_engine
+import torch_musa  # noqa: F401  # Registers torch.musa in the base image.
 
 if not hasattr(torch, "musa") or not torch.musa.is_available():
     raise RuntimeError("MUSA runtime is not available in the current CI container")
 
-import transformer_engine_musa  # noqa: F401
-tex = importlib.import_module("transformer_engine_musa_torch")
-print("transformer_engine:", transformer_engine.__file__)
-print("transformer_engine_musa_torch:", tex.__file__)
-required_symbols = (
-    "multi_tensor_scale",
-    "multi_tensor_compute_scale_and_scale_inv",
-)
-missing_symbols = [name for name in required_symbols if not hasattr(tex, name)]
-if missing_symbols:
-    raise RuntimeError(
-        "transformer_engine_musa_torch is missing required APIs: "
-        + ", ".join(missing_symbols)
-    )
+# Check the image's installed TE in an isolated interpreter so the checked-out
+# TE-FL package on PYTHONPATH cannot shadow or mix with its package modules.
+extension_check = r'''
+import importlib, sys
+import torch, torch_musa
+import transformer_engine
+if not hasattr(torch, "musa") or not torch.musa.is_available():
+    raise RuntimeError("MUSA runtime is unavailable")
+try:
+    package = importlib.import_module("transformer_engine_musa")
+    tex = importlib.import_module("transformer_engine_musa_torch")
+    layout = "standalone"
+except ModuleNotFoundError as exc:
+    if exc.name not in {"transformer_engine_musa", "transformer_engine_musa_torch"}:
+        raise
+    package = importlib.import_module("transformer_engine.musa")
+    importlib.import_module("transformer_engine.musa.pytorch")
+    tex = sys.modules.get("transformer_engine_torch") or importlib.import_module("transformer_engine_torch")
+    layout = "transformer_engine.musa (bundled TE 2.x extension)"
+required = ("multi_tensor_scale", "multi_tensor_compute_scale_and_scale_inv")
+missing = [name for name in required if not hasattr(tex, name)]
+if missing:
+    raise RuntimeError("MUSA torch extension is missing APIs: " + ", ".join(missing))
+print("installed transformer_engine:", transformer_engine.__file__)
+print("MUSA package:", package.__file__)
+print("MUSA layout:", layout)
+print("MUSA torch extension:", tex.__file__)
+print("required MUSA APIs:", ", ".join(required))
+'''
+clean_env = os.environ.copy()
+clean_env.pop("PYTHONPATH", None)
+subprocess.run([sys.executable, "-c", extension_check], cwd="/tmp", env=clean_env, check=True)
 
 from transformer_engine.plugin.core.backends.vendor.musa.musa import MUSABackend
 from transformer_engine.plugin.core.manager import OpManager
@@ -91,7 +112,7 @@ if not backend.is_available():
 # pinning one: vendor.musa availability is already asserted above.
 selected_impl = OpManager().get_selected_impl_id("generic_gemm")
 
-print("required MUSA backend APIs:", ", ".join(required_symbols))
+print("required MUSA backend APIs verified in installed TE extension")
 print("vendor.musa backend is available")
 print("generic_gemm selected implementation:", selected_impl)
 PY
