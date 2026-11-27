@@ -56,6 +56,8 @@ unit_test_matrix:
     runner: script
     path: tests/plugin/backend/hygon/run_unit_tests.sh
     args: [unittest]
+    # PR #211 reached plugin collection at the 90-minute limit after mHC passed.
+    timeout_minutes: 120
   - name: pytorch_distributed
     runner: script
     path: tests/plugin/backend/hygon/run_unit_tests.sh
@@ -82,8 +84,11 @@ paths_watch:
 
 # Missing test-group coverage is explicit; these entries do not claim hardware incapability.
 ignored_test_groups:
-  attention: Hygon unit QA runs the GQA and HF-integration targets only. The fused-attention suite requires a fused backend built for CUDA, the attention-accuracy targets are blocked by the shared FP8 block-scaling capability check (torch.version.cuda is None on DTK), and FP8 variants require the quantize operator. CP utilities now belong to the distributed group and run there.
-  quantization: Hygon unit QA has no recipe, quantized-tensor, FP8 or NVFP4 target.
+  attention: The shared unit QA is wired, but the fused-attention suite requires a fused backend built for CUDA, the attention-accuracy targets are blocked by the shared FP8 block-scaling capability check (torch.version.cuda is None on DTK), and FP8 variants require the quantize operator. CP utilities now belong to the distributed group and run there.
+  router: >-
+    All 933 executed Router cases failed on BW1000 because the current CI runtime
+    has no registered fused TopK or aux-loss operators. Restore after the
+    operators are available and a targeted Router rerun passes.
 
 # These tests will be skipped when running pytest (file or file::node).
 # Only defects owned outside this repository belong here; give the reason,
@@ -136,6 +141,23 @@ ignored_tests:
       # subprocess.CalledProcessError: Command '[PosixPath('/flagos/bin/python3'), '-m', 'torch.distributed.
       - tests/pytorch/distributed/test_cast_master_weights_to_fp8.py::test_cast_master_weights_to_fp8
       - tests/pytorch/distributed/test_fusible_ops.py::test_distributed_fuser_ops
+      # PR #211 on BW1000: TransformerLayer and DotProductAttention failed
+      # before GroupedLinear aborted pytest, so their detailed failures were
+      # not reported. Restore after isolated current-device reruns pass.
+      - 'tests/pytorch/distributed/test_sanity.py::test_current_device[TransformerLayer-small]'
+      - 'tests/pytorch/distributed/test_sanity.py::test_current_device[DotProductAttention-small]'
+      # GroupedLinear hit a KERNEL VMFault in cat_copy_func_kernel_4 and
+      # aborted the process. Restore after the DTK/FlagOS path passes on BW1000.
+      - 'tests/pytorch/distributed/test_sanity.py::test_current_device[GroupedLinear-small]'
+      # The DTK extension has no ubuf_built_with_mpi capability API. Overlap
+      # fails at collection; all three executed userbuffers cases fail before
+      # worker launch. Restore when the API and targeted BW1000 reruns pass.
+      - tests/pytorch/distributed/test_comm_gemm_overlap.py
+      - tests/pytorch/distributed/test_fusible_ops_with_userbuffers.py::test_fuser_ops_with_userbuffers
+      # The cuSolverMp capability probe cannot find the TE core shared library
+      # during collection. Restore after DTK capability detection and a
+      # supported Newton-Schulz rerun pass.
+      - tests/pytorch/distributed/test_newton_schulz.py
   - jobs: [pytorch_onnx]
     tests:
       # AttributeError: Operator 'fused_amax_and_scale_update_after_reduction' not found
@@ -171,3 +193,171 @@ ignored_tests:
       - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_recipe[*-fp8_recipe1]
       - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_unfused_qkv_params
       - tests/pytorch/test_onnx_export.py::test_export_transformer_layer_zero_centered_gamma
+  - jobs: [pytorch_unit]
+    tests:
+      # BW1000 shared QA pilot (2026-11-25). CUDA-version capability checks
+      # call float(torch.version.cuda), which raises TypeError on DTK (None).
+      # These files fail at collection. Restore when DTK is handled and they collect.
+      - 'tests/pytorch/test_backward_override.py'
+      - 'tests/pytorch/test_cpu_offloading.py'
+      - 'tests/pytorch/test_cuda_graphs.py'
+      - 'tests/pytorch/test_float8_blockwise_scaling_exact.py'
+      - 'tests/pytorch/test_float8blockwisetensor.py'
+      - 'tests/pytorch/test_grouped_linear.py'
+      - 'tests/pytorch/test_grouped_tensor.py'
+      - 'tests/pytorch/test_numerics.py'
+      - 'tests/pytorch/test_permutation.py'
+      - 'tests/pytorch/test_quantized_tensor.py'
+      - 'tests/pytorch/test_recipe.py'
+      - 'tests/pytorch/test_torch_compile.py'
+      # FP8 blockwise GEMM hits the same TypeError in the test body.
+      # Restore after the DTK capability check and a targeted rerun pass.
+      - 'tests/pytorch/test_float8_blockwise_gemm_exact.py'
+      # Checkpoint requires baseline .pt files. FP8 cases also lack quantize.
+      # Restore after CI stages the baselines and the supported cases pass.
+      - 'tests/pytorch/test_checkpoint.py'
+      # CPU offloading v1 hits missing FP8 ops or unsupported fused attention.
+      # Restore after the required ops or attention path work on BW1000.
+      - 'tests/pytorch/test_cpu_offloading_v1.py::test_cpu_offload[*-quantization_recipe1]'
+      - 'tests/pytorch/test_cpu_offloading_v1.py::test_cpu_offload[*-quantization_recipe2]'
+      - 'tests/pytorch/test_cpu_offloading_v1.py::test_cpu_offload[layernorm_mlp_ops-None]'
+      - 'tests/pytorch/test_cpu_offloading_v1.py::test_cpu_offload[linear_op-None]'
+      - 'tests/pytorch/test_cpu_offloading_v1.py::test_cpu_offload[multihead_attention-None]'
+      - 'tests/pytorch/test_cpu_offloading_v1.py::test_cpu_offload[transformer_layer-None]'
+      # Custom/current scaling hits the CUDA-version check or missing
+      # quantize and scale-update ops. Restore after the affected cases pass.
+      - 'tests/pytorch/test_custom_recipe.py::test_custom_recipe_debug_tool_compat'
+      - 'tests/pytorch/test_custom_recipe.py::test_custom_recipe_ds_multi_step'
+      - 'tests/pytorch/test_custom_recipe.py::test_custom_recipe_factory_invocation_counts_and_cycling'
+      - 'tests/pytorch/test_custom_recipe.py::test_custom_recipe_grouped_linear_sanity'
+      - 'tests/pytorch/test_custom_recipe.py::test_custom_recipe_matches_current_scaling'
+      - 'tests/pytorch/test_custom_recipe.py::test_custom_recipe_ops_linear_2_1_layout'
+      - 'tests/pytorch/test_custom_recipe.py::test_custom_recipe_sanity'
+      - 'tests/pytorch/test_custom_recipe.py::test_factory_matches_block_scaling'
+      - 'tests/pytorch/test_custom_recipe.py::test_factory_matches_current_scaling'
+      - 'tests/pytorch/test_custom_recipe.py::test_factory_matches_delayed_scaling'
+      - 'tests/pytorch/test_custom_recipe.py::test_fp8block_recipe_state_positional_fallback_matches_explicit_roles'
+      - 'tests/pytorch/test_custom_recipe.py::test_fp8block_recipe_state_role_dispatch_backward'
+      - 'tests/pytorch/test_custom_recipe.py::test_fp8block_recipe_state_role_dispatch_forward'
+      - 'tests/pytorch/test_custom_recipe.py::test_fp8block_recipe_state_supports_non_multiple_of_three'
+      - 'tests/pytorch/test_custom_recipe.py::test_fp8block_recipe_state_unknown_or_none_role_falls_back_positionally'
+      - 'tests/pytorch/test_custom_recipe.py::test_grouped_linear_module_type_dispatch'
+      - 'tests/pytorch/test_custom_recipe.py::test_role_change_does_not_invalidate_when_role_unchanged'
+      - 'tests/pytorch/test_custom_recipe.py::test_role_change_preserves_custom_delayed_scaling_state'
+      - 'tests/pytorch/test_custom_recipe.py::test_role_change_preserves_delayed_scaling_state'
+      - 'tests/pytorch/test_custom_recipe.py::test_slot_role_passes_real_role_through_unchanged'
+      - 'tests/pytorch/test_custom_recipe.py::test_slot_role_passes_unknown_tensor_type_through_unchanged'
+      - 'tests/pytorch/test_custom_recipe.py::test_slot_role_returns_bare_role_when_per_slot_role_is_none'
+      - 'tests/pytorch/test_custom_recipe.py::test_slot_role_returns_bare_role_when_roles_list_is_none'
+      - 'tests/pytorch/test_custom_recipe.py::test_slot_role_supports_module_type_only_role'
+      - 'tests/pytorch/test_float8_current_scaling_exact.py::TestFP8CurrentScalingNativeVsRef::test_current_scaling_gemm_versus_reference'
+      - 'tests/pytorch/test_float8_current_scaling_exact.py::TestFP8CurrentScalingNativeVsRef::test_current_scaling_quantization_versus_reference[rowwise]'
+      - 'tests/pytorch/test_float8_current_scaling_exact.py::TestFP8CurrentScalingRecipeLayerNormLinear::test_fp8_current_scaling_with_layernorm_linear_module[none-fp8_per_tensor_current_scaling_default-bf16-16-256-128]'
+      - 'tests/pytorch/test_float8_current_scaling_exact.py::TestFP8CurrentScalingRecipeLinear::test_fp8_current_scaling_with_linear_module[none-fp8_per_tensor_current_scaling_default-bf16-16-256-128]'
+      # Fused optimizer cases fail in FP8 capability/setup, missing allocator
+      # ops, or the SGD call signature. Restore after targeted reruns pass.
+      - 'tests/pytorch/test_fused_optimizer.py::TestAdamTest::test_large_tensor'
+      - 'tests/pytorch/test_fused_optimizer.py::TestFusedAdam::test_bf16_exp_avg_and_exp_avg_sq'
+      - 'tests/pytorch/test_fused_optimizer.py::TestFusedAdam::test_fp8_exp_avg'
+      - 'tests/pytorch/test_fused_optimizer.py::TestFusedAdam::test_fp8_exp_avg_sq'
+      - 'tests/pytorch/test_fused_optimizer.py::TestFusedAdam::test_fp8_model_weight_cast'
+      - 'tests/pytorch/test_fused_optimizer.py::TestFusedAdamFloat8Block::test_float8block_linear_forward_backward_step'
+      - 'tests/pytorch/test_fused_optimizer.py::TestFusedAdamFloat8Block::test_float8block_linear_fused_adam_master_weights'
+      - 'tests/pytorch/test_fused_optimizer.py::TestFusedSGD::test_float'
+      - 'tests/pytorch/test_fused_optimizer.py::TestFusedSGD::test_half'
+      # Fusible Ops hit missing quantize/scale-update ops, GEMM shape errors
+      # or mismatched results. Restore each selector after its cases pass.
+      # Function selectors cover the prior failures plus the residual cases
+      # that only capability-skipped in PR #211; none of those functions passed.
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_activation'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_add_extra_input[fp8_current_scaling-cuda-*-*]'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_add_extra_input[fp8_delayed_scaling-cuda-*-*]'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_basic_linear'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_basic_linear_quantized'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_bias[fp8_current_scaling-device1-*-in_shape2-32]'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_bias[fp8_delayed_scaling-device1-*-in_shape2-32]'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_clamped_swiglu'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_dropout[*-shape2-fp8_current_scaling-*-*]'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_dropout[dtype1-shape2-None-True-0.5]'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_dropout[dtype2-shape2-None-True-0.5]'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_grouped_linear[*-*-*-True-fp8_current_scaling-dtype1-*]'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_grouped_linear[*-*-*-True-fp8_current_scaling-dtype2-*]'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_grouped_linear[*-*-*-True-fp8_delayed_scaling-dtype1-*]'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_grouped_linear[*-*-*-True-fp8_delayed_scaling-dtype2-*]'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_grouped_linear[*-*-False-False-None-dtype1-*]'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_grouped_linear[*-*-False-False-None-dtype2-*]'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_grouped_linear[*-*-True-*-fp8_current_scaling-dtype1-*]'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_grouped_linear[*-*-True-*-fp8_current_scaling-dtype2-*]'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_grouped_linear[*-*-True-*-fp8_delayed_scaling-dtype1-*]'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_grouped_linear[*-*-True-*-fp8_delayed_scaling-dtype2-*]'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_grouped_linear[*-True-False-False-None-*-*]'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_grouped_linear[True-*-False-False-None-*-*]'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_identity[fp8_current_scaling-cuda-*]'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_identity[fp8_delayed_scaling-cuda-*]'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_interleaved_clamped_swiglu'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_interleaved_swiglu'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_layer_norm'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_linear[*-*-*-True-fp8_current_scaling-*]'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_linear[*-*-*-True-fp8_delayed_scaling-*]'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_linear[*-*-True-*-fp8_current_scaling-*]'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_linear[*-*-True-*-fp8_delayed_scaling-*]'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_linear[*-True-False-False-None-*]'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_linear[True-*-False-False-None-*]'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_make_extra_output[fp8_current_scaling-cuda-*-*]'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_make_extra_output[fp8_delayed_scaling-cuda-*-*]'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_quantize'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_reshape[fp8_current_scaling-*-*]'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_rmsnorm'
+      - 'tests/pytorch/test_fusible_ops.py::TestBasicOps::test_swiglu'
+      - 'tests/pytorch/test_fusible_ops.py::TestCheckpointing::test_linear'
+      - 'tests/pytorch/test_fusible_ops.py::TestFusedOps::test_backward_activation_bias'
+      - 'tests/pytorch/test_fusible_ops.py::TestFusedOps::test_backward_add_rmsnorm'
+      - 'tests/pytorch/test_fusible_ops.py::TestFusedOps::test_backward_linear_add'
+      - 'tests/pytorch/test_fusible_ops.py::TestFusedOps::test_backward_linear_scale'
+      - 'tests/pytorch/test_fusible_ops.py::TestFusedOps::test_forward_linear_bias_activation'
+      - 'tests/pytorch/test_fusible_ops.py::TestFusedOps::test_forward_linear_bias_add'
+      - 'tests/pytorch/test_fusible_ops.py::TestFusedOps::test_forward_linear_scale_add'
+      - 'tests/pytorch/test_fusible_ops.py::TestFuser::test_dtype_cast[fp8_current_scaling-*-*]'
+      - 'tests/pytorch/test_fusible_ops.py::TestFuser::test_dtype_cast[fp8_delayed_scaling-*-*]'
+      - 'tests/pytorch/test_fusible_ops.py::TestFuser::test_fp8_scale_update'
+      - 'tests/pytorch/test_fusible_ops.py::TestFuser::test_pyt_autocast[fp8_current_scaling-*-*]'
+      - 'tests/pytorch/test_fusible_ops.py::TestFuser::test_pyt_autocast[fp8_delayed_scaling-*-*]'
+      - 'tests/pytorch/test_fusible_ops.py::TestSequentialModules::test_grouped_mlp'
+      - 'tests/pytorch/test_fusible_ops.py::TestSequentialModules::test_layernorm_mlp'
+      - 'tests/pytorch/test_fusible_ops.py::TestTrainingLoops::test_linear_inference_loop[*-fp8_current_scaling]'
+      - 'tests/pytorch/test_fusible_ops.py::TestTrainingLoops::test_linear_inference_loop[*-fp8_delayed_scaling]'
+      - 'tests/pytorch/test_fusible_ops.py::TestTrainingLoops::test_linear_training_loop'
+      # Grouped MLP requires quantize or splits_to_offsets on these inputs.
+      # Restore once the missing ops are available and the cases pass.
+      # The two function-level MLP selectors also include residual capability
+      # skips from PR #211, which produced no passing cases in either function.
+      - 'tests/pytorch/test_grouped_mlp.py::TestGroupedLinearOp::test_grouped_linear[False-False-*-*-*-*-True-fp8_current_scaling-dtype1-*]'
+      - 'tests/pytorch/test_grouped_mlp.py::TestGroupedLinearOp::test_grouped_linear[False-False-*-*-*-*-True-fp8_current_scaling-dtype2-*]'
+      - 'tests/pytorch/test_grouped_mlp.py::TestGroupedLinearOp::test_grouped_linear[False-False-*-*-*-*-True-fp8_delayed_scaling-dtype1-*]'
+      - 'tests/pytorch/test_grouped_mlp.py::TestGroupedLinearOp::test_grouped_linear[False-False-*-*-*-*-True-fp8_delayed_scaling-dtype2-*]'
+      - 'tests/pytorch/test_grouped_mlp.py::TestGroupedLinearOp::test_grouped_linear[False-False-*-*-*-False-False-None-dtype1-*]'
+      - 'tests/pytorch/test_grouped_mlp.py::TestGroupedLinearOp::test_grouped_linear[False-False-*-*-*-False-False-None-dtype2-*]'
+      - 'tests/pytorch/test_grouped_mlp.py::TestGroupedLinearOp::test_grouped_linear[False-False-*-*-*-True-*-fp8_current_scaling-dtype1-*]'
+      - 'tests/pytorch/test_grouped_mlp.py::TestGroupedLinearOp::test_grouped_linear[False-False-*-*-*-True-*-fp8_current_scaling-dtype2-*]'
+      - 'tests/pytorch/test_grouped_mlp.py::TestGroupedLinearOp::test_grouped_linear[False-False-*-*-*-True-*-fp8_delayed_scaling-dtype1-*]'
+      - 'tests/pytorch/test_grouped_mlp.py::TestGroupedLinearOp::test_grouped_linear[False-False-*-*-*-True-*-fp8_delayed_scaling-dtype2-*]'
+      - 'tests/pytorch/test_grouped_mlp.py::TestGroupedMLPFusedOp::test_grouped_mlp'
+      - 'tests/pytorch/test_grouped_mlp.py::TestGroupedMLPFusedOp::test_grouped_mlp_mcore_integrations'
+      # Multi-tensor scale cases fail the exact-equality assertion.
+      # Restore once the affected scales match and the cases pass.
+      # 2026-11-25/26: Hygon scale differs from the reference by ulp-level
+      # amounts (relative errors up to 8.16e-08) while the test asserts exact
+      # equality. Every epsilon=0.0 non-power-of-two combination is affected.
+      # Restore when this exact comparison passes.
+      - 'tests/pytorch/test_multi_tensor.py::test_multi_tensor_compute_scale_and_scale_inv[0.0-False-*-*-*-*]'
+      # PR #211 reproduced the same scale mismatch for six more parameter sets.
+      # Parallel cross-entropy requests 2048 threads; BW1000 permits 1024.
+      # Restore when the kernel launches within the limit and the cases pass.
+      - 'tests/pytorch/test_parallel_cross_entropy.py::TestParallelCrossEntropy::test_bfloat16_input'
+      - 'tests/pytorch/test_parallel_cross_entropy.py::TestParallelCrossEntropy::test_float32_input'
+      - 'tests/pytorch/test_parallel_cross_entropy.py::TestParallelCrossEntropy::test_ignore_idx'
+      - 'tests/pytorch/test_parallel_cross_entropy.py::TestParallelCrossEntropy::test_ignore_idx_reduced_loss'
+      - 'tests/pytorch/test_parallel_cross_entropy.py::TestParallelCrossEntropy::test_label_smoothing'
+      - 'tests/pytorch/test_parallel_cross_entropy.py::TestParallelCrossEntropy::test_non_reduced_loss'
+      - 'tests/pytorch/test_parallel_cross_entropy.py::TestParallelCrossEntropy::test_swapped_input'
+      - 'tests/pytorch/test_parallel_cross_entropy.py::test_non_contiguous_transposed_input'

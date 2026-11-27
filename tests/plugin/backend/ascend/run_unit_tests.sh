@@ -20,10 +20,10 @@ run_suite() {
     local script
     local suite_status=0
     case "$suite" in
-        # debug, distributed and onnx run the shared qa scripts like every other
-        # platform; Ascend differences live only in .github/configs/ascend.yml.
+        # All four suites run shared QA; Ascend differences live in its backend
+        # environment, NPU pytest adapter and platform YAML.
         debug) script="qa/L0_pytorch_debug_unittest/test.sh" ;;
-        unittest) script="qa/L0_pytorch_unittest/test_ascend.sh" ;;
+        unittest) script="qa/L0_pytorch_unittest/test.sh" ;;
         distributed) script="qa/L1_pytorch_distributed_unittest/test.sh" ;;
         onnx) script="qa/L1_pytorch_onnx_unittest/test.sh" ;;
         -h | --help) usage; exit 0 ;;
@@ -37,14 +37,24 @@ run_suite() {
     local suite_log_dir="$XML_LOG_ROOT/$suite"
     mkdir -p "$suite_log_dir"
     echo "===== START $suite ====="
-    # Shared PyTorch tests run on the unfused attention backend on Ascend, the
-    # same setting qa/L0_pytorch_unittest/test_ascend.sh applies to shared tests.
-    local -a attn_env=()
-    [ "$suite" != unittest ] && attn_env=(NVTE_FLASH_ATTN=0 NVTE_FUSED_ATTN=0 NVTE_UNFUSED_ATTN=1)
-    if ! env ${attn_env[@]+"${attn_env[@]}"} XML_LOG_DIR="$suite_log_dir" bash "$TE_PATH/$script"; then
+    # Apply the NPU adapter before collecting shared unit tests. Plugin tests
+    # retain their own per-file environment through run_ci_test_group.py.
+    local pytest_command="${TE_TEST_PYTEST_COMMAND:-python3 $TE_PATH/tests/plugin/backend/npu/run_pytest.py}"
+    if ! env NVTE_FLASH_ATTN=0 NVTE_FUSED_ATTN=0 NVTE_UNFUSED_ATTN=1 \
+        TE_TEST_PYTEST_COMMAND="$pytest_command" XML_LOG_DIR="$suite_log_dir" \
+        bash "$TE_PATH/$script"; then
         suite_status=1
         FAILED=1
         FAILED_SUITES+=("$suite")
+    fi
+    if [[ "$suite" == unittest ]]; then
+        # This NPU-only checkpoint round trip is a standalone program, not a
+        # pytest target. Keep it alongside the common QA suite.
+        if ! python3 "$TE_PATH/tests/pytorch/test_grouped_tensor_checkpoint_npu.py"; then
+            suite_status=1
+            FAILED=1
+            FAILED_SUITES+=("$suite:npu-checkpoint")
+        fi
     fi
     echo "===== END $suite rc=$suite_status ====="
 }

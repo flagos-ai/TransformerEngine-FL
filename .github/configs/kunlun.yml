@@ -65,6 +65,7 @@ unit_test_matrix:
     runner: script
     path: tests/plugin/backend/kunlun/run_unit_tests.sh
     args: [unittest]
+    timeout_minutes: 120
   - name: pytorch_distributed
     runner: script
     path: tests/plugin/backend/kunlun/run_unit_tests.sh
@@ -132,9 +133,147 @@ ignored_tests:
       - tests/pytorch/debug/test_distributed.py::test_debug_distributed
       # HANG on the first case ([4]) until torchrun was terminated
       - tests/pytorch/distributed/test_fusible_ops.py::test_distributed_fuser_ops
+      # PR #211: Attention creates an intermediate on cuda:0 for inputs on
+      # cuda:7. Restore after multi-device Attention placement is corrected
+      # and both current-device cases pass on P800.
+      - 'tests/pytorch/distributed/test_sanity.py::test_current_device[TransformerLayer-small]'
+      - 'tests/pytorch/distributed/test_sanity.py::test_current_device[DotProductAttention-small]'
+      # The Kunlun extension lacks ubuf_built_with_mpi. Overlap fails at
+      # collection; the userbuffers case fails before worker launch.
+      # Restore after the capability API and targeted P800 cases pass.
+      - tests/pytorch/distributed/test_comm_gemm_overlap.py
+      - 'tests/pytorch/distributed/test_fusible_ops_with_userbuffers.py::test_fuser_ops_with_userbuffers[None-8]'
+      # The cuSolverMp probe cannot find the TE core shared library during
+      # collection. Restore after Kunlun capability detection and a supported
+      # Newton-Schulz rerun pass.
+      - tests/pytorch/distributed/test_newton_schulz.py
+  - jobs: [pytorch_debug]
+    tests:
+      # PR #211 P800 debug run: softmax backward launch failures and error 719
+      # affected these Sanity cases; later failures may be cascading errors.
+      # Restore after isolated debug-mode reruns pass on the XPU runtime.
+      - 'tests/pytorch/test_sanity.py::test_inference_mode'
+      - 'tests/pytorch/test_sanity.py::test_model_multiple_cast'
+      - 'tests/pytorch/test_sanity.py::test_sanity_T5'
+      - 'tests/pytorch/test_sanity.py::test_sanity_amp_and_nvfuser'
+      - 'tests/pytorch/test_sanity.py::test_sanity_bert'
+      - 'tests/pytorch/test_sanity.py::test_sanity_checkpointing_on_callables'
+      - 'tests/pytorch/test_sanity.py::test_sanity_drop_path'
+      - 'tests/pytorch/test_sanity.py::test_sanity_fused_qkv_params'
+      - 'tests/pytorch/test_sanity.py::test_sanity_gemm_with_unalignment'
+      - 'tests/pytorch/test_sanity.py::test_sanity_gpt[*-*-*-*-*-*-*-dtype1]'
+      - 'tests/pytorch/test_sanity.py::test_sanity_gpt[*-*-*-*-*-*-*-dtype2]'
+      - 'tests/pytorch/test_sanity.py::test_sanity_gpt[*-*-*-*-False-*-*-*]'
+      - 'tests/pytorch/test_sanity.py::test_sanity_gpt[*-*-*-False-*-*-*-*]'
+      - 'tests/pytorch/test_sanity.py::test_sanity_gpt[*-*-swiglu-*-*-*-*-*]'
+      - 'tests/pytorch/test_sanity.py::test_sanity_gpt[False-*-*-*-*-*-*-*]'
+      - 'tests/pytorch/test_sanity.py::test_sanity_gpt[True-RMSNorm-gelu-True-True-small-None-dtype0]'
+      - 'tests/pytorch/test_sanity.py::test_sanity_gpt_126m'
+      - 'tests/pytorch/test_sanity.py::test_sanity_gradient_accumulation_fusion'
+      # Debug Numerics output/gradient comparisons exceeded tolerances.
+      # Restore after these parameter combinations pass with debug enabled.
+      - 'tests/pytorch/test_numerics.py::test_layernorm_accuracy[*-*-*-*-dtype1]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_accuracy[*-*-*-*-dtype2]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_accuracy[*-*-*-2-*]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_accuracy[*-*-07-*-*-*]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_accuracy[*-0.001-*-*-*]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_linear_accuracy[*-*-*-RMSNorm-*-*-*]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy[*-*-*-relu-*-2-dtype1]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy[*-*-RMSNorm-*-*-*-dtype0]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy[*-*-RMSNorm-geglu-*-2-*]'
+      # 2026-11-25: RMSNorm/Geglu dtype1 output differs by 0.2124 on small
+      # models for all four boolean configuration combinations.
+      - 'tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy[*-*-RMSNorm-geglu-small-1-dtype1]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy[*-*-RMSNorm-gelu-*-*-*]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy[*-*-RMSNorm-glu-*-*-*]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy[*-*-RMSNorm-qgeglu-*-2-*]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy[*-*-RMSNorm-qgelu-*-*-*]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy[*-*-RMSNorm-reglu-*-2-*]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy[*-*-RMSNorm-relu-*-*-*]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy[*-*-RMSNorm-silu-*-*-*]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy[*-*-RMSNorm-srelu-*-*-*]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy[*-*-RMSNorm-swiglu-*-2-*]'
+      - 'tests/pytorch/test_numerics.py::test_mha_accuracy[causal-small-2-dtype2]'
+      - 'tests/pytorch/test_numerics.py::test_rmsnorm_accuracy'
+  - jobs: [pytorch_unit]
+    tests:
+      # P800 shared QA pilot (2026-11-25). These Sanity cases were outside
+      # the old -k selection. XPU runtime reports error 719 (unspecified
+      # launch failure) or related dispatch errors. Restore after isolated reruns pass.
+      - 'tests/pytorch/test_sanity.py::test_inference_mode[None-*]'
+      - 'tests/pytorch/test_sanity.py::test_model_multiple_cast'
+      - 'tests/pytorch/test_sanity.py::test_sanity_T5'
+      - 'tests/pytorch/test_sanity.py::test_sanity_amp_and_nvfuser'
+      - 'tests/pytorch/test_sanity.py::test_sanity_bert'
+      - 'tests/pytorch/test_sanity.py::test_sanity_checkpointing_on_callables'
+      - 'tests/pytorch/test_sanity.py::test_sanity_drop_path'
+      - 'tests/pytorch/test_sanity.py::test_sanity_fused_qkv_params'
+      - 'tests/pytorch/test_sanity.py::test_sanity_gemm_with_unalignment'
+      - 'tests/pytorch/test_sanity.py::test_sanity_gpt[*-*-*-*-*-*-*-dtype1]'
+      - 'tests/pytorch/test_sanity.py::test_sanity_gpt[*-*-*-*-*-*-*-dtype2]'
+      - 'tests/pytorch/test_sanity.py::test_sanity_gpt[*-*-*-*-False-*-*-*]'
+      - 'tests/pytorch/test_sanity.py::test_sanity_gpt[*-*-*-False-*-*-*-*]'
+      - 'tests/pytorch/test_sanity.py::test_sanity_gpt[*-*-swiglu-*-*-*-*-*]'
+      - 'tests/pytorch/test_sanity.py::test_sanity_gpt[False-*-*-*-*-*-*-*]'
+      - 'tests/pytorch/test_sanity.py::test_sanity_gpt[True-RMSNorm-gelu-True-True-small-None-dtype0]'
+      - 'tests/pytorch/test_sanity.py::test_sanity_gpt_126m'
+      - 'tests/pytorch/test_sanity.py::test_sanity_gradient_accumulation_fusion'
+      # New unit Numerics coverage: these cases fail output or gradient
+      # tolerances. Restore after the numerical cases pass on P800.
+      - 'tests/pytorch/test_numerics.py::test_gpt_cuda_graph'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_accuracy[*-*-*-*-dtype1]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_accuracy[*-*-*-*-dtype2]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_accuracy[*-*-*-2-*]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_accuracy[*-*-07-*-*-*]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_accuracy[*-0.001-*-*-*]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_linear_accuracy[*-*-*-RMSNorm-*-*-*]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy[*-*-*-relu-*-2-dtype1]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy[*-*-RMSNorm-*-*-*-dtype0]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy[*-*-RMSNorm-geglu-*-2-*]'
+      # 2026-11-25: RMSNorm/Geglu dtype1 output differs by 0.2124 on small
+      # models for all four boolean configuration combinations.
+      - 'tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy[*-*-RMSNorm-geglu-small-1-dtype1]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy[*-*-RMSNorm-gelu-*-*-*]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy[*-*-RMSNorm-glu-*-*-*]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy[*-*-RMSNorm-qgeglu-*-2-*]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy[*-*-RMSNorm-qgelu-*-*-*]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy[*-*-RMSNorm-reglu-*-2-*]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy[*-*-RMSNorm-relu-*-*-*]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy[*-*-RMSNorm-silu-*-*-*]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy[*-*-RMSNorm-srelu-*-*-*]'
+      - 'tests/pytorch/test_numerics.py::test_layernorm_mlp_accuracy[*-*-RMSNorm-swiglu-*-2-*]'
+      - 'tests/pytorch/test_numerics.py::test_mha_accuracy[causal-small-2-dtype2]'
+      - 'tests/pytorch/test_numerics.py::test_rmsnorm_accuracy'
+      # 2026-11-26: 880 fused-RoPE cases failed across the remaining
+      # parameter space and the 90-minute unit job timed out while this file
+      # was still running. Restore after an isolated P800 run is healthy.
+      - tests/pytorch/test_fused_rope.py
+      # KunlunXin scaled masked softmax fails with XPU error 719 during the
+      # dtype1 Transformer CUDA-graph case and aborts the test process.
+      # Restore after the kernel launches successfully on P800.
+      - 'tests/pytorch/test_cuda_graphs.py::test_make_graphed_callables[None-None-False-dtype1-transformer]'
+      - 'tests/pytorch/test_cuda_graphs.py::test_make_graphed_callables[None-None-False-dtype1-mha]'
+      # 2026-11-26 P800 run: bfloat16 scaled masked softmax fails with XPU
+      # error 719 in the Transformer CUDA-graph case.
+      - 'tests/pytorch/test_cuda_graphs.py::test_make_graphed_callables[None-None-False-dtype2-transformer]'
+      # P800 does not support the int16 arithmetic used for stored Adam
+      # parameter remainders.
+      - 'tests/pytorch/test_fused_optimizer.py::TestFusedAdam::test_fp32_master_store_param_remainders'
+      # These optimizer cases failed in the 2026-11-26 run; the job timeout
+      # prevented pytest from recording their full tracebacks. Restore after
+      # isolated reruns identify and resolve the failures.
+      - 'tests/pytorch/test_fused_optimizer.py::TestFusedAdam::test_bf16_exp_avg_and_exp_avg_sq'
+      - 'tests/pytorch/test_fused_optimizer.py::TestAdamTest::test_grad_scaler_capturable_master'
+      # The reference wrapper passes 11 arguments while the helper currently
+      # accepts 8. Restore after the shared implementation handles the current API.
+      - 'tests/pytorch/test_fused_optimizer.py::TestFusedSGD::test_float'
+      - 'tests/pytorch/test_fused_optimizer.py::TestFusedSGD::test_half'
 
 # Missing test-group coverage is explicit; these entries do not claim hardware incapability.
 ignored_test_groups:
-  quantization: Current Kunlun QA runs recipe targets only and all are skipped by capability checks; no passing quantization evidence is available.
-  optimizer: Kunlun unit QA does not run fused optimizer, multi-tensor or backend optimizer targets.
-  attention: Kunlun unit QA selects normalization/linear sanity cases only; attention targets are not wired.
+  quantization: Shared quantization QA is wired, but no passing quantization evidence is available yet; previous recipe targets were all skipped by capability checks. Restore after recovery validation produces passing evidence.
+  router: >-
+    The P800 Router run had 933 failures, 120 skips, and zero passes because
+    the CI runtime did not register the fused TopK, auxiliary-loss score, or
+    MoE auxiliary-loss forward operators. Restore after these operators are
+    registered and a targeted run in the CI image produces passing JUnit evidence.

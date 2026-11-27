@@ -156,6 +156,16 @@ ignored_tests:
   # transpose permutations in this lifecycle matrix. Restore after the image
   # generic_gemm ABI and backend support the full matrix.
   - tests/plugin/backend/flagos/test_gemm.py::test_generic_gemm_lifecycle_matrix
+  # MUSA image sitecustomize changes the exported implementation function's
+  # module, breaking the FlagGems mocks during setup. Restore after those tests
+  # patch the implementation modules directly.
+  - tests/plugin/backend/flagos/test_gemm.py
+  - tests/plugin/backend/flagos/test_optimizer.py
+  # MUSA vendor layernorm output deviates from the torch reference by a few
+  # ulps, while this test asserts exact equality (rtol=0, atol=0). Restore
+  # after the MUSA layernorm implementation matches the reference bit-exactly.
+  - tests/plugin/backend/reference/test_normalization.py::test_layernorm_matches_torch_autograd[True-dtype1]
+  - tests/plugin/backend/reference/test_normalization.py::test_layernorm_matches_torch_autograd[True-dtype2]
   # MUSA's Tensor.to(other_tensor) compatibility path writes through the
   # preallocated reference-dropout buffer for zero probability. Restore after
   # the runtime preserves the reference buffer contract.
@@ -176,7 +186,72 @@ ignored_tests:
   # after transformer_engine_musa_torch exposes the upstream bgrad ABI.
   - tests/pytorch/test_numerics.py::test_linear_accuracy_delay_wgrad_compute
 
+  # 2026-11-26 MUSA unit run: grouped GEMM fails with shape mismatches and
+  # no_grad view in-place errors across the grouped-linear accuracy matrix.
+  # Restore after the MUSA generic_gemm path supports these contracts.
+  - jobs: [pytorch_unit]
+    tests:
+      - 'tests/pytorch/test_grouped_linear.py::test_grouped_linear_accuracy[*]'
+      - 'tests/pytorch/test_grouped_linear.py::test_grouped_linear_accuracy_cutlass[*]'
+      # Grouped MLP uses the same generic_gemm path and fails on a no_grad view.
+      - 'tests/pytorch/test_grouped_mlp.py::TestGroupedLinearOp::test_grouped_linear[*]'
+      - 'tests/pytorch/test_grouped_mlp.py::TestGroupedMLPFusedOp::test_grouped_mlp_mcore_integrations[*]'
+      # mHC fails for every selected case: missing tl.assume or tuple indexing.
+      - tests/pytorch/test_mhc.py
+      # MUSA cache keys use musa:0 while these tests expect cuda:0.
+      - tests/pytorch/attention/test_cu_seqlens_cache.py::test_cu_seqlens_cache_isolated_across_devices_for_forward
+      - tests/pytorch/attention/test_cu_seqlens_cache.py::test_cu_seqlens_cache_isolated_between_inference_and_train_forward
+
+  # 2026-11-26 MUSA distributed run: test_current_device[TransformerLayer-small]
+  # failed, and [DotProductAttention-small] then hung with no output until the
+  # 120-minute job timeout killed the run. Same wrong-device class as the
+  # musa:0-vs-cuda:0 cache-key ignores above; kunlun and metax carry the same
+  # two entries for their device-mapping defects. Restore after gradients land
+  # on the input device on S5000.
+  - jobs: [pytorch_distributed]
+    tests:
+      - 'tests/pytorch/distributed/test_sanity.py::test_current_device[TransformerLayer-small]'
+      - 'tests/pytorch/distributed/test_sanity.py::test_current_device[DotProductAttention-small]'
+
+  # The shared distributed suite currently launches these paths with NCCL,
+  # while the MUSA PyTorch build has no NCCL support. Restore after the shared
+  # tests use the MUSA mccl backend.
+  - jobs: [pytorch_distributed]
+    tests:
+      - 'tests/pytorch/distributed/test_numerics.py::test_distributed[None]'
+      - tests/pytorch/distributed/test_fusible_ops.py::test_distributed_fuser_ops
+      - tests/pytorch/distributed/test_torch_fsdp2.py::test_fsdp2_mem_leak_tests
+      - 'tests/pytorch/distributed/test_cast_master_weights_to_fp8.py::test_cast_master_weights_to_fp8[2]'
+      - tests/pytorch/debug/test_distributed.py::test_debug_distributed
+  # MUSA's extension does not expose the MPI userbuffer capability probe;
+  # collection fails before these userbuffer tests can run.
+  - jobs: [pytorch_distributed]
+    tests:
+      - tests/pytorch/distributed/test_comm_gemm_overlap.py
+      - 'tests/pytorch/distributed/test_fusible_ops_with_userbuffers.py::test_fuser_ops_with_userbuffers[None-8]'
+  # Newton-Schulz collection requires the Transformer Engine core shared
+  # library, which is not provided by the current MUSA build.
+  - jobs: [pytorch_distributed]
+    tests:
+      - tests/pytorch/distributed/test_newton_schulz.py
+
+  # 2026-11-26 MUSA ONNX run: exporter cannot lower tex.gemm_inf, requires
+  # concrete SymInt dimensions, and hits an Inductor nll_loss fallback assert.
+  # Restore the ONNX suite after the MUSA exporter/runtime is compatible.
+  - jobs: [pytorch_onnx]
+    tests:
+      - tests/pytorch/test_onnx_export.py
+
 # Missing test-group coverage is explicit; these entries do not claim hardware incapability.
 ignored_test_groups:
   quantization: Current S5000 CI skips every selected FP8, MXFP8 and NVFP4 target; no passing quantization evidence is available.
   normalization: MUSA QA excludes normalization sanity/numerics and fusible normalization cases.
+  router: >-
+    The S5000 CI image resolved libmusa.so to an empty file, then failed
+    Router collection because the Triton NVIDIA backend could not import
+    nvidia from triton._C.libtriton. With the host driver library mounted and
+    only the MUSA Triton backend enabled, Router had 933 failures, 120 skips,
+    and zero passes because transformer_engine_torch lacked the fused TopK,
+    auxiliary-loss score, and MoE auxiliary-loss forward bindings. Restore
+    after the CI image loads its driver and Triton backend, the extension
+    exposes those bindings, and a targeted CI run produces passing JUnit evidence.

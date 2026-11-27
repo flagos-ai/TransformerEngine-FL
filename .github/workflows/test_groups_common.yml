@@ -31,7 +31,7 @@ on:
       runs_on:
         required: true
         type: string
-        description: 'JSON array of runner labels'
+        description: 'Default JSON array of runner labels, overridable by a matrix entry'
       container_volumes:
         required: true
         type: string
@@ -73,7 +73,7 @@ on:
 
 jobs:
   test_group:
-    runs-on: ${{ fromJson(inputs.runs_on) }}
+    runs-on: ${{ matrix.runner_labels || fromJson(inputs.runs_on) }}
     strategy:
       fail-fast: false
       max-parallel: ${{ inputs.max_parallel }}

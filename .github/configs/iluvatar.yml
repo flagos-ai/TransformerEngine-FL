@@ -231,6 +231,101 @@ ignored_tests:
       - tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-last-False-True-*-2-dtype*]
       - tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-middle-False-True-*-1-dtype*]
       - tests/pytorch/test_sanity.py::test_sanity_grouped_linear[*-middle-False-True-*-2-dtype*]
+  - jobs: [pytorch_unit]
+    tests:
+      # PR #211 BI-V150 shared unit run (2026-11-25): fused QKV RoPE had 643
+      # OOMs, 44 missing NVTE_QKV_Format errors and 36 comparison failures.
+      # These selectors cover only the 723 recorded failed parameter cases;
+      # keep the 5,142 passing RoPE cases. Restore after memory/backend fixes
+      # and isolated reruns pass on the 32 GiB devices.
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[*-2-_overlapping_grad-bshd-0-*-256-4096-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[*-2-_overlapping_grad-bshd-0-1.0-256-2048-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-1-*-bshd-10-*-*-2048-*-*]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-1-*-bshd-10-*-*-4096-*-*]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-1-*-sbhd-0-0.5-256-4096-dtype0-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-1-*-sbhd-0-1.0-256-4096-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-1-_non_overlapping_grad-bshd-0-*-256-4096-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-1-_non_overlapping_grad-bshd-0-1.0-128-2048-dtype0-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-1-_non_overlapping_grad-bshd-0-1.0-128-4096-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-1-_non_overlapping_grad-bshd-0-1.0-256-2048-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-1-_non_overlapping_grad-bshd-0-1.0-64-4096-dtype0-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-1-_non_overlapping_grad-sbhd-0-0.5-256-4096-dtype1-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-1-_non_overlapping_grad-sbhd-10-*-256-4096-*-*]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-1-_non_overlapping_grad-sbhd-10-1.0-64-2048-dtype0-*]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-1-_overlapping_grad-bshd-0-*-*-2048-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-1-_overlapping_grad-bshd-0-*-*-4096-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-1-_overlapping_grad-sbhd-10-*-*-2048-*-*]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-1-_overlapping_grad-sbhd-10-*-*-4096-*-*]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-2-*-bshd-10-*-*-2048-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-2-*-bshd-10-*-*-4096-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-2-*-sbhd-0-1.0-256-4096-dtype0-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-2-_non_overlapping_grad-bshd-0-*-*-4096-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-2-_non_overlapping_grad-bshd-0-0.5-128-2048-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-2-_non_overlapping_grad-bshd-0-0.5-256-2048-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-2-_non_overlapping_grad-bshd-0-1.0-*-2048-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-2-_non_overlapping_grad-sbhd-0-0.5-*-2048-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-2-_non_overlapping_grad-sbhd-0-0.5-*-4096-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-2-_non_overlapping_grad-sbhd-0-1.0-256-4096-dtype1-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-2-_non_overlapping_grad-sbhd-10-*-256-4096-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-2-_non_overlapping_grad-sbhd-10-1.0-128-2048-dtype0-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-2-_non_overlapping_grad-sbhd-10-1.0-128-4096-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-2-_non_overlapping_grad-sbhd-10-1.0-256-2048-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-2-_non_overlapping_grad-sbhd-10-1.0-64-4096-dtype0-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-2-_overlapping_grad-bshd-0-1.0-128-4096-dtype0-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-2-_overlapping_grad-bshd-0-1.0-128-4096-dtype1-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-2-_overlapping_grad-sbhd-0-0.5-128-4096-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-2-_overlapping_grad-sbhd-0-0.5-256-*-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-2-_overlapping_grad-sbhd-0-1.0-64-*-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[False-2-_overlapping_grad-sbhd-10-*-256-4096-dtype0-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[True-1-_non_overlapping_grad-*-10-*-*-4096-*-*]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[True-1-_non_overlapping_grad-bshd-0-*-*-2048-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[True-1-_non_overlapping_grad-bshd-0-*-*-4096-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[True-1-_non_overlapping_grad-bshd-10-*-*-2048-*-*]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[True-1-_non_overlapping_grad-sbhd-0-0.5-256-4096-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[True-1-_non_overlapping_grad-sbhd-0-1.0-*-2048-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[True-1-_non_overlapping_grad-sbhd-0-1.0-*-4096-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[True-1-_non_overlapping_grad-sbhd-10-0.5-128-2048-*-*]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[True-1-_non_overlapping_grad-sbhd-10-0.5-256-2048-*-*]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[True-1-_non_overlapping_grad-sbhd-10-0.5-64-2048-dtype0-*]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[True-1-_non_overlapping_grad-sbhd-10-0.5-64-2048-dtype1-*]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[True-1-_non_overlapping_grad-sbhd-10-1.0-*-2048-*-*]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[True-1-_overlapping_grad-*-*-*-256-4096-dtype0-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[True-2-*-sbhd-0-*-256-4096-dtype0-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[True-2-*-sbhd-0-0.5-256-4096-dtype1-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[True-2-_non_overlapping_grad-bshd-0-*-256-4096-dtype0-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[True-2-_non_overlapping_grad-bshd-10-*-256-4096-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[True-2-_non_overlapping_grad-bshd-10-1.0-64-2048-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[True-2-_non_overlapping_grad-bshd-10-1.0-64-4096-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[True-2-_non_overlapping_grad-sbhd-10-0.5-256-4096-dtype0-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[True-2-_non_overlapping_grad-sbhd-10-0.5-256-4096-dtype1-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[True-2-_non_overlapping_grad-sbhd-10-1.0-256-4096-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[True-2-_overlapping_grad-*-10-*-256-4096-dtype0-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[True-2-_overlapping_grad-bshd-0-1.0-128-4096-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[True-2-_overlapping_grad-sbhd-0-0.5-64-2048-*-False]'
+      - 'tests/pytorch/test_fused_rope.py::test_fused_qkv_rope[True-2-_overlapping_grad-sbhd-0-0.5-64-4096-*-False]'
+      # Grouped Linear: empty-tensor GEMM reshape errors, exact-value mismatches
+      # and a missing te_general_grouped_gemm binding. Keep the 26 passing
+      # grouped GEMM cases; restore after the affected runtime paths pass.
+      - 'tests/pytorch/test_grouped_linear.py::test_grouped_linear_accuracy'
+      - 'tests/pytorch/test_grouped_linear.py::test_grouped_linear_accuracy_save_original_input'
+      - 'tests/pytorch/test_grouped_linear.py::test_grouped_linear_accuracy_single_gemm'
+      - 'tests/pytorch/test_grouped_linear.py::test_grouped_gemm[*-True-NN-*-*]'
+      - 'tests/pytorch/test_grouped_linear.py::test_grouped_gemm[*-True-TN-*-*]'
+      - 'tests/pytorch/test_grouped_linear.py::test_grouped_gemm[*-*-NT-torch.float16-shape0]'
+      - 'tests/pytorch/test_grouped_linear.py::test_grouped_gemm[*-*-NT-torch.float16-shape2]'
+      - 'tests/pytorch/test_grouped_linear.py::test_grouped_gemm[*-*-NT-torch.float16-shape3]'
+      # All 32 executed GroupedLinearOp cases exceeded numerical tolerances;
+      # remaining cases capability-skipped. Restore after the CoreX grouped
+      # linear implementation matches the reference in a targeted rerun.
+      - 'tests/pytorch/test_grouped_mlp.py::TestGroupedLinearOp::test_grouped_linear'
+      # mHC aggregate and expand_combine: LLVM/MLIR compilation fails with
+      # incompatible dimension layouts (PassManager::run failed). Keep the
+      # 117 passing mHC cases. Restore after the Triton compiler path passes.
+      - 'tests/pytorch/test_mhc.py::test_mhc_aggregate'
+      - 'tests/pytorch/test_mhc.py::test_mhc_expand_combine'
+      # The cross-device cache case mixes cuda:0 and cuda:1. Restore after
+      # intermediates follow the input device and this case passes.
+      - 'tests/pytorch/attention/test_cu_seqlens_cache.py::test_cu_seqlens_cache_isolated_across_devices_for_forward'
   # Shared-flow alignment (run of 2026-11-17 at deb7ee4d): debug, distributed
   # and onnx now run the shared qa scripts. Each entry below failed, crashed or
   # hung in that run on iluvatar; each comment is the first error of the tests below it.
@@ -239,9 +334,13 @@ ignored_tests:
       # AssertionError: Outputs not close enough in tensor at idx=N
       - tests/pytorch/test_numerics.py::test_layernorm_accuracy[*-*-*-*-dtype1]
 
-# RoPE uses the FlagOS backend tests, as on PPU; the common large-shape RoPE
-# matrix is not launched on this 32 GiB baseline. Restore quantization when
-# the selected targets produce passing JUnit evidence and the required-group
-# evidence gate passes.
+# Shared RoPE keeps its passing parameter cases and the FlagOS backend tests;
+# failed fused QKV combinations are quarantined in the unit-job block above.
+# Restore quantization after selected targets produce passing JUnit evidence
+# and the required-group evidence gate passes.
 ignored_test_groups:
   quantization: Current CoreX 4.5.0 CI skips all selected quantization targets (18674 skipped, zero passed in run 41381184040); no passing evidence is available. Restore after vendor/runtime adaptation yields passing quantization tests and the required-group evidence gate passes.
+  router: >-
+    All 933 executed Router cases failed on BI-V150 because ixte_torch lacks
+    the fused TopK and aux-loss bindings. Restore after the vendor extension
+    exposes those bindings and a targeted Router rerun passes.

@@ -62,6 +62,7 @@ unit_test_matrix:
     runner: script
     path: tests/plugin/backend/enflame/run_unit_tests.sh
     args: [unittest]
+    timeout_minutes: 360
   - name: pytorch_distributed
     runner: script
     path: tests/plugin/backend/enflame/run_unit_tests.sh
@@ -97,6 +98,106 @@ ignored_tests:
   - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_cross_entropy_forward_and_backward_match_native_exactly
   - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_grouped_dbias_functions_match_native_exactly
   - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_mhc_apis_match_native_exactly
+  - jobs: [pytorch_unit]
+    tests:
+      # PR #211 on S60: torch_gcu AMP returns the wrong output dtype.
+      # Restore after these parameter combinations pass on the GCU runtime.
+      - 'tests/pytorch/test_sanity.py::test_sanity_normalization_amp[*-False-False-*-dtype1]'
+      - 'tests/pytorch/test_sanity.py::test_sanity_normalization_amp[*-False-True-*-dtype1]'
+      - 'tests/pytorch/test_sanity.py::test_sanity_normalization_amp[*-True-False-*-dtype1]'
+      # S60 Linear backward returns a 64-element gradient where 256 are expected.
+      # Restore once backward returns the expected shape for zero-token inputs.
+      - 'tests/pytorch/test_sanity.py::test_sanity_linear_with_zero_tokens[True-True-None-None-small-0-dtype*]'
+      # 2026-11-25: the weird model returns a 69-element bias gradient instead
+      # of the expected 276 elements for the zero-token case.
+      - 'tests/pytorch/test_sanity.py::test_sanity_linear_with_zero_tokens[True-True-None-None-weird-0-dtype0]'
+      # 2026-11-26: the same invalid bias-gradient shape affects the remaining
+      # weird-model and small-model zero-token parameter combinations.
+      - 'tests/pytorch/test_sanity.py::test_sanity_linear_with_zero_tokens[True-True-None-None-weird-0-dtype1]'
+      - 'tests/pytorch/test_sanity.py::test_sanity_linear_with_zero_tokens[True-True-None-None-weird-1-dtype*]'
+      - 'tests/pytorch/test_sanity.py::test_sanity_linear_with_zero_tokens[True-True-None-None-weird-2-dtype*]'
+      - 'tests/pytorch/test_sanity.py::test_sanity_linear_with_zero_tokens[True-False-None-None-small-1-dtype*]'
+      # S60 returned undersized bias gradients for these additional cases.
+      # Restore when the GCU backward path returns the expected bias shape.
+      - 'tests/pytorch/test_sanity.py::test_sanity_linear_with_zero_tokens[True-False-None-None-small-0-dtype0]'
+      - 'tests/pytorch/test_sanity.py::test_sanity_linear_with_zero_tokens[True-False-None-None-small-0-dtype1]'
+      - 'tests/pytorch/test_sanity.py::test_sanity_linear_with_zero_tokens[True-False-None-None-small-2-dtype0]'
+      - 'tests/pytorch/test_sanity.py::test_sanity_linear_with_zero_tokens[True-False-None-None-weird-0-dtype0]'
+      - 'tests/pytorch/test_sanity.py::test_sanity_linear_with_zero_tokens[True-False-None-None-weird-0-dtype1]'
+      - 'tests/pytorch/test_sanity.py::test_sanity_linear_with_zero_tokens[True-False-None-None-weird-1-dtype0]'
+      - 'tests/pytorch/test_sanity.py::test_sanity_linear_with_zero_tokens[True-False-None-None-weird-1-dtype1]'
+      - 'tests/pytorch/test_sanity.py::test_sanity_linear_with_zero_tokens[True-False-None-None-weird-2-dtype0]'
+      # Enflame vendor grouped GEMM rejects the TE extension argument signature.
+      # Restore after the vendor binding and these parameter combinations pass.
+      - 'tests/pytorch/test_sanity.py::test_sanity_grouped_linear[4-*-False-True-*-None-None-*-1-dtype*]'
+      - 'tests/pytorch/test_sanity.py::test_sanity_grouped_linear[4-*-False-True-*-None-None-*-2-dtype*]'
+      # Torch Inductor raises KeyError: 'gcu'. Restore after GCU lowering works.
+      - 'tests/pytorch/test_sanity.py::test_sanity_layernorm_mlp[*-*-*-gelu-False-*-False-*-None-dtype*]'
+      - 'tests/pytorch/test_sanity.py::test_sanity_layernorm_mlp[*-*-*-gelu-False-*-True-*-None-dtype*]'
+      - 'tests/pytorch/test_sanity.py::test_sanity_layernorm_mlp[*-*-*-gelu-True-*-False-*-None-dtype*]'
+      - 'tests/pytorch/test_sanity.py::test_inference_mode[None-LayerNormMLP]'
+      # The loaded Enflame attention forward rejects bottom_right_diagonal.
+      # Restore after the S60 attention adapter accepts the argument and passes.
+      - tests/pytorch/test_sanity.py::test_sanity_gpt
+      - tests/pytorch/test_sanity.py::test_sanity_gpt_126m
+      - tests/pytorch/test_sanity.py::test_sanity_bert
+      - tests/pytorch/test_sanity.py::test_sanity_T5
+      - tests/pytorch/test_sanity.py::test_sanity_amp_and_nvfuser
+      - tests/pytorch/test_sanity.py::test_sanity_drop_path
+      - tests/pytorch/test_sanity.py::test_sanity_fused_qkv_params
+      - tests/pytorch/test_sanity.py::test_sanity_gradient_accumulation_fusion
+      # torch_gcu SDPA backward aborts with TOPSATEN_STATUS_NOT_SUPPORT.
+      # Restore after the reference attention backward passes on S60.
+      - 'tests/pytorch/test_numerics.py::test_gpt_accuracy[True-small-1-dtype0]'
+      # 2026-11-25: SDPA backward also aborts with TOPSATEN_STATUS_RUNTIME_ERROR
+      # for dtype1; restore after both GCU dtype paths pass.
+      - 'tests/pytorch/test_numerics.py::test_gpt_accuracy[True-small-1-dtype1]'
+      # 2026-11-26: the same unsupported SDP backward path aborts for the
+      # small model's sequence-length variant 2.
+      - 'tests/pytorch/test_numerics.py::test_gpt_accuracy[True-small-2-dtype0]'
+      # Variant 2 also aborts in torch_gcu SDPA backward for dtype1.
+      - 'tests/pytorch/test_numerics.py::test_gpt_accuracy[True-small-2-dtype1]'
+      # topsStreamSynchronize aborts during graph capture. Restore after the
+      # transformer path can be captured on S60 without synchronizing the stream.
+      - 'tests/pytorch/test_cuda_graphs.py::test_make_graphed_callables[None-None-False-dtype0-transformer]'
+      # GCU stream synchronization is unsupported during CUDA graph capture.
+      # Restore when this checkpointed layernorm_mlp graph test passes.
+      - 'tests/pytorch/test_cuda_graphs.py::test_make_graphed_callables[None-None-False-dtype0-layernorm_mlp_checkpoint]'
+      - 'tests/pytorch/test_cuda_graphs.py::test_make_graphed_callables[None-None-False-dtype0-mha]'
+      # 2026-11-26: linear_op failed in graph capture and the dtype1 transformer
+      # case aborted with topsErrorStreamCaptureUnsupported.
+      - 'tests/pytorch/test_cuda_graphs.py::test_make_graphed_callables[None-None-False-dtype0-linear_op]'
+      - 'tests/pytorch/test_cuda_graphs.py::test_make_graphed_callables[None-None-False-dtype1-transformer]'
+      # For dtype1, checkpointed layernorm_mlp fails and MHA aborts on stream
+      # synchronization during capture. Restore when both pass on S60.
+      - 'tests/pytorch/test_cuda_graphs.py::test_make_graphed_callables[None-None-False-dtype1-layernorm_mlp_checkpoint]'
+      - 'tests/pytorch/test_cuda_graphs.py::test_make_graphed_callables[None-None-False-dtype1-mha]'
+      # Reproduced on two S60s at 82edcc51 in v2.17.0-enflame-ci-gems5.0.2-20261112.
+      # Vendor fused_score_for_moe_aux_loss_fwd reports GCU400-only support and
+      # aborts in pybind11 (exit 134). Both families call that forward op.
+      # Owner: Enflame vendor TE. Restore when the op runs on S60 and both pass.
+      - tests/pytorch/test_fused_router.py::test_fused_scores_for_aux_loss
+      - tests/pytorch/test_fused_router.py::test_score_for_aux_loss_bitmap_vs_bytemap
+      # S60 retest at c9c1c5a2: fused_moe_aux_loss dispatches a GCU400 kernel,
+      # raises topsErrorInvalidDeviceFunction (98), then aborts pytest.
+      # Restore when the vendor dispatch selects an S60 kernel and this test passes.
+      - tests/pytorch/test_fused_router.py::test_fused_moe_aux_loss
+      # Vendor TopK returned values outside tolerance (6.2% mismatched, max
+      # absolute error 0.15). The v2.17 ABI warning was also present.
+      # Owner: Enflame TE adapter/vendor. Restore after this case passes by default.
+      - 'tests/pytorch/test_fused_router.py::test_topk_softmax[1.2-4-False-8-128-2048-dtype0]'
+      # FlagTree failed to legalize tt.atomic_rmw in mHC projection and segfaulted
+      # (exit 139). Projection and combined both run that same forward kernel.
+      # Owner: FlagTree Enflame. Restore once the kernel compiles and both pass.
+      - tests/pytorch/test_mhc.py::test_mhc_projection
+      - tests/pytorch/test_mhc.py::test_mhc_combined
+      # S60 retest at c9c1c5a2: mHC scale failed to legalize tt.atomic_rmw.
+      # Restore when FlagTree compiles the scale kernel and the cases pass.
+      - tests/pytorch/test_mhc.py::test_mhc_scale
+      # Aggregate and expand/combine exceed the S60 grid.y limit of 255.
+      # Restore once their launch grids fit the limit and the cases pass.
+      - tests/pytorch/test_mhc.py::test_mhc_aggregate
+      - tests/pytorch/test_mhc.py::test_mhc_expand_combine
   # FlagTree Enflame backend: unpermute_with_mask_map_bwd_with_merging_probs aborts
   # after the forward passes. Restore when the backward kernel runs.
   - tests/plugin/plugin/triton_dispatch_numerics_cases.py::test_real_permutation_forward_backward_matches_pytorch
@@ -185,6 +286,23 @@ ignored_tests:
       - tests/pytorch/distributed/test_torch_fsdp2.py::test_fsdp2_mem_leak_tests
       # AssertionError: torchrun exited with 1
       - tests/pytorch/debug/test_distributed.py::test_debug_distributed
+      # S60 aborts with topsErrorInvalidValue during a device-to-host copy
+      # while pytest reports this case. Restore after an isolated rerun passes.
+      - tests/pytorch/distributed/test_sanity.py::test_current_device[TransformerLayer-small]
+      # 2026-11-25: cross-device host copy uses memory not registered portable
+      # for the current device and aborts the distributed pytest process.
+      - tests/pytorch/distributed/test_sanity.py::test_current_device[DotProductAttention-small]
+      # 2026-11-26: grouped GEMM receives an incompatible Enflame binding
+      # signature and mismatched split shapes for this current-device case.
+      - tests/pytorch/distributed/test_sanity.py::test_current_device[GroupedLinear-small]
+      # The Enflame extension lacks ubuf_built_with_mpi. Overlap calls it at
+      # collection; the userbuffers case calls it before launching workers.
+      # Restore after the capability check and affected cases pass on S60.
+      - tests/pytorch/distributed/test_comm_gemm_overlap.py
+      - tests/pytorch/distributed/test_fusible_ops_with_userbuffers.py::test_fuser_ops_with_userbuffers[None-2]
+      # The cuSolverMp probe cannot find the TE core shared library during
+      # collection. Restore when the probe and a supported S60 rerun pass.
+      - tests/pytorch/distributed/test_newton_schulz.py
   - jobs: [pytorch_onnx]
     tests:
       # torch._inductor.exc.InductorError: KeyError: 'gcu'

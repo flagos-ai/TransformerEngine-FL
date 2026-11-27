@@ -21,6 +21,52 @@ DEBUG_TESTS_READY=0
 : ${XML_LOG_DIR:=/logs}
 mkdir -p "$XML_LOG_DIR"
 
+if [[ "${PLATFORM:-}" == ascend ]]; then
+    # The Ascend launcher supplies TE_TEST_PYTEST_COMMAND for NPU collection.
+    ascend_pytest() {
+        command python3 - "$@" <<'PY'
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+sys.path.insert(0, str(Path(os.environ["TE_PATH"]) / "tests/test_utils"))
+from run_ci_test_group import (
+    _all_reported_cases_skipped,
+    _pytest_command,
+    _selection_plugin_path,
+)
+
+report = next(
+    (Path(arg.split("=", 1)[1]) for arg in sys.argv[1:] if arg.startswith("--junitxml=")),
+    None,
+)
+if report is not None:
+    report.unlink(missing_ok=True)
+env = os.environ.copy()
+_selection_plugin_path(env)
+result = subprocess.run([*_pytest_command(True), *sys.argv[1:]], env=env, check=False)
+if result.returncode == 5 and report is not None and _all_reported_cases_skipped(report):
+    print(f"[SKIP] {report.name}: all reported cases skipped", flush=True)
+    raise SystemExit(0)
+raise SystemExit(128 - result.returncode if result.returncode < 0 else result.returncode)
+PY
+    }
+
+    python3() {
+        if [[ "${1:-}" == -m && "${2:-}" == pytest ]]; then
+            shift 2
+            ascend_pytest "$@"
+        else
+            command python3 "$@"
+        fi
+    }
+
+    pytest() {
+        ascend_pytest "$@"
+    }
+fi
+
 # The current CUDA 12.8 test container hits a fused-attention runtime loader
 # issue, so keep the distributed numerics suite on the unfused attention path.
 export NVTE_FLASH_ATTN="${NVTE_FLASH_ATTN:-0}"
@@ -122,9 +168,10 @@ run_test_step() {
     eval "$cmd" || test_fail "$label"
 }
 
-# Kept disabled for every platform: in the 2026-11-17 run on 8 platforms (deb7ee4d) this step
-# failed on all of them (test_current_device), so it is not a platform difference.
-# python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_sanity.xml $TE_PATH/tests/pytorch/distributed/test_sanity.py || test_fail "test_sanity.py"
+# Keep shared QA complete; platform-specific quarantines live in platform YAML.
+run_test_step "pytest_test_sanity.xml" "$TE_PATH/tests/pytorch/distributed/test_sanity.py" \
+"python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_sanity.xml $TE_PATH/tests/pytorch/distributed/test_sanity.py" \
+"test_sanity.py"
 run_test_step "pytest_test_numerics.xml" "$TE_PATH/tests/pytorch/distributed/test_numerics.py" \
 "python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_numerics.xml $TE_PATH/tests/pytorch/distributed/test_numerics.py" \
 "test_numerics.py"
@@ -137,10 +184,14 @@ run_test_step "pytest_test_fusible_ops.xml" "$TE_PATH/tests/pytorch/distributed/
 run_test_step "pytest_test_torch_fsdp2.xml" "$TE_PATH/tests/pytorch/distributed/test_torch_fsdp2.py" \
 "python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_torch_fsdp2.xml $TE_PATH/tests/pytorch/distributed/test_torch_fsdp2.py" \
 "test_torch_fsdp2.py"
-# Kept disabled for every platform: in the 2026-11-17 run on 8 platforms (deb7ee4d) these three
-# steps failed, did not collect or timed out on all of them, so it is not a platform difference.
-# python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_comm_gemm_overlap.xml $TE_PATH/tests/pytorch/distributed/test_comm_gemm_overlap.py || test_fail "test_comm_gemm_overlap.py"
-# python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_fusible_ops_with_userbuffers.xml $TE_PATH/tests/pytorch/distributed/test_fusible_ops_with_userbuffers.py || test_fail "test_fusible_ops_with_userbuffers.py"
+run_test_step "pytest_test_comm_gemm_overlap.xml" "$TE_PATH/tests/pytorch/distributed/test_comm_gemm_overlap.py" \
+"python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_comm_gemm_overlap.xml $TE_PATH/tests/pytorch/distributed/test_comm_gemm_overlap.py" \
+"test_comm_gemm_overlap.py"
+run_test_step "pytest_test_fusible_ops_with_userbuffers.xml" "$TE_PATH/tests/pytorch/distributed/test_fusible_ops_with_userbuffers.py" \
+"python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_fusible_ops_with_userbuffers.xml $TE_PATH/tests/pytorch/distributed/test_fusible_ops_with_userbuffers.py" \
+"test_fusible_ops_with_userbuffers.py"
+# Context-parallel attention remains outside this restoration: it has an
+# existing L3 FlashAttention-version QA entry with its own setup requirements.
 # python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_attention_with_cp.xml $TE_PATH/tests/pytorch/attention/test_attention_with_cp.py || test_fail "test_attention_with_cp.py"
 run_test_step "pytest_test_cp_utils.xml" "$TE_PATH/tests/pytorch/attention/test_cp_utils.py" \
 "python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_cp_utils.xml $TE_PATH/tests/pytorch/attention/test_cp_utils.py" \
@@ -148,6 +199,17 @@ run_test_step "pytest_test_cp_utils.xml" "$TE_PATH/tests/pytorch/attention/test_
 run_test_step "pytest_test_cast_master_weights_to_fp8.xml" "$TE_PATH/tests/pytorch/distributed/test_cast_master_weights_to_fp8.py" \
 "python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_cast_master_weights_to_fp8.xml $TE_PATH/tests/pytorch/distributed/test_cast_master_weights_to_fp8.py" \
 "test_cast_master_weights_to_fp8.py"
+
+
+# These pytest drivers launch their own worker processes. Do not wrap them in
+# another torchrun: EP checks >=4 GPUs, and Newton-Schulz checks >=2 GPUs plus
+# a TE build linked with cuSolverMp before launching its workers.
+run_test_step "pytest_test_ep.xml" "$TE_PATH/tests/pytorch/distributed/test_ep.py" \
+"python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_ep.xml $TE_PATH/tests/pytorch/distributed/test_ep.py" \
+"test_ep.py"
+run_test_step "pytest_test_newton_schulz.xml" "$TE_PATH/tests/pytorch/distributed/test_newton_schulz.py" \
+"python3 -m pytest -v -s --junitxml=$XML_LOG_DIR/pytest_test_newton_schulz.xml $TE_PATH/tests/pytorch/distributed/test_newton_schulz.py" \
+"test_newton_schulz.py"
 
 
 # debug tests

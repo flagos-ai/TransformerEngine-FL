@@ -14,26 +14,10 @@ readonly PLATFORM_UNIT_TEST_PATHS=(
     "tests/plugin/backend/reference"
     "tests/plugin/backend/flagos"
 )
-readonly PLATFORM_INTEGRATION_TEST_SCRIPT="tests/plugin/backend/iluvatar/integration_test.sh"
+readonly PLATFORM_INTEGRATION_TEST_SCRIPT="qa/L1_pytorch_mcore_integration/test.sh"
 readonly PLATFORM_PYTEST_UNIT_MARKERS="not slow and not integration"
 readonly PLATFORM_PYTEST_INTEGRATION_MARKERS="integration"
 readonly PLATFORM_PYTEST_EXTRA_ARGS="--tb=short --verbose"
 readonly PLATFORM_COVERAGE_ENABLED=true
 
-# Test scope is selected by the platform YAML. Per-test quarantines belong in
-# .github/configs/iluvatar.yml so the planner and every pytest child share one
-# source of truth.
-readonly ILUVATAR_UNIT_TEST_TARGETS=(
-    "tests/pytorch/test_sanity.py"
-    "tests/pytorch/test_deferred_init.py"
-    "tests/pytorch/test_jit.py"
-    "tests/pytorch/test_float8_blockwise_gemm_exact.py"
-    "tests/pytorch/test_gqa.py"
-    "tests/pytorch/test_fused_optimizer.py"
-    "tests/pytorch/test_multi_tensor.py"
-    "tests/pytorch/test_fusible_ops.py"
-    "tests/pytorch/test_permutation.py"
-    "tests/pytorch/test_parallel_cross_entropy.py"
-    "tests/pytorch/test_hf_integration.py"
-    "tests/plugin"
-)
+# Shared QA owns test targets; per-test quarantines live in iluvatar.yml.
